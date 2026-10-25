@@ -1,5 +1,25 @@
 # Changelog
 
+## [3.3.0] - 2026-10-25
+
+### Hinzugefügt
+
+- Beispiel-CSV `csv_kb/Beispiel_Vorlage.csv` mit allen Feldern aus „Eintrag anlegen“ (Basisdaten, Kurzinhalte, alle acht Inhaltsbereiche, Status & Verlinkung) und drei Beispieleinträgen. Sie endet bewusst nicht auf `_Glossar.csv` und wird deshalb nicht als Paket importiert.
+- Import-Tab: Karte „Beispiel-CSV mit allen Feldern“ mit Spaltenübersicht, Regeln und Download-Button (`?kb_download=csv-template`, nur für Admins).
+- CSV-Import liest jetzt alle Editor-Felder: Fokusbegriff, Slug, Kategorie (überschreibt den Dateinamen), Priorität, Max. Links pro Seite, Kurzbeschreibung, Tooltip-Text, Synonyme, alle acht Inhaltsbereiche sowie Aktiv, Nur ganze Wörter und Groß-/Kleinschreibung (`ja`/`nein`, `1`/`0`, `x`).
+- Inhaltsbereiche aus der CSV: Zeilenumbrüche werden zu Absätzen, Zeilen mit `- ` zu Aufzählungen, Zeilen mit `1. ` zu nummerierten Listen.
+- Weiterführende Links akzeptieren einen eigenen Linktext (`Linktext: https://…`).
+- Spaltennamen werden tolerant erkannt (Groß-/Kleinschreibung, Umlaute, Satzzeichen egal; DB-Spaltennamen als Alias). Die bisherigen Glossar-Spalten funktionieren unverändert.
+
+### Geändert
+
+- Re-Import überschreibt bei bestehenden Einträgen nur noch Felder, für die die CSV einen Wert liefert. Bisher wurden Synonyme und alle Inhaltsbereiche ohne CSV-Wert geleert und der Fokusbegriff auf den Titel zurückgesetzt – im Editor ergänzte Inhalte gingen dabei verloren.
+- Eine gepflegte Kurzbeschreibung wird ungekürzt übernommen; auf 280 Zeichen gekürzt wird nur noch der Fallback aus „Allgemeine Infos“.
+
+### Behoben
+
+- Eine leere Zelle in der Spalte „Fokusbegriff“ ließ den Eintrag mit „Titel und Fokusbegriff sind erforderlich“ scheitern; jetzt greift der Titel.
+
 ## [3.2.2] - 2026-10-25
 
 ### Behoben

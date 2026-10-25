@@ -108,6 +108,8 @@ final class Pages
             $standardPackagesService = StandardPackages::instance();
             $standardPackages = $standardPackagesService->getPackages();
             $csvFilenameWarnings = $standardPackagesService->getCsvFilenameWarnings();
+            $csvTemplateColumns = $standardPackagesService->templateColumns();
+            $csvTemplateFileName = StandardPackages::TEMPLATE_FILE_NAME;
             $activeSettingsPage = self::sanitizeAdminPageSlug((string) ($_GET['page'] ?? self::settingsPageSlugForSection($settingsSection)));
             $designTokens = $repository->getPublicDesignTokens();
             $lastImportAtRaw = trim((string) ($settings['csv_last_import_at'] ?? ''));
@@ -181,6 +183,7 @@ final class Pages
     private static function renderWithLayout(string $title, callable $renderer): void
     {
         self::checkAccess();
+        self::handleDownload();
         self::handlePost();
         self::loadAdminMenu();
 
@@ -252,6 +255,35 @@ final class Pages
 
         self::storeNotice((bool) ($result['success'] ?? false), (string) ($result['message'] ?? $result['error'] ?? ''));
         self::redirectBack((int) ($result['id'] ?? 0), $redirectPage);
+    }
+
+    /**
+     * Liefert die Beispiel-CSV aus (`?kb_download=csv-template`). Der Zugriff ist durch
+     * checkAccess() auf Admins beschränkt; die Datei enthält nur Beispieldaten.
+     */
+    private static function handleDownload(): void
+    {
+        if ((string) ($_GET['kb_download'] ?? '') !== 'csv-template') {
+            return;
+        }
+
+        $path = StandardPackages::instance()->templateCsvPath();
+        if ($path === '' || !is_readable($path)) {
+            self::storeNotice(false, 'Die Beispiel-CSV wurde im Plugin-Ordner csv_kb nicht gefunden.');
+            self::redirectBack(0, 'knowledgebase-settings-import');
+        }
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . StandardPackages::TEMPLATE_FILE_NAME . '"');
+        header('Content-Length: ' . (string) filesize($path));
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        readfile($path);
+        exit;
     }
 
     private static function enqueueAdminAssets(): void

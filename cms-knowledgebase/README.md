@@ -39,6 +39,41 @@ Eintragsinhalte werden nicht als ein HTML-Block gespeichert, sondern pro Bereich
 - Kurzbeschreibung, Tooltip-Text und Synonyme bleiben bewusst Klartextfelder (Tooltip, Meta-Description, JSON-LD).
 - Beim Update auf 3.1.0 wird vorhandenes HTML automatisch anhand der Zwischenüberschriften auf die Bereiche verteilt.
 
+## CSV-Import
+
+CSV-Dateien liegen in `csv_kb/` und werden automatisch als Paket erkannt, wenn sie auf `_Glossar.csv` enden (`Kategorie_Glossar.csv`; Unterstriche werden im Kategorienamen zu `&`). Importiert wird unter Einstellungen → **Import**.
+
+`csv_kb/Beispiel_Vorlage.csv` enthält alle Felder aus „Eintrag anlegen“ mit drei Beispieleinträgen (vollständig, minimal, inaktiv). Die Vorlage selbst wird nicht importiert; im Import-Tab gibt es einen Download-Button.
+
+| Spalte | Feld im Editor | Wenn die Zelle leer ist |
+|--------|----------------|-------------------------|
+| Titel | Titel (Pflicht) | Zeile wird übersprungen |
+| Fokusbegriff | Fokusbegriff | Titel |
+| Slug | Slug | aus dem Titel |
+| Kategorie | Kategorie | aus dem Dateinamen; fehlende Kategorien werden angelegt |
+| Priorität | Priorität (1–9999) | 100, 110, 120 … in Dateireihenfolge |
+| Max. Links pro Seite | Max. Links pro Seite (1–20) | 1 |
+| Kurzbeschreibung / Excerpt | Kurzbeschreibung / Excerpt | „Allgemeine Infos“, gekürzt auf 280 Zeichen |
+| Tooltip-Text | Tooltip-Text | Kurzbeschreibung |
+| Synonyme | Synonyme (getrennt durch `,` `;` `\|` oder Zeilenumbruch) | keine |
+| Allgemeine Infos | Inhaltsbereich `content` | Kurzbeschreibung |
+| Funktionsweise & technische Details | Inhaltsbereich `content_details` | leer |
+| Vorteile & Nutzen | Inhaltsbereich `content_benefits` | leer |
+| Praxisbeispiel & Einsatz | Inhaltsbereich `content_practice` | leer |
+| Hinweise & Best Practices | Inhaltsbereich `content_notes` | leer |
+| Lizenz & Verfügbarkeit | Inhaltsbereich `content_license` | leer |
+| Fazit | Inhaltsbereich `content_conclusion` | leer |
+| Weiterführende Links | Inhaltsbereich `content_links` | leer |
+| Aktiv | Aktiv (`ja`/`nein`, `1`/`0`, `x`) | ja |
+| Nur ganze Wörter verlinken | Nur ganze Wörter verlinken | ja |
+| Groß-/Kleinschreibung beachten | Groß-/Kleinschreibung beachten | nein |
+
+- **Spaltennamen:** Groß-/Kleinschreibung, Umlaute, Leer- und Sonderzeichen spielen keine Rolle, die Reihenfolge ist egal, unbekannte Spalten werden ignoriert. Die bisherigen Namen (`Eintrag`, `Kurzbeschreibung`, `Langbeschreibung`, `Lizenz-Info`, `MS Learn / Weblinks`) und die DB-Spaltennamen (`content_details`, `is_active` …) funktionieren ebenfalls.
+- **Format:** Trennzeichen `;`, `,` oder Tab (automatisch erkannt), UTF-8 mit oder ohne BOM.
+- **Inhaltsbereiche** sind Klartext: Jede Zeile wird ein Absatz, Zeilen mit `- `, `* ` oder `• ` eine Aufzählung, Zeilen mit `1. ` eine nummerierte Liste. HTML wird als Text maskiert.
+- **Weiterführende Links:** `Linktext: https://…`, mehrere per Zeilenumbruch oder ` | `. Ohne Linktext wird er aus der Domain abgeleitet (z. B. „Microsoft Learn“).
+- **Re-Import:** Bestehende Einträge werden über den Slug erkannt. Gefüllte Zellen überschreiben den gespeicherten Wert, leere Zellen lassen ihn unverändert – auch im Editor ergänzte Inhaltsbereiche, Status und Priorität. Inhalte entfernen geht im Editor.
+
 ## Design-Einstellungen
 
 Admin → Knowledgebase → Einstellungen → **Design**. Farben und Maße werden als CSS-Variablen (`--kb-*`) im `<head>` ausgegeben, Stil-Varianten als Modifier-Klassen am `<main class="cms-kb-content">`. Die Umsetzung liegt in `assets/css/knowledgebase-public.css` (nur auf `/kb`, `/kb/{slug}`, `/glossar` geladen) und übersteuert die Theme-Basis aus `cms-phinit/assets/css/page-knowledgebase.css`.

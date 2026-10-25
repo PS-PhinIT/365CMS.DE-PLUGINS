@@ -331,6 +331,37 @@
                         <?php endforeach; ?>
                     </div>
                 </section>
+
+                <section class="kb-settings-group kb-settings-group--card kb-settings-group--full">
+                    <div class="kb-panel-header">
+                        <div>
+                            <h3>Beispiel-CSV mit allen Feldern</h3>
+                            <p><code>csv_kb/<?php echo htmlspecialchars((string) ($csvTemplateFileName ?? ''), ENT_QUOTES, 'UTF-8'); ?></code> enthält alle Felder aus „Eintrag anlegen“ mit drei Beispieleinträgen. Zum Import kopieren, befüllen und als <code>Kategorie_Glossar.csv</code> in <code>csv_kb</code> ablegen – die Vorlage selbst wird nicht importiert.</p>
+                        </div>
+                        <?php if (!empty($csvTemplateColumns)): ?>
+                            <a href="/admin/plugins/knowledgebase-dashboard/knowledgebase-settings-import?kb_download=csv-template" class="btn btn-secondary btn-sm">Beispiel-CSV herunterladen</a>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if (!empty($csvTemplateColumns) && is_array($csvTemplateColumns)): ?>
+                        <div class="kb-meta-pills kb-meta-pills--wrap">
+                            <?php foreach ($csvTemplateColumns as $templateColumn): ?>
+                                <span class="kb-meta-pill kb-meta-pill--soft"><?php echo htmlspecialchars((string) $templateColumn, ENT_QUOTES, 'UTF-8'); ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <div class="alert alert-error">Die Beispiel-CSV fehlt im Plugin-Ordner <code>csv_kb</code>.</div>
+                    <?php endif; ?>
+
+                    <ul class="kb-system-list">
+                        <li><strong>Pflicht</strong> ist nur „Titel“. Alle anderen Spalten sind optional, die Reihenfolge ist egal. Trennzeichen <code>;</code>, <code>,</code> oder Tab, Kodierung UTF-8.</li>
+                        <li><strong>Leere Zellen:</strong> Neue Einträge erhalten den Standardwert (Fokusbegriff = Titel, Slug automatisch, Kategorie aus dem Dateinamen, aktiv, nur ganze Wörter). Bestehende Einträge behalten ihren Wert – auch im Editor ergänzte Inhalte.</li>
+                        <li><strong>Ja/Nein-Spalten:</strong> <code>ja</code>/<code>nein</code>, <code>1</code>/<code>0</code> oder <code>x</code>.</li>
+                        <li><strong>Inhaltsbereiche:</strong> Jede Zeile wird ein Absatz, Zeilen mit <code>- </code> eine Aufzählung, mit <code>1. </code> eine nummerierte Liste (Zeilenumbruch in Excel: Alt+Enter).</li>
+                        <li><strong>Weiterführende Links:</strong> <code>Linktext: https://…</code>, mehrere per Zeilenumbruch oder <code>|</code> getrennt. Ohne Linktext wird er aus der Domain abgeleitet.</li>
+                        <li><strong>Abgleich:</strong> Bestehende Einträge werden über den Slug erkannt (ohne Slug-Spalte über den Titel).</li>
+                    </ul>
+                </section>
             <?php else: ?>
                 <h3>System-Informationen</h3>
                 <div class="alert alert-info">Dieser Bereich bündelt technische Eckdaten, aktive Frontend-Werte und Hinweise zur aktuellen Knowledgebase-Konfiguration.</div>

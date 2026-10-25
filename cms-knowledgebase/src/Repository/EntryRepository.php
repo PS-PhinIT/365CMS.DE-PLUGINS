@@ -863,15 +863,7 @@ final class EntryRepository
             $slug = (string) ($entry['slug'] ?? '');
             $existingEntry = $slug !== '' ? ($existingEntries[$slug] ?? null) : null;
             if (is_array($existingEntry)) {
-                $result = $this->saveEntry([
-                    ...$entry,
-                    'entry_id' => (string) ($existingEntry['id'] ?? 0),
-                    'is_active' => (string) ($existingEntry['is_active'] ?? $entry['is_active'] ?? '1'),
-                    'priority' => (string) ($existingEntry['priority'] ?? $entry['priority'] ?? '100'),
-                    'is_case_sensitive' => (string) ($existingEntry['is_case_sensitive'] ?? $entry['is_case_sensitive'] ?? '0'),
-                    'is_whole_word' => (string) ($existingEntry['is_whole_word'] ?? $entry['is_whole_word'] ?? '1'),
-                    'max_links_per_page' => (string) ($existingEntry['max_links_per_page'] ?? $entry['max_links_per_page'] ?? '1'),
-                ]);
+                $result = $this->saveEntry($this->mergeImportedEntry($existingEntry, $entry));
 
                 if ((bool) ($result['success'] ?? false)) {
                     ++$updated;
@@ -905,6 +897,65 @@ final class EntryRepository
             'skipped' => $skipped,
             'errors' => $errors,
         ];
+    }
+
+    /**
+     * Bereitet einen Import-Datensatz für einen bereits vorhandenen Eintrag vor.
+     *
+     * Mit `import_fields` überschreibt der Import nur die dort genannten Felder; alle anderen
+     * Werte (z. B. manuell gepflegte Inhaltsbereiche, Synonyme oder Status) bleiben erhalten.
+     * Ohne `import_fields` bleiben wie bisher Status, Priorität und Verlinkungsregeln erhalten.
+     *
+     * @param array<string, mixed> $existingEntry
+     * @param array<string, mixed> $entry
+     * @return array<string, mixed>
+     */
+    private function mergeImportedEntry(array $existingEntry, array $entry): array
+    {
+        $payload = [...$entry, 'entry_id' => (string) ($existingEntry['id'] ?? 0)];
+        unset($payload['import_fields']);
+
+        if (!is_array($entry['import_fields'] ?? null)) {
+            return [
+                ...$payload,
+                'is_active' => (string) ($existingEntry['is_active'] ?? $entry['is_active'] ?? '1'),
+                'priority' => (string) ($existingEntry['priority'] ?? $entry['priority'] ?? '100'),
+                'is_case_sensitive' => (string) ($existingEntry['is_case_sensitive'] ?? $entry['is_case_sensitive'] ?? '0'),
+                'is_whole_word' => (string) ($existingEntry['is_whole_word'] ?? $entry['is_whole_word'] ?? '1'),
+                'max_links_per_page' => (string) ($existingEntry['max_links_per_page'] ?? $entry['max_links_per_page'] ?? '1'),
+            ];
+        }
+
+        $importFields = array_map('strval', $entry['import_fields']);
+        $preservableFields = [
+            'keyword',
+            'excerpt',
+            'tooltip_text',
+            'synonyms',
+            'category',
+            'priority',
+            'max_links_per_page',
+            'is_active',
+            'is_whole_word',
+            'is_case_sensitive',
+            ...ContentSections::columns(),
+        ];
+
+        foreach (array_diff($preservableFields, $importFields) as $field) {
+            if (!isset($existingEntry[$field])) {
+                continue;
+            }
+
+            $existingValue = (string) $existingEntry[$field];
+            // Der Fokusbegriff ist Pflicht; ist er leer, greift der Importwert (Titel).
+            if ($field === 'keyword' && trim($existingValue) === '') {
+                continue;
+            }
+
+            $payload[$field] = $existingValue;
+        }
+
+        return $payload;
     }
 
     private function entriesTable(): string
