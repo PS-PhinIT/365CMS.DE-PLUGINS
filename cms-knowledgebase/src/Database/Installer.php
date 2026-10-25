@@ -115,15 +115,20 @@ final class Installer
         $table = $db->prefix() . 'kb_entries';
         $previousColumn = 'content';
 
+        // Kein "SHOW COLUMNS ... LIKE ?": SHOW-Statements unterstützen keine nativen Prepared-Statement-Platzhalter
+        // (Core nutzt ATTR_EMULATE_PREPARES = false) und würden mit SQLSTATE 42000 abbrechen.
+        $stmt = $db->prepare('SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?');
+        $stmt->execute([$table]);
+        $existingColumns = array_map('strtolower', array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: []));
+
         foreach (ContentSections::additionalColumns() as $column) {
             if (preg_match('/^[a-z0-9_]+$/', $column) !== 1) {
                 continue;
             }
 
-            $stmt = $db->prepare("SHOW COLUMNS FROM {$table} LIKE ?");
-            $stmt->execute([$column]);
-            if (empty($stmt->fetchAll())) {
+            if (!in_array($column, $existingColumns, true)) {
                 $pdo->exec("ALTER TABLE {$table} ADD COLUMN {$column} LONGTEXT DEFAULT NULL AFTER {$previousColumn}");
+                $existingColumns[] = $column;
             }
 
             $previousColumn = $column;

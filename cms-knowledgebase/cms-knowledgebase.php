@@ -3,7 +3,7 @@
  * Plugin Name: CMS Knowledgebase
  * Plugin URI: https://365network.de/cms-knowledgebase
  * Description: Wissensdatenbank mit Auto-Linking, Tooltips und öffentlichen KB-Seiten.
- * Version: 3.1.0
+ * Version: 3.1.1
  * Author: 365 Network
  * Author URI: https://365network.de
  *
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('CMS_KNOWLEDGEBASE_VERSION', '3.1.0');
+define('CMS_KNOWLEDGEBASE_VERSION', '3.1.1');
 define('CMS_KNOWLEDGEBASE_PLUGIN_DIR', __DIR__ . DIRECTORY_SEPARATOR);
 define('CMS_KNOWLEDGEBASE_PLUGIN_URL', '/plugins/cms-knowledgebase/');
 
