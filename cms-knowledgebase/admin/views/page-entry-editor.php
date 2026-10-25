@@ -59,7 +59,17 @@ if (!defined('ABSPATH')) {
 
                     <label>
                         <span>Kategorie</span>
-                        <input type="text" name="category" list="kb-category-suggestions" value="<?php echo htmlspecialchars((string) ($entry['category'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="z. B. SEO, Hosting, Security">
+                        <?php $currentCategory = (string) ($entry['category'] ?? ''); ?>
+                        <select name="category">
+                            <option value="">– Keine Kategorie –</option>
+                            <?php foreach ($categories as $categoryItem): ?>
+                                <?php $categoryName = (string) ($categoryItem['category'] ?? ''); ?>
+                                <option value="<?php echo htmlspecialchars($categoryName, ENT_QUOTES, 'UTF-8'); ?>"<?php echo $categoryName === $currentCategory ? ' selected' : ''; ?>><?php echo htmlspecialchars($categoryName, ENT_QUOTES, 'UTF-8'); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (empty($categories)): ?>
+                            <small>Noch keine Kategorien vorhanden – bitte zuerst unter <a href="/admin/plugins/knowledgebase-dashboard/knowledgebase-categories">Kategorien</a> anlegen.</small>
+                        <?php endif; ?>
                     </label>
 
                     <label>
@@ -136,9 +146,3 @@ if (!defined('ABSPATH')) {
         </form>
     </div>
 </div>
-
-<datalist id="kb-category-suggestions">
-    <?php foreach ($categories as $categoryItem): ?>
-        <option value="<?php echo htmlspecialchars((string) ($categoryItem['category'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"></option>
-    <?php endforeach; ?>
-</datalist>
