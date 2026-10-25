@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.1.1] - 2026-10-25
+
+### Behoben
+
+- CSV-Import und Standardpakete brachen nach dem Update auf 3.1.0 mit „Die Aktion konnte nicht verarbeitet werden.“ ab. Ursache: Die Schema-Migration nutzte `SHOW COLUMNS … LIKE ?`, was mit nativen Prepared Statements (Core: `ATTR_EMULATE_PREPARES = false`) einen SQL-Syntaxfehler auslöst. Dadurch wurden die neuen `content_*`-Spalten nie angelegt und jeder Insert schlug fehl. Die Spaltenprüfung läuft jetzt über `INFORMATION_SCHEMA.COLUMNS`; die Migration wird beim nächsten Seitenaufruf automatisch nachgeholt.
+
 ## [3.1.0] - 2026-10-25
 
 ### Geändert
