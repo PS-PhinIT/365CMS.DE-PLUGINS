@@ -617,7 +617,10 @@ final class EntryRepository
         ];
     }
 
-    public function saveEntry(array $input): array
+    /**
+     * @param bool $createMissingCategory Importe legen fehlende Kategorien an; der Admin-Editor erlaubt nur bestehende.
+     */
+    public function saveEntry(array $input, bool $createMissingCategory = true): array
     {
         $db = Database::instance();
         $table = $this->entriesTable();
@@ -647,7 +650,11 @@ final class EntryRepository
         }
 
         if ($category !== '') {
-            $this->ensureCategoryExists($category);
+            if ($createMissingCategory) {
+                $this->ensureCategoryExists($category);
+            } elseif (!$this->categoryExists($category)) {
+                return ['success' => false, 'error' => 'Bitte eine vorhandene Kategorie auswählen.'];
+            }
         }
 
         $params = [
@@ -1602,6 +1609,14 @@ final class EntryRepository
         }
 
         return array_slice($posts, 0, $limit);
+    }
+
+    private function categoryExists(string $name): bool
+    {
+        $stmt = Database::instance()->prepare('SELECT id FROM ' . $this->categoriesTable() . ' WHERE name = ? LIMIT 1');
+        $stmt->execute([trim($name)]);
+
+        return is_array($stmt->fetch(PDO::FETCH_ASSOC));
     }
 
     private function ensureCategoryExists(string $name): void

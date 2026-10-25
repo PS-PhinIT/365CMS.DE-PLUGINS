@@ -231,7 +231,7 @@ final class Pages
 
         try {
             $result = match ($action) {
-                'save_entry' => $repository->saveEntry($_POST),
+                'save_entry' => $repository->saveEntry($_POST, false),
                 'delete_entry' => $repository->deleteEntry((int) ($_POST['entry_id'] ?? 0)),
                 'save_category' => $repository->saveCategory($_POST),
                 'delete_category' => $repository->deleteCategory((int) ($_POST['category_id'] ?? 0)),

@@ -101,10 +101,6 @@ $estimateRelatedReadTime = static function (array $post): int {
                 <?php endif; ?>
 
                 <h1><?php echo htmlspecialchars((string) $entry['title'], ENT_QUOTES, 'UTF-8'); ?></h1>
-
-                <?php if (!empty($entry['excerpt'])): ?>
-                    <p class="cms-kb-hero__intro"><?php echo htmlspecialchars((string) $entry['excerpt'], ENT_QUOTES, 'UTF-8'); ?></p>
-                <?php endif; ?>
             </div>
         </header>
 

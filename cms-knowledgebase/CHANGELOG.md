@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.2.2] - 2026-10-25
+
+### Behoben
+
+- Eintrags-Editor: Beim Markieren von Text in den EditorJS-Inhaltsbereichen erschien keine Formatierungsleiste, sodass weder formatiert noch verlinkt werden konnte. Ursache: Der Core (`editor-init.js`) registriert alle Blöcke mit `inlineToolbar: false`. `assets/js/knowledgebase-admin.js` aktiviert die Inline-Toolbar jetzt beim Erzeugen der Editor-Instanzen für Textblöcke (Absatz, Überschrift, Liste, Zitat, Tabelle, Hinweis, Alert, Bildunterschrift, Bild+Text, Akkordeon) mit Fett, Kursiv, Link, Unterstrichen, Markierung, Durchgestrichen und Inline-Code. Das Hyperlink- und das Textfarben-Plugin bleiben außen vor, weil sie unter EditorJS 2.31 fehlerhaft sind (Link wird nicht gesetzt bzw. Popover bricht ab); verlinkt wird über das eingebaute Link-Werkzeug.
+
+## [3.2.1] - 2026-10-25
+
+### Geändert
+
+- Eintrags-Editor: Das Feld „Kategorie“ ist jetzt ein Dropdown mit den unter „Kategorien“ angelegten Einträgen (inkl. „– Keine Kategorie –“). Freitext ist nicht mehr möglich; serverseitig werden beim Speichern aus dem Editor nur bestehende Kategorien akzeptiert. CSV-Import und Standardpakete legen fehlende Kategorien weiterhin automatisch an.
+- Detailseite: Unter dem Titel im Kopfbereich wird die Kurzbeschreibung nicht mehr wiederholt; dort erscheint nur noch der Titel (Kategorie-Zeile darüber bleibt).
+
 ## [3.2.0] - 2026-10-25
 
 ### Geändert
