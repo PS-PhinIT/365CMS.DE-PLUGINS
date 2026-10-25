@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace CmsKnowledgebase\Database;
 
 use CMS\Database;
+use CmsKnowledgebase\Service\SectionContent;
+use CmsKnowledgebase\Support\ContentSections;
 use CmsKnowledgebase\Support\Defaults;
 use CmsKnowledgebase\Support\LoggerFactory;
 
@@ -41,6 +43,13 @@ final class Installer
             slug VARCHAR(190) NOT NULL,
             excerpt TEXT DEFAULT NULL,
             content LONGTEXT DEFAULT NULL,
+            content_details LONGTEXT DEFAULT NULL,
+            content_benefits LONGTEXT DEFAULT NULL,
+            content_practice LONGTEXT DEFAULT NULL,
+            content_notes LONGTEXT DEFAULT NULL,
+            content_license LONGTEXT DEFAULT NULL,
+            content_conclusion LONGTEXT DEFAULT NULL,
+            content_links LONGTEXT DEFAULT NULL,
             tooltip_text TEXT DEFAULT NULL,
             synonyms TEXT DEFAULT NULL,
             category VARCHAR(120) DEFAULT NULL,
@@ -77,6 +86,8 @@ final class Installer
             KEY idx_kb_category_sort (sort_order, name)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+        $this->ensureSectionColumns();
+        $this->migrateLegacySectionContent();
         $this->seedDefaults();
         $this->disableDefaultNavLink();
         $this->syncCategoriesFromEntries();
@@ -95,6 +106,69 @@ final class Installer
             'from' => $currentVersion,
             'to' => CMS_KNOWLEDGEBASE_VERSION,
         ]);
+    }
+
+    private function ensureSectionColumns(): void
+    {
+        $db = Database::instance();
+        $pdo = $db->getPdo();
+        $table = $db->prefix() . 'kb_entries';
+        $previousColumn = 'content';
+
+        foreach (ContentSections::additionalColumns() as $column) {
+            if (preg_match('/^[a-z0-9_]+$/', $column) !== 1) {
+                continue;
+            }
+
+            $stmt = $db->prepare("SHOW COLUMNS FROM {$table} LIKE ?");
+            $stmt->execute([$column]);
+            if (empty($stmt->fetchAll())) {
+                $pdo->exec("ALTER TABLE {$table} ADD COLUMN {$column} LONGTEXT DEFAULT NULL AFTER {$previousColumn}");
+            }
+
+            $previousColumn = $column;
+        }
+    }
+
+    /**
+     * Teilt Legacy-HTML aus `content` auf die strukturierten EditorJS-Bereiche auf.
+     */
+    private function migrateLegacySectionContent(): void
+    {
+        $db = Database::instance();
+        $table = $db->prefix() . 'kb_entries';
+        $additionalColumns = ContentSections::additionalColumns();
+        $emptyConditions = implode(' AND ', array_map(
+            static fn(string $column): string => "({$column} IS NULL OR {$column} = '')",
+            $additionalColumns
+        ));
+
+        $stmt = $db->prepare("SELECT id, excerpt, content FROM {$table}
+            WHERE content IS NOT NULL AND content <> '' AND content NOT LIKE '{%' AND {$emptyConditions}");
+        $stmt->execute();
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        if (!is_array($rows) || $rows === []) {
+            return;
+        }
+
+        $sectionContent = SectionContent::instance();
+        $columns = ContentSections::columns();
+        $assignments = implode(', ', array_map(static fn(string $column): string => "{$column} = :{$column}", $columns));
+        $update = $db->prepare("UPDATE {$table} SET {$assignments} WHERE id = :id");
+        $migrated = 0;
+
+        foreach ($rows as $row) {
+            $parts = $sectionContent->splitLegacyHtml((string) ($row['content'] ?? ''), (string) ($row['excerpt'] ?? ''));
+            $params = ['id' => (int) ($row['id'] ?? 0)];
+            foreach ($columns as $column) {
+                $params[$column] = $sectionContent->sanitizeForStorage((string) ($parts[$column] ?? ''));
+            }
+
+            $update->execute($params);
+            ++$migrated;
+        }
+
+        $this->logger->info('Knowledgebase-Inhalte in strukturierte Bereiche migriert.', ['entries' => $migrated]);
     }
 
     private function seedDefaults(): void

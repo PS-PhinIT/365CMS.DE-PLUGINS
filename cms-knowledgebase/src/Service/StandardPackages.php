@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CmsKnowledgebase\Service;
 
 use CmsKnowledgebase\Repository\EntryRepository;
+use CmsKnowledgebase\Support\ContentSections;
 use CmsKnowledgebase\Support\LoggerFactory;
 
 if (!defined('ABSPATH')) {
@@ -258,7 +259,7 @@ final class StandardPackages
                 'synonyms' => implode("\n", $synonyms),
                 'category' => (string) $package['label'],
                 'priority' => 100 + ((int) $index * 10),
-                'content' => $this->buildCsvContent($shortDescription, $longDescription, $licenseInfo, $links),
+                ...$this->buildCsvSections($shortDescription, $longDescription, $licenseInfo, $links),
                 'is_active' => '1',
                 'is_whole_word' => '1',
                 'is_case_sensitive' => '0',
@@ -578,32 +579,31 @@ final class StandardPackages
     }
 
     /**
+     * Baut die strukturierten Inhaltsbereiche (Spaltenname => HTML) aus einer CSV-Zeile.
+     * Die HTML-Fragmente werden beim Speichern in EditorJS-JSON umgewandelt.
+     *
      * @param array<int, array{label: string, url: string}> $links
+     * @return array<string, string>
      */
-    private function buildCsvContent(string $shortDescription, string $longDescription, string $licenseInfo, array $links): string
+    private function buildCsvSections(string $shortDescription, string $longDescription, string $licenseInfo, array $links): array
     {
-        $sections = [];
+        $sections = array_fill_keys(ContentSections::columns(), '');
 
-        if ($longDescription !== '') {
-            $sections[] = '<h2>Allgemeine Infos</h2><p>' . htmlspecialchars($longDescription, ENT_QUOTES, 'UTF-8') . '</p>';
-        } elseif ($shortDescription !== '') {
-            $sections[] = '<h2>Allgemeine Infos</h2><p>' . htmlspecialchars($shortDescription, ENT_QUOTES, 'UTF-8') . '</p>';
-        }
-
-        if ($shortDescription !== '' && $longDescription !== '' && mb_strtolower($shortDescription, 'UTF-8') !== mb_strtolower($longDescription, 'UTF-8')) {
-            $sections[] = '<h2>Kurzbeschreibung</h2><p>' . htmlspecialchars($shortDescription, ENT_QUOTES, 'UTF-8') . '</p>';
+        $overview = $longDescription !== '' ? $longDescription : $shortDescription;
+        if ($overview !== '') {
+            $sections['content'] = '<p>' . htmlspecialchars($overview, ENT_QUOTES, 'UTF-8') . '</p>';
         }
 
         if ($licenseInfo !== '') {
-            $sections[] = '<h2>Lizenz &amp; Verfügbarkeit</h2><p>' . htmlspecialchars($licenseInfo, ENT_QUOTES, 'UTF-8') . '</p>';
+            $sections['content_license'] = '<p>' . htmlspecialchars($licenseInfo, ENT_QUOTES, 'UTF-8') . '</p>';
         }
 
         $linksHtml = $this->buildLinksList($links);
         if ($linksHtml !== '') {
-            $sections[] = '<h2>Weiterführende Links</h2><ul>' . $linksHtml . '</ul>';
+            $sections['content_links'] = '<ul>' . $linksHtml . '</ul>';
         }
 
-        return implode('', $sections);
+        return $sections;
     }
 
     /**

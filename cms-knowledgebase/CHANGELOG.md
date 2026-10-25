@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.1.0] - 2026-10-25
+
+### Geändert
+
+- Eintragsinhalte werden nicht mehr als ein einzelnes HTML-Feld gepflegt. Jeder Inhaltsbereich ist jetzt ein eigenes Feld mit eigenem EditorJS-Blockeditor (Core-`EditorJsAssetService`): Allgemeine Infos, Funktionsweise & technische Details, Vorteile & Nutzen, Praxisbeispiel & Einsatz, Hinweise & Best Practices, Lizenz & Verfügbarkeit, Fazit, Weiterführende Links.
+- Neue Spalten `content_details`, `content_benefits`, `content_practice`, `content_notes`, `content_license`, `content_conclusion`, `content_links` in `{prefix}kb_entries`; `content` enthält den Bereich „Allgemeine Infos“. Alle Bereiche werden als sanitiertes EditorJS-JSON gespeichert.
+- Automatische Migration beim Update: Bestehendes HTML wird anhand der `<h2>`–`<h4>`-Überschriften auf die Bereiche verteilt (Metadaten-Abschnitte und doppelte Kurzbeschreibungen entfallen).
+- Öffentliche Detailseite rendert jeden befüllten Bereich als eigene `<section>` mit lokalisierter Überschrift (DE/EN); Site-Table-Shortcodes und Präfix-Platzhalter bleiben erhalten.
+- CSV-Standardpakete befüllen die Bereiche direkt; JSON-LD `articleBody` nutzt den Klartext aller Bereiche.
+- HTML-Code-Editor samt Snippet-Toolbar und Vorschau aus dem Admin entfernt.
+
 ## [3.0.6] - 2026-09-30
 
 ### Geändert

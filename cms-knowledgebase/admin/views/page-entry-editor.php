@@ -9,7 +9,7 @@ if (!defined('ABSPATH')) {
     <div class="admin-page-header">
         <div>
             <h2><?php echo $entry !== null ? 'Knowledgebase-Eintrag bearbeiten' : 'Knowledgebase-Eintrag anlegen'; ?></h2>
-            <p>Pflege Fokusbegriff, Synonyme, Inhalte und Verlinkungslogik auf einer separaten Editor-Seite.</p>
+            <p>Pflege Fokusbegriff, Synonyme, strukturierte Inhaltsbereiche und Verlinkungslogik auf einer separaten Editor-Seite.</p>
         </div>
         <div class="header-actions">
             <a href="/admin/plugins/knowledgebase-dashboard/knowledgebase-entries" class="btn btn-secondary btn-sm">← Zur Liste</a>
@@ -30,7 +30,7 @@ if (!defined('ABSPATH')) {
         <div class="kb-panel-header">
             <div>
                 <h3><?php echo $entry !== null ? 'Eintrag bearbeiten' : 'Neuen Eintrag anlegen'; ?></h3>
-                <p>Ein Fokusbegriff bildet die Hauptverlinkung. Synonyme erweitern die Trefferbasis und der Inhalt steuert die KB-Zielseite.</p>
+                <p>Ein Fokusbegriff bildet die Hauptverlinkung. Synonyme erweitern die Trefferbasis und die Inhaltsbereiche bilden die KB-Zielseite.</p>
             </div>
         </div>
 
@@ -95,65 +95,30 @@ if (!defined('ABSPATH')) {
             </section>
 
             <section class="kb-settings-group kb-settings-group--full">
-                <h3>Inhalt & Status</h3>
-                <div class="kb-form-grid">
-                    <label class="kb-form-grid__full">
-                        <span>Inhalt der KB-Seite</span>
-                        <div class="kb-editor-help" aria-label="Editor-Hinweise">
-                            <span class="kb-editor-help__chip">HTML-Tags erlaubt</span>
-                            <span class="kb-editor-help__chip">Site-Tables unterstützt</span>
-                            <span class="kb-editor-help__chip">CMS-Präfix-Platzhalter</span>
-                        </div>
-                        <div class="kb-code-editor" data-code-editor>
-                            <div class="kb-code-editor__toolbar" role="toolbar" aria-label="HTML-Werkzeuge">
-                                <div class="kb-code-editor__toolbar-group">
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-insert="paragraph">&lt;p&gt;</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-insert="heading2">&lt;h2&gt;</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-insert="strong">&lt;strong&gt;</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-insert="list">Liste</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-insert="table">Tabelle</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-insert="info-table">Info-Tabelle</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-insert="kb-template">KB-Vorlage</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-insert="site-table">Site-Table</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-insert="prefix">Präfix</button>
-                                </div>
-                                <label class="kb-code-editor__snippet-picker">
-                                    <span class="screen-reader-text">Snippet auswählen</span>
-                                    <select data-editor-snippet>
-                                        <option value="">Snippet einfügen …</option>
-                                        <option value="info-table">Info-Tabelle</option>
-                                        <option value="kb-template">KB-Vorlage</option>
-                                        <option value="paragraph">Absatz</option>
-                                        <option value="heading2">Zwischenüberschrift</option>
-                                        <option value="strong">Hinweis fett</option>
-                                        <option value="list">Liste</option>
-                                        <option value="table">HTML-Tabelle</option>
-                                        <option value="site-table">Site-Table-Shortcode</option>
-                                        <option value="prefix">CMS-Präfix</option>
-                                    </select>
-                                </label>
-                                <div class="kb-code-editor__toolbar-group kb-code-editor__toolbar-group--view">
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-toggle="code">Code</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-toggle="split">Live</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" data-editor-toggle="preview">Vorschau</button>
-                                </div>
-                            </div>
-                            <div class="kb-code-editor__status" data-code-editor-status>Modus: Code</div>
-                            <div class="kb-code-editor__workspace">
-                                <div class="kb-code-editor__panel kb-code-editor__panel--code" data-code-editor-panel="code">
-                                    <div class="kb-code-editor__panel-head">Code</div>
-                                    <textarea name="content" rows="14" class="kb-code-editor__textarea" placeholder="HTML mit einfachen Tags ist erlaubt." data-code-editor-input><?php echo htmlspecialchars((string) ($entry['content'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea>
-                                </div>
-                                <div class="kb-code-editor__panel kb-code-editor__panel--preview" data-code-editor-panel="preview">
-                                    <div class="kb-code-editor__panel-head">Live-Preview</div>
-                                    <div class="kb-code-editor__preview" data-code-editor-preview></div>
-                                </div>
-                            </div>
-                        </div>
-                        <small class="kb-field-help">Erlaubt sind jetzt auch HTML-Tabellen wie <code>&lt;table&gt;</code>, <code>&lt;tr&gt;</code>, <code>&lt;td&gt;</code> etc. Public werden außerdem <code>[site-table id="1"]</code> und <code>[table id=1 /]</code> gerendert. Für einen editorialen Infomodul-Look kannst du den Shortcode mit <code>&lt;div class="cms-kb-table-module cms-kb-table-module--info"&gt;...&lt;/div&gt;</code> umschließen. Für Tabellen-/DB-Namen mit CMS-Präfix kannst du Platzhalter wie <code>{{cms_prefix}}</code> oder <code>{table_prefix}</code> verwenden. Mit <kbd>Tab</kbd> und <kbd>Enter</kbd> unterstützt der Editor jetzt einfache Auto-Einrückung für Listen und Tabellen.</small>
-                    </label>
-                </div>
+                <h3>Inhaltsbereiche</h3>
+                <p class="kb-field-help">Jeder Bereich hat einen eigenen Block-Editor und erscheint auf der KB-Seite als eigener Abschnitt mit fester Überschrift. Leere Bereiche werden public ausgeblendet. Tabellen-Shortcodes wie <code>[site-table id="1"]</code> und Präfix-Platzhalter wie <code>{{cms_prefix}}</code> werden public weiterhin aufgelöst.</p>
 
+                <div class="kb-section-editors">
+                    <?php foreach (\CmsKnowledgebase\Support\ContentSections::definitions() as $sectionKey => $sectionDefinition): ?>
+                        <?php $sectionColumn = $sectionDefinition['column']; ?>
+                        <div class="kb-section-editor" id="kb-section-<?php echo htmlspecialchars($sectionKey, ENT_QUOTES, 'UTF-8'); ?>">
+                            <div class="kb-section-editor__head">
+                                <strong class="kb-section-editor__title"><?php echo htmlspecialchars($sectionDefinition['label'], ENT_QUOTES, 'UTF-8'); ?></strong>
+                                <span class="kb-section-editor__help"><?php echo htmlspecialchars($sectionDefinition['help'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            </div>
+                            <?php echo \CmsKnowledgebase\Admin\Pages::renderSectionEditor(
+                                $sectionColumn,
+                                (string) ($entry[$sectionColumn] ?? ''),
+                                $sectionDefinition['label'],
+                                (int) $sectionDefinition['height']
+                            ); ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+
+            <section class="kb-settings-group kb-settings-group--full">
+                <h3>Status & Verlinkung</h3>
                 <div class="kb-checkbox-row kb-form-grid__full">
                     <label><input type="checkbox" name="is_active" value="1" <?php echo ((int) ($entry['is_active'] ?? 1) === 1) ? 'checked' : ''; ?>> Aktiv</label>
                     <label><input type="checkbox" name="is_whole_word" value="1" <?php echo ((int) ($entry['is_whole_word'] ?? 1) === 1) ? 'checked' : ''; ?>> Nur ganze Wörter verlinken</label>

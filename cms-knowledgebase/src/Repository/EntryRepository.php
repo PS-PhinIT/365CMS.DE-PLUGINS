@@ -8,6 +8,8 @@ use CMS\Database;
 use CMS\Services\ContentLocalizationService;
 use CMS\Services\PermalinkService;
 use PDO;
+use CmsKnowledgebase\Service\SectionContent;
+use CmsKnowledgebase\Support\ContentSections;
 use CmsKnowledgebase\Support\Defaults;
 use CmsKnowledgebase\Support\LoggerFactory;
 
@@ -595,7 +597,11 @@ final class EntryRepository
         $slugSource = $slugInput !== '' ? $slugInput : ($title !== '' ? $title : $keyword);
         $slug = $this->generateUniqueSlug($slugSource, $id);
         $excerpt = $this->sanitizeTextarea((string) ($input['excerpt'] ?? ''));
-        $content = $this->sanitizeRichText((string) ($input['content'] ?? ''));
+        $sectionContent = SectionContent::instance();
+        $sections = [];
+        foreach (ContentSections::columns() as $column) {
+            $sections[$column] = $sectionContent->sanitizeForStorage((string) ($input[$column] ?? ''));
+        }
         $tooltipText = $this->sanitizeTextarea((string) ($input['tooltip_text'] ?? ''));
         $synonyms = $this->sanitizeSynonyms((string) ($input['synonyms'] ?? ''));
         $category = $this->sanitizeText((string) ($input['category'] ?? ''), 120);
@@ -613,55 +619,12 @@ final class EntryRepository
             $this->ensureCategoryExists($category);
         }
 
-        if ($id > 0) {
-            $stmt = $db->prepare("UPDATE {$table} SET
-                title = :title,
-                keyword = :keyword,
-                slug = :slug,
-                excerpt = :excerpt,
-                content = :content,
-                tooltip_text = :tooltip_text,
-                synonyms = :synonyms,
-                category = :category,
-                priority = :priority,
-                is_active = :is_active,
-                is_case_sensitive = :is_case_sensitive,
-                is_whole_word = :is_whole_word,
-                max_links_per_page = :max_links_per_page
-                WHERE id = :id");
-            $stmt->execute([
-                'id' => $id,
-                'title' => $title,
-                'keyword' => $keyword,
-                'slug' => $slug,
-                'excerpt' => $excerpt,
-                'content' => $content,
-                'tooltip_text' => $tooltipText,
-                'synonyms' => $synonyms,
-                'category' => $category,
-                'priority' => $priority,
-                'is_active' => $isActive,
-                'is_case_sensitive' => $caseSensitive,
-                'is_whole_word' => $wholeWord,
-                'max_links_per_page' => $maxLinksPerPage,
-            ]);
-            $this->resetCaches();
-
-            $this->logger->info('Knowledgebase-Eintrag aktualisiert.', ['entry_id' => $id, 'slug' => $slug]);
-
-            return ['success' => true, 'message' => 'Knowledgebase-Eintrag aktualisiert.', 'id' => $id];
-        }
-
-        $stmt = $db->prepare("INSERT INTO {$table}
-            (title, keyword, slug, excerpt, content, tooltip_text, synonyms, category, priority, is_active, is_case_sensitive, is_whole_word, max_links_per_page)
-            VALUES
-            (:title, :keyword, :slug, :excerpt, :content, :tooltip_text, :synonyms, :category, :priority, :is_active, :is_case_sensitive, :is_whole_word, :max_links_per_page)");
-        $stmt->execute([
+        $params = [
             'title' => $title,
             'keyword' => $keyword,
             'slug' => $slug,
             'excerpt' => $excerpt,
-            'content' => $content,
+            ...$sections,
             'tooltip_text' => $tooltipText,
             'synonyms' => $synonyms,
             'category' => $category,
@@ -670,7 +633,23 @@ final class EntryRepository
             'is_case_sensitive' => $caseSensitive,
             'is_whole_word' => $wholeWord,
             'max_links_per_page' => $maxLinksPerPage,
-        ]);
+        ];
+        $columns = array_keys($params);
+
+        if ($id > 0) {
+            $assignments = implode(', ', array_map(static fn(string $column): string => "{$column} = :{$column}", $columns));
+            $stmt = $db->prepare("UPDATE {$table} SET {$assignments} WHERE id = :id");
+            $stmt->execute([...$params, 'id' => $id]);
+            $this->resetCaches();
+
+            $this->logger->info('Knowledgebase-Eintrag aktualisiert.', ['entry_id' => $id, 'slug' => $slug]);
+
+            return ['success' => true, 'message' => 'Knowledgebase-Eintrag aktualisiert.', 'id' => $id];
+        }
+
+        $stmt = $db->prepare("INSERT INTO {$table} (" . implode(', ', $columns) . ')
+            VALUES (:' . implode(', :', $columns) . ')');
+        $stmt->execute($params);
         $this->resetCaches();
 
         $newId = (int) $db->lastInsertId();

@@ -1,13 +1,13 @@
 {
     "name": "CMS Knowledgebase",
     "slug": "cms-knowledgebase",
-    "version": "3.0.6",
+    "version": "3.1.0",
     "requires_cms": "3.4.00",
     "tested_cms": "3.4.00",
     "min_php": "8.4",
     "author": "365 Network",
     "author_uri": "https://365network.de",
     "download_url": "https://365network.de/plugins/cms-knowledgebase/cms-knowledgebase-3.0.4.zip",
-    "last_updated": "2026-09-30",
-    "changelog": "3.0.6: Admin-Seitenleiste: Der Menüeintrag heißt jetzt „365CMS | Knowledgebase“ (bisher „Knowledgebase“), damit die öffentlichen 365CMS-Plugins im Abschnitt „Plugin-Erweiterungen“ zusammen stehen. 3.0.5: CSV-Import ohne PHP-8.4-Deprecation (fgetcsv $escape), Design-Tokens mit CSP-Nonce, Hardreset-Bestätigungen über data-cms-confirm, aktive Unterseite in Sidebar/Breadcrumb, Checkbox-Layout in den Einstellungen korrigiert. Admin-Oberfläche an das einheitliche, schlichte 365CMS-Plugin-Admin-Design angeglichen (Emoji-/Kürzel-Icons entfernt, Icon-Buttons mit Tabler-Icons, Menüname ohne Präfix); geprüft gegen 365CMS 3.4.00 inkl. Produktiv-CSP. 365CMS-3.0.4: Der Knowledgebase-Admin-Menüeintrag wird für die Core-Sidebar-Sortierung als 365CMS | KB angezeigt. 365CMS-3.0.3: Knowledgebase-Adminseiten erhalten eine robuste Callback-Fallback-Zuordnung für /admin/plugins/knowledgebase-dashboard/* und laden die Admin-Menü-Kompatibilität zuverlässig."
+    "last_updated": "2026-10-25",
+    "changelog": "3.1.0: Eintragsinhalte werden nicht mehr als ein HTML-Feld gepflegt, sondern in acht eigenständigen Inhaltsbereichen (Allgemeine Infos, Funktionsweise & technische Details, Vorteile & Nutzen, Praxisbeispiel & Einsatz, Hinweise & Best Practices, Lizenz & Verfügbarkeit, Fazit, Weiterführende Links) mit jeweils eigenem EditorJS-Blockeditor. Neue DB-Spalten content_* werden beim Update automatisch angelegt, bestehendes HTML wird anhand der Zwischenüberschriften in die Bereiche migriert. CSV-Pakete befüllen die Bereiche direkt, die Detailseite rendert jeden Bereich als eigene Sektion. 3.0.6: Admin-Seitenleiste: Der Menüeintrag heißt jetzt „365CMS | Knowledgebase“ (bisher „Knowledgebase“), damit die öffentlichen 365CMS-Plugins im Abschnitt „Plugin-Erweiterungen“ zusammen stehen. 3.0.5: CSV-Import ohne PHP-8.4-Deprecation (fgetcsv $escape), Design-Tokens mit CSP-Nonce, Hardreset-Bestätigungen über data-cms-confirm, aktive Unterseite in Sidebar/Breadcrumb, Checkbox-Layout in den Einstellungen korrigiert. Admin-Oberfläche an das einheitliche, schlichte 365CMS-Plugin-Admin-Design angeglichen (Emoji-/Kürzel-Icons entfernt, Icon-Buttons mit Tabler-Icons, Menüname ohne Präfix); geprüft gegen 365CMS 3.4.00 inkl. Produktiv-CSP. 365CMS-3.0.4: Der Knowledgebase-Admin-Menüeintrag wird für die Core-Sidebar-Sortierung als 365CMS | KB angezeigt. 365CMS-3.0.3: Knowledgebase-Adminseiten erhalten eine robuste Callback-Fallback-Zuordnung für /admin/plugins/knowledgebase-dashboard/* und laden die Admin-Menü-Kompatibilität zuverlässig."
 }

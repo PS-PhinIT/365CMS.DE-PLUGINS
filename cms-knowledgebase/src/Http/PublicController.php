@@ -492,6 +492,10 @@ final class PublicController
             'back_to_kb' => ['de' => 'Zur Knowledgebase', 'en' => 'Back to knowledgebase'],
         ];
 
+        foreach (\CmsKnowledgebase\Support\ContentSections::definitions() as $sectionKey => $sectionDefinition) {
+            $dictionary['section_' . $sectionKey] = ['de' => $sectionDefinition['heading_de'], 'en' => $sectionDefinition['heading_en']];
+        }
+
         $translated = [];
         foreach ($dictionary as $key => $label) {
             $translated[$key] = $this->resolvePublicI18nText(
@@ -516,7 +520,7 @@ final class PublicController
         $excerpt = trim(strip_tags((string) ($entry['excerpt'] ?? '')));
         $tooltip = trim(strip_tags((string) ($entry['tooltip_text'] ?? '')));
         $definition = $excerpt !== '' ? $excerpt : $tooltip;
-        $articleBody = trim(strip_tags((string) ($entry['content'] ?? '')));
+        $articleBody = \CmsKnowledgebase\Service\SectionContent::instance()->plainText($entry);
         $articleBody = preg_replace('/\s+/u', ' ', $articleBody) ?? '';
         $articleBody = trim($articleBody);
 
