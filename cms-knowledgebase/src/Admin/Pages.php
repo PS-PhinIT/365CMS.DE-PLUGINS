@@ -140,6 +140,44 @@ final class Pages
         });
     }
 
+    public static function renderSectionEditor(string $name, string $value, string $ariaLabel, int $height = 220): string
+    {
+        $safeName = preg_replace('/[^a-z0-9_]/i', '', $name) ?: 'content';
+        $content = trim($value);
+
+        try {
+            if (class_exists('CMS\\Services\\EditorJs\\EditorJsAssetService')) {
+                if (class_exists('CMS\\Services\\EditorJs\\EditorJsContentNormalizer')) {
+                    $content = (string) json_encode(
+                        \CMS\Services\EditorJs\EditorJsContentNormalizer::normalize($content),
+                        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                    );
+                }
+
+                static $service = null;
+                $service ??= new \CMS\Services\EditorJs\EditorJsAssetService();
+
+                return $service->render($safeName, $content, [
+                    'height' => $height,
+                    'context' => 'cms-knowledgebase',
+                    'aria_label' => $ariaLabel,
+                    'content_width' => 920,
+                    'content_padding_x' => 28,
+                ]);
+            }
+        } catch (\Throwable $exception) {
+            self::logDispatchProblem('EditorJS-Bereich konnte nicht gerendert werden', [
+                'field' => $safeName,
+                'exception' => $exception->getMessage(),
+            ]);
+        }
+
+        return '<textarea id="' . htmlspecialchars($safeName, ENT_QUOTES, 'UTF-8') . '" name="'
+            . htmlspecialchars($safeName, ENT_QUOTES, 'UTF-8') . '" rows="8" aria-label="'
+            . htmlspecialchars($ariaLabel, ENT_QUOTES, 'UTF-8') . '">'
+            . htmlspecialchars(trim($value), ENT_QUOTES, 'UTF-8') . '</textarea>';
+    }
+
     private static function renderWithLayout(string $title, callable $renderer): void
     {
         self::checkAccess();

@@ -15,23 +15,7 @@ $t = static function (string $key, string $fallback) use ($uiText): string {
 $kbUrl = $kbUrl ?? (SITE_URL . '/kb');
 $singleUrl = $singleUrl ?? (SITE_URL . '/kb/' . rawurlencode((string) ($entry['slug'] ?? '')));
 $structuredDataJson = isset($structuredDataJson) ? (string) $structuredDataJson : '';
-$renderedContent = (string) ($entry['content'] ?? '');
-$cmsPrefix = \CMS\Database::instance()->prefix();
-$renderedContent = str_replace(
-    ['{{cms_prefix}}', '{cms_prefix}', '[cms_prefix]', '%cms_prefix%', '{{table_prefix}}', '{table_prefix}'],
-    $cmsPrefix,
-    $renderedContent
-);
-$renderedContent = preg_replace(
-    '/<h([2-4])>\s*Metadaten\s*<\/h\1>\s*<ul>.*?<\/ul>/isu',
-    '',
-    $renderedContent,
-    1
-) ?? $renderedContent;
-if (class_exists('\\CMS\\Services\\SiteTableService')) {
-    $renderedContent = \CMS\Services\SiteTableService::getInstance()->replaceShortcodes($renderedContent);
-}
-$renderedContent = \CmsKnowledgebase\Repository\EntryRepository::instance()->sanitizePublicRichText($renderedContent);
+$contentSections = \CmsKnowledgebase\Service\SectionContent::instance()->renderEntrySections($entry, (string) ($publicLang ?? 'de'));
 $showSidebar = $showKeywordBadges || !empty($entry['tooltip_text']);
 $formatRelatedPostDate = static function (?string $dateValue, string $locale = 'de'): string {
     $rawValue = trim((string) $dateValue);
@@ -110,9 +94,19 @@ $estimateRelatedReadTime = static function (array $post): int {
 
         <div class="cms-kb-single-layout<?php echo $showSidebar ? ' has-sidebar' : ''; ?>">
             <section class="cms-kb-body">
-                <div class="cms-kb-richtext">
-                    <?php echo $renderedContent; ?>
-                </div>
+                <?php if ($contentSections !== []): ?>
+                    <div class="cms-kb-richtext cms-kb-sections">
+                        <?php foreach ($contentSections as $contentSection): ?>
+                            <?php $sectionHeadingId = 'cms-kb-section-' . $contentSection['key']; ?>
+                            <section class="cms-kb-section cms-kb-section--<?php echo htmlspecialchars($contentSection['key'], ENT_QUOTES, 'UTF-8'); ?>" aria-labelledby="<?php echo htmlspecialchars($sectionHeadingId, ENT_QUOTES, 'UTF-8'); ?>">
+                                <h2 id="<?php echo htmlspecialchars($sectionHeadingId, ENT_QUOTES, 'UTF-8'); ?>" class="cms-kb-section__title"><?php echo htmlspecialchars($t('section_' . $contentSection['key'], $contentSection['heading']), ENT_QUOTES, 'UTF-8'); ?></h2>
+                                <div class="cms-kb-section__body">
+                                    <?php echo $contentSection['html']; ?>
+                                </div>
+                            </section>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
 
                 <?php if ($showRelatedEntries && !empty($relatedPosts)): ?>
                     <section class="cms-kb-related-block" aria-labelledby="cms-kb-related-heading">

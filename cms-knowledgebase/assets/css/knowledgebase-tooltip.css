@@ -37,6 +37,20 @@
     line-height: 1.5;
 }
 
+.cms-kb-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.cms-kb-section__title {
+    margin: 0 0 0.75rem;
+}
+
+.cms-kb-section__body > :last-child {
+    margin-bottom: 0;
+}
+
 .cms-kb-richtext table:not(.cms-site-table) {
     width: 100%;
     border-collapse: collapse;
