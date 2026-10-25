@@ -48,6 +48,80 @@ final class Defaults
             'design_border_radius' => '14',
             'tooltip_background_color' => '#111827',
             'tooltip_text_color' => '#f8fafc',
+            'archive_hero_style' => 'tinted',
+            'archive_columns' => 'auto',
+            'archive_card_style' => 'elevated',
+            'archive_card_accent_bar' => '1',
+            'archive_excerpt_lines' => '3',
+            'archive_card_bg_color' => '#ffffff',
+            'single_hero_style' => 'tinted',
+            'single_section_style' => 'cards',
+            'single_section_tints' => '1',
+            'single_section_icons' => '1',
+            'single_section_bg_color' => '#ffffff',
+            'single_sidebar_style' => 'plain',
+            'single_sidebar_position' => 'right',
+            'single_sidebar_sticky' => '1',
+            'single_sidebar_bg_color' => '#f8fafc',
         ];
+    }
+
+    /**
+     * Erlaubte Werte der Auswahlfelder im Design-Tab (Wert => Admin-Label).
+     *
+     * @return array<string, array<string, string>>
+     */
+    public static function designChoices(): array
+    {
+        return [
+            'archive_hero_style' => [
+                'tinted' => 'Getönt (Akzent dezent)',
+                'surface' => 'Neutral (Fläche)',
+                'accent' => 'Akzentfarbe (kräftig)',
+            ],
+            'archive_columns' => [
+                'auto' => 'Automatisch',
+                '2' => '2 Spalten',
+                '3' => '3 Spalten',
+                '4' => '4 Spalten',
+            ],
+            'archive_card_style' => [
+                'elevated' => 'Erhaben (Schatten)',
+                'outline' => 'Nur Rahmen',
+                'tinted' => 'Getönte Fläche',
+            ],
+            'single_hero_style' => [
+                'tinted' => 'Getönt (Akzent dezent)',
+                'surface' => 'Neutral (Fläche)',
+                'accent' => 'Akzentfarbe (kräftig)',
+            ],
+            'single_section_style' => [
+                'cards' => 'Eigene Karte je Bereich',
+                'panel' => 'Ein Panel mit Trennlinien',
+                'minimal' => 'Ohne Rahmen (schlicht)',
+            ],
+            'single_sidebar_style' => [
+                'plain' => 'Ohne Rahmen',
+                'card' => 'Eine Karte',
+                'sections' => 'Karte je Block',
+            ],
+            'single_sidebar_position' => [
+                'right' => 'Rechts',
+                'left' => 'Links',
+            ],
+        ];
+    }
+
+    public static function designChoice(array $settings, string $key): string
+    {
+        $choices = self::designChoices()[$key] ?? [];
+        $value = (string) ($settings[$key] ?? '');
+        if (isset($choices[$value])) {
+            return $value;
+        }
+
+        $default = (string) (self::settings()[$key] ?? '');
+
+        return isset($choices[$default]) ? $default : (string) array_key_first($choices);
     }
 }

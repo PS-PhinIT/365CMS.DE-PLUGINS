@@ -3,7 +3,7 @@
  * Plugin Name: CMS Knowledgebase
  * Plugin URI: https://365network.de/cms-knowledgebase
  * Description: Wissensdatenbank mit Auto-Linking, Tooltips und öffentlichen KB-Seiten.
- * Version: 3.1.1
+ * Version: 3.2.0
  * Author: 365 Network
  * Author URI: https://365network.de
  *
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('CMS_KNOWLEDGEBASE_VERSION', '3.1.1');
+define('CMS_KNOWLEDGEBASE_VERSION', '3.2.0');
 define('CMS_KNOWLEDGEBASE_PLUGIN_DIR', __DIR__ . DIRECTORY_SEPARATOR);
 define('CMS_KNOWLEDGEBASE_PLUGIN_URL', '/plugins/cms-knowledgebase/');
 
@@ -131,9 +131,11 @@ final class CMS_Knowledgebase
             return;
         }
 
-        $file = CMS_KNOWLEDGEBASE_PLUGIN_DIR . 'assets/css/knowledgebase-tooltip.css';
-        if (is_file($file)) {
-            echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_KNOWLEDGEBASE_PLUGIN_URL . 'assets/css/knowledgebase-tooltip.css?v=' . filemtime($file), ENT_QUOTES, 'UTF-8') . '">' . "\n";
+        foreach (['knowledgebase-tooltip.css', 'knowledgebase-public.css'] as $stylesheet) {
+            $file = CMS_KNOWLEDGEBASE_PLUGIN_DIR . 'assets/css/' . $stylesheet;
+            if (is_file($file)) {
+                echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_KNOWLEDGEBASE_PLUGIN_URL . 'assets/css/' . $stylesheet . '?v=' . filemtime($file), ENT_QUOTES, 'UTF-8') . '">' . "\n";
+            }
         }
     }
 

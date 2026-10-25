@@ -17,6 +17,22 @@ $singleUrl = $singleUrl ?? (SITE_URL . '/kb/' . rawurlencode((string) ($entry['s
 $structuredDataJson = isset($structuredDataJson) ? (string) $structuredDataJson : '';
 $contentSections = \CmsKnowledgebase\Service\SectionContent::instance()->renderEntrySections($entry, (string) ($publicLang ?? 'de'));
 $showSidebar = $showKeywordBadges || !empty($entry['tooltip_text']);
+$designSettings = is_array($settings ?? null) ? $settings : [];
+$singleDesignClasses = [
+    'cms-kb-content--hero-' . \CmsKnowledgebase\Support\Defaults::designChoice($designSettings, 'single_hero_style'),
+    'cms-kb-content--sections-' . \CmsKnowledgebase\Support\Defaults::designChoice($designSettings, 'single_section_style'),
+    'cms-kb-content--sidebar-' . \CmsKnowledgebase\Support\Defaults::designChoice($designSettings, 'single_sidebar_style'),
+    'cms-kb-content--sidebar-' . \CmsKnowledgebase\Support\Defaults::designChoice($designSettings, 'single_sidebar_position'),
+];
+if (($designSettings['single_section_tints'] ?? '1') === '1') {
+    $singleDesignClasses[] = 'has-section-tints';
+}
+if (($designSettings['single_section_icons'] ?? '1') === '1') {
+    $singleDesignClasses[] = 'has-section-icons';
+}
+if (($designSettings['single_sidebar_sticky'] ?? '1') === '1') {
+    $singleDesignClasses[] = 'has-sticky-sidebar';
+}
 $formatRelatedPostDate = static function (?string $dateValue, string $locale = 'de'): string {
     $rawValue = trim((string) $dateValue);
     if ($rawValue === '') {
@@ -63,7 +79,7 @@ $estimateRelatedReadTime = static function (array $post): int {
 };
 ?>
 
-<main class="cms-kb-content cms-kb-content--single">
+<main class="cms-kb-content cms-kb-content--single <?php echo htmlspecialchars(implode(' ', $singleDesignClasses), ENT_QUOTES, 'UTF-8'); ?>">
     <?php if ($structuredDataJson !== ''): ?>
         <script type="application/ld+json"><?php echo $structuredDataJson; ?></script>
     <?php endif; ?>
