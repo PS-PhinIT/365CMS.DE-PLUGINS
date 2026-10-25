@@ -184,6 +184,60 @@
                         </div>
                     </section>
 
+                    <?php
+                    $kbDesignChoices = \CmsKnowledgebase\Support\Defaults::designChoices();
+                    $kbRenderSelect = static function (string $name, string $label) use ($kbDesignChoices, $settings): void {
+                        $current = \CmsKnowledgebase\Support\Defaults::designChoice($settings, $name);
+                        echo '<label class="kb-setting-field"><span>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span><select name="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '">';
+                        foreach ($kbDesignChoices[$name] ?? [] as $value => $optionLabel) {
+                            echo '<option value="' . htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8') . '"' . ((string) $value === $current ? ' selected' : '') . '>' . htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8') . '</option>';
+                        }
+                        echo '</select></label>';
+                    };
+                    $kbRenderColor = static function (string $name, string $label, string $fallback) use ($settings): void {
+                        $value = htmlspecialchars(strtoupper((string) ($settings[$name] ?? $fallback)), ENT_QUOTES, 'UTF-8');
+                        $safeName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+                        echo '<label class="kb-setting-field"><span>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span><div class="kb-color-field" data-color-sync>'
+                            . '<input type="color" name="' . $safeName . '" value="' . $value . '">'
+                            . '<input type="text" name="' . $safeName . '_text" value="' . $value . '" pattern="^#[0-9A-Fa-f]{6}$" maxlength="7">'
+                            . '</div></label>';
+                    };
+                    ?>
+
+                    <section class="kb-settings-group kb-settings-group--card">
+                        <h3>Übersichtsseite</h3>
+                        <p class="kb-settings-group__intro">Kopfbereich, Raster und Karten der Übersicht unter <code>/kb</code> (Akzentleiste und Textkürzung gelten auch für <code>/glossar</code>).</p>
+                        <div class="kb-settings-choice-grid">
+                            <?php $kbRenderSelect('archive_hero_style', 'Kopfbereich'); ?>
+                            <?php $kbRenderSelect('archive_columns', 'Spalten (Desktop)'); ?>
+                            <?php $kbRenderSelect('archive_card_style', 'Karten-Stil'); ?>
+                            <label class="kb-setting-field">
+                                <span>Kurztext-Zeilen (0 = ungekürzt)</span>
+                                <input type="number" name="archive_excerpt_lines" min="0" max="8" value="<?php echo (int) ($settings['archive_excerpt_lines'] ?? 3); ?>">
+                            </label>
+                            <?php $kbRenderColor('archive_card_bg_color', 'Karten-Hintergrund', '#FFFFFF'); ?>
+                        </div>
+                        <label class="kb-setting-toggle"><input type="checkbox" name="archive_card_accent_bar" value="1" <?php echo ($settings['archive_card_accent_bar'] ?? '1') === '1' ? 'checked' : ''; ?>> <span>Akzentleiste links an Karten anzeigen</span></label>
+                    </section>
+
+                    <section class="kb-settings-group kb-settings-group--card kb-settings-group--span-2">
+                        <h3>Detailseite</h3>
+                        <p class="kb-settings-group__intro">Kopfbereich, Inhaltsbereiche und Sidebar der Eintragsseiten unter <code>/kb/{slug}</code>.</p>
+                        <div class="kb-settings-choice-grid kb-settings-choice-grid--wide">
+                            <?php $kbRenderSelect('single_hero_style', 'Kopfbereich'); ?>
+                            <?php $kbRenderSelect('single_section_style', 'Darstellung der Inhaltsbereiche'); ?>
+                            <?php $kbRenderColor('single_section_bg_color', 'Hintergrund Inhaltsbereiche', '#FFFFFF'); ?>
+                            <?php $kbRenderSelect('single_sidebar_style', 'Sidebar-Stil'); ?>
+                            <?php $kbRenderSelect('single_sidebar_position', 'Sidebar-Position'); ?>
+                            <?php $kbRenderColor('single_sidebar_bg_color', 'Sidebar-Hintergrund (Karten-Stile)', '#F8FAFC'); ?>
+                        </div>
+                        <div class="kb-settings-toggles">
+                            <label class="kb-setting-toggle"><input type="checkbox" name="single_section_tints" value="1" <?php echo ($settings['single_section_tints'] ?? '1') === '1' ? 'checked' : ''; ?>> <span>Inhaltsbereiche nach Typ einfärben (Vorteile grün, Hinweise bernstein, Fazit Akzent …)</span></label>
+                            <label class="kb-setting-toggle"><input type="checkbox" name="single_section_icons" value="1" <?php echo ($settings['single_section_icons'] ?? '1') === '1' ? 'checked' : ''; ?>> <span>Icons vor den Bereichsüberschriften anzeigen</span></label>
+                            <label class="kb-setting-toggle"><input type="checkbox" name="single_sidebar_sticky" value="1" <?php echo ($settings['single_sidebar_sticky'] ?? '1') === '1' ? 'checked' : ''; ?>> <span>Sidebar beim Scrollen mitführen (Desktop)</span></label>
+                        </div>
+                    </section>
+
                     <section class="kb-settings-group kb-settings-group--card kb-settings-group--full kb-settings-group--preview">
                         <h3>Live-Vorschau</h3>
                         <p class="kb-settings-group__intro">Zeigt direkt, wie Karten, CTA und Tooltip mit den aktuellen Werten zusammen wirken.</p>

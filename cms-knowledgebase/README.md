@@ -39,6 +39,24 @@ Eintragsinhalte werden nicht als ein HTML-Block gespeichert, sondern pro Bereich
 - Kurzbeschreibung, Tooltip-Text und Synonyme bleiben bewusst Klartextfelder (Tooltip, Meta-Description, JSON-LD).
 - Beim Update auf 3.1.0 wird vorhandenes HTML automatisch anhand der Zwischenüberschriften auf die Bereiche verteilt.
 
+## Design-Einstellungen
+
+Admin → Knowledgebase → Einstellungen → **Design**. Farben und Maße werden als CSS-Variablen (`--kb-*`) im `<head>` ausgegeben, Stil-Varianten als Modifier-Klassen am `<main class="cms-kb-content">`. Die Umsetzung liegt in `assets/css/knowledgebase-public.css` (nur auf `/kb`, `/kb/{slug}`, `/glossar` geladen) und übersteuert die Theme-Basis aus `cms-phinit/assets/css/page-knowledgebase.css`.
+
+| Bereich | Einstellung | Werte / Token |
+|---------|-------------|---------------|
+| Allgemein | Content-/Sidebar-Breite, Radius, Akzent, Fläche, Rahmen, Tooltip | `--kb-content-max-width`, `--kb-sidebar-width`, `--kb-radius`, `--kb-accent`, … |
+| Übersicht | Kopfbereich | `tinted` · `surface` · `accent` → `cms-kb-content--hero-*` |
+| Übersicht | Spalten (Desktop) | `auto` · `2` · `3` · `4` → `cms-kb-content--cols-*` (≤1024px max. 2, ≤640px 1) |
+| Übersicht | Karten-Stil | `elevated` · `outline` · `tinted` → `cms-kb-content--cards-*` |
+| Übersicht | Kurztext-Zeilen | `0`–`8` (0 = ungekürzt) → `--kb-excerpt-lines` |
+| Übersicht | Karten-Hintergrund, Akzentleiste | `--kb-card-bg`, `has-card-accent` |
+| Detailseite | Kopfbereich | `tinted` · `surface` · `accent` |
+| Detailseite | Inhaltsbereiche | `cards` (Karte je Bereich) · `panel` (ein Panel mit Trennlinien) · `minimal` |
+| Detailseite | Bereichsfarben nach Typ, Icons | `has-section-tints`, `has-section-icons`; Hintergrund `--kb-section-bg` |
+| Detailseite | Sidebar-Stil | `plain` (ohne Rahmen, Standard) · `card` (ein Rahmen) · `sections` (Karte je Block) |
+| Detailseite | Sidebar-Position, Sticky, Hintergrund | `left`/`right`, `has-sticky-sidebar`, `--kb-sidebar-bg` |
+
 ## Hinweise
 
 - Für zuverlässiges Auto-Linking ist der Filter `content_render` der bevorzugte Weg.

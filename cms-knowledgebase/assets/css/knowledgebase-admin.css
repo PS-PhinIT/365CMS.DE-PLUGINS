@@ -377,6 +377,24 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.kb-settings-group--span-2 {
+    grid-column: span 2;
+}
+
+.kb-settings-choice-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+}
+
+.kb-settings-choice-grid--wide {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kb-settings-choice-grid select {
+    width: 100%;
+}
+
 .kb-color-field {
     display: flex;
     gap: 0.75rem;
@@ -705,8 +723,13 @@
     .kb-design-preview,
     .kb-system-grid,
     .kb-entry-card--compact,
-    .kb-package-grid {
+    .kb-package-grid,
+    .kb-settings-choice-grid--wide {
         grid-template-columns: 1fr;
+    }
+
+    .kb-settings-group--span-2 {
+        grid-column: auto;
     }
 
     .kb-action-row--compact {

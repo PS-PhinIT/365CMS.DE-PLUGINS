@@ -415,7 +415,13 @@ final class EntryRepository
             'show_category_sidebar',
             'show_keyword_badges',
             'show_related_entries',
+            'archive_card_accent_bar',
+            'single_section_tints',
+            'single_section_icons',
+            'single_sidebar_sticky',
         ];
+
+        $designChoices = Defaults::designChoices();
 
         $numberRanges = [
             'max_links_per_page' => [1, 25],
@@ -423,6 +429,7 @@ final class EntryRepository
             'content_max_width' => [720, 1600],
             'sidebar_width' => [220, 420],
             'design_border_radius' => [0, 32],
+            'archive_excerpt_lines' => [0, 8],
         ];
 
         $colorDefaults = [
@@ -432,6 +439,9 @@ final class EntryRepository
             'design_border_color' => '#dbe1ea',
             'tooltip_background_color' => '#111827',
             'tooltip_text_color' => '#f8fafc',
+            'archive_card_bg_color' => '#ffffff',
+            'single_section_bg_color' => '#ffffff',
+            'single_sidebar_bg_color' => '#f8fafc',
         ];
 
         $tabKeys = [
@@ -469,6 +479,21 @@ final class EntryRepository
                 'design_border_radius',
                 'tooltip_background_color',
                 'tooltip_text_color',
+                'archive_hero_style',
+                'archive_columns',
+                'archive_card_style',
+                'archive_card_accent_bar',
+                'archive_excerpt_lines',
+                'archive_card_bg_color',
+                'single_hero_style',
+                'single_section_style',
+                'single_section_tints',
+                'single_section_icons',
+                'single_section_bg_color',
+                'single_sidebar_style',
+                'single_sidebar_position',
+                'single_sidebar_sticky',
+                'single_sidebar_bg_color',
             ],
         ];
 
@@ -503,6 +528,8 @@ final class EntryRepository
                 $value = (string) max($min, min($max, (int) $value));
             } elseif (isset($colorDefaults[$key])) {
                 $value = $this->sanitizeColor((string) $value, $colorDefaults[$key]);
+            } elseif (isset($designChoices[$key])) {
+                $value = Defaults::designChoice([$key => (string) $value], $key);
             } elseif ($key === 'nav_label') {
                 $value = $this->sanitizeText((string) $value, 40);
             } elseif ($key === 'archive_title') {
@@ -583,6 +610,10 @@ final class EntryRepository
             '--kb-sidebar-width' => (string) max(220, min(420, (int) ($settings['sidebar_width'] ?? 300))) . 'px',
             '--kb-tooltip-bg' => $this->sanitizeColor((string) ($settings['tooltip_background_color'] ?? ''), '#111827'),
             '--kb-tooltip-text' => $this->sanitizeColor((string) ($settings['tooltip_text_color'] ?? ''), '#f8fafc'),
+            '--kb-card-bg' => $this->sanitizeColor((string) ($settings['archive_card_bg_color'] ?? ''), '#ffffff'),
+            '--kb-section-bg' => $this->sanitizeColor((string) ($settings['single_section_bg_color'] ?? ''), '#ffffff'),
+            '--kb-sidebar-bg' => $this->sanitizeColor((string) ($settings['single_sidebar_bg_color'] ?? ''), '#f8fafc'),
+            '--kb-excerpt-lines' => (string) max(0, min(8, (int) ($settings['archive_excerpt_lines'] ?? 3))),
         ];
     }
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.2.0] - 2026-10-25
+
+### Geändert
+
+- Detailseite: Die Sidebar hat standardmäßig keinen eigenen Rahmen mehr (vorher Rahmen um die Sidebar **und** um jeden Block) und die Blöcke sitzen bündig ohne doppelten Innenabstand; Blöcke werden nur noch per Trennlinie getrennt.
+- Detailseite: Jeder Inhaltsbereich erhält eine eigene Fläche mit Akzentleiste und dezenter, typabhängiger Tönung (Funktionsweise blau, Vorteile grün, Hinweise bernstein, Lizenz/Links neutral, Praxis/Fazit Akzent) sowie optionalem Icon vor der Überschrift.
+- Detailseite: Breadcrumb ohne eigene Box.
+- Neues Stylesheet `assets/css/knowledgebase-public.css` für Layout-Varianten der öffentlichen KB-Seiten.
+
+### Hinzugefügt
+
+- Design-Tab „Übersichtsseite“: Kopfbereich-Stil, Spaltenanzahl, Karten-Stil, Kurztext-Zeilen, Karten-Hintergrund, Akzentleiste an/aus.
+- Design-Tab „Detailseite“: Kopfbereich-Stil, Darstellung der Inhaltsbereiche (Karten/Panel/Minimal), Bereichsfarben und Icons an/aus, Hintergrund der Inhaltsbereiche, Sidebar-Stil (ohne Rahmen/eine Karte/Karte je Block), Sidebar-Position, Sticky-Sidebar, Sidebar-Hintergrund.
+
 ## [3.1.1] - 2026-10-25
 
 ### Behoben

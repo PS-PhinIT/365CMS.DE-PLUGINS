@@ -22,6 +22,19 @@ $variantClass = $forceListLayout ? 'cms-kb-content--glossary' : 'cms-kb-content-
 $layoutClass = $forceListLayout ? 'cms-kb-archive-layout--list' : 'cms-kb-archive-layout--grid';
 $gridClass = $forceListLayout ? 'cms-kb-entry-grid--list' : 'cms-kb-entry-grid--cards';
 $entryClass = $forceListLayout ? 'cms-kb-entry--list' : 'cms-kb-entry--card';
+$designSettings = is_array($settings ?? null) ? $settings : [];
+$archiveDesignClasses = [
+    $variantClass,
+    'cms-kb-content--hero-' . \CmsKnowledgebase\Support\Defaults::designChoice($designSettings, 'archive_hero_style'),
+    'cms-kb-content--cards-' . \CmsKnowledgebase\Support\Defaults::designChoice($designSettings, 'archive_card_style'),
+    'cms-kb-content--cols-' . \CmsKnowledgebase\Support\Defaults::designChoice($designSettings, 'archive_columns'),
+];
+if (($designSettings['archive_card_accent_bar'] ?? '1') === '1') {
+    $archiveDesignClasses[] = 'has-card-accent';
+}
+if ((int) ($designSettings['archive_excerpt_lines'] ?? 3) > 0) {
+    $archiveDesignClasses[] = 'has-excerpt-clamp';
+}
 $totalEntries = isset($totalEntries) ? max(0, (int) $totalEntries) : count($entries);
 $currentPage = isset($currentPage) ? max(1, (int) $currentPage) : 1;
 $perPage = isset($perPage) ? max(1, (int) $perPage) : 25;
@@ -41,7 +54,7 @@ $pageWindowStart = $totalEntries > 0 ? (($currentPage - 1) * $perPage) + 1 : 0;
 $pageWindowEnd = $totalEntries > 0 ? min($totalEntries, $pageWindowStart + count($entries) - 1) : 0;
 ?>
 
-<main class="cms-kb-content cms-kb-content--archive <?php echo htmlspecialchars($variantClass, ENT_QUOTES, 'UTF-8'); ?>">
+<main class="cms-kb-content cms-kb-content--archive <?php echo htmlspecialchars(implode(' ', $archiveDesignClasses), ENT_QUOTES, 'UTF-8'); ?>">
     <header class="cms-kb-hero">
         <div class="cms-kb-hero__content cms-kb-hero__content--compact">
             <div class="cms-kb-hero__headline">
