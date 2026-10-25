@@ -14,6 +14,105 @@ if (!defined('ABSPATH')) {
 
 final class StandardPackages
 {
+    /**
+     * Beispiel-CSV mit allen Feldern aus „Eintrag anlegen“. Endet bewusst nicht auf
+     * `_Glossar.csv`, damit sie nicht als Standardpaket importiert wird.
+     */
+    public const TEMPLATE_FILE_NAME = 'Beispiel_Vorlage.csv';
+
+    /**
+     * CSV-Spaltenüberschrift (kompakt: klein, Umlaute ausgeschrieben, nur a-z0-9) => internes Feld.
+     * Die internen Felder entsprechen den Formularfeldern aus „Eintrag anlegen“.
+     */
+    private const CSV_COLUMN_ALIASES = [
+        // Basisdaten
+        'eintrag' => 'title',
+        'titel' => 'title',
+        'title' => 'title',
+        'begriff' => 'title',
+        'term' => 'title',
+        'fokusbegriff' => 'keyword',
+        'keyword' => 'keyword',
+        'suchbegriff' => 'keyword',
+        'slug' => 'slug',
+        'urlslug' => 'slug',
+        'kategorie' => 'category',
+        'category' => 'category',
+        'prioritaet' => 'priority',
+        'priority' => 'priority',
+        'prio' => 'priority',
+        'maxlinksproseite' => 'max_links_per_page',
+        'maxlinksperpage' => 'max_links_per_page',
+        'maxlinks' => 'max_links_per_page',
+        // Kurzinhalte & Verlinkung
+        'kurzbeschreibungexcerpt' => 'excerpt',
+        'kurzbeschreibung' => 'excerpt',
+        'excerpt' => 'excerpt',
+        'shortdescription' => 'excerpt',
+        'beschreibungkurz' => 'excerpt',
+        'tooltiptext' => 'tooltip_text',
+        'tooltip' => 'tooltip_text',
+        'synonyme' => 'synonyms',
+        'synonym' => 'synonyms',
+        'synonyms' => 'synonyms',
+        'keywords' => 'synonyms',
+        'alias' => 'synonyms',
+        'aliases' => 'synonyms',
+        // Inhaltsbereiche
+        'allgemeineinfos' => 'content',
+        'langbeschreibung' => 'content',
+        'beschreibung' => 'content',
+        'longdescription' => 'content',
+        'beschreibunglang' => 'content',
+        'details' => 'content',
+        'content' => 'content',
+        'funktionsweisetechnischedetails' => 'content_details',
+        'funktionsweisedetails' => 'content_details',
+        'funktionsweise' => 'content_details',
+        'technischedetails' => 'content_details',
+        'contentdetails' => 'content_details',
+        'vorteilenutzen' => 'content_benefits',
+        'vorteile' => 'content_benefits',
+        'nutzen' => 'content_benefits',
+        'contentbenefits' => 'content_benefits',
+        'praxisbeispieleinsatz' => 'content_practice',
+        'praxisbeispiel' => 'content_practice',
+        'contentpractice' => 'content_practice',
+        'hinweisebestpractices' => 'content_notes',
+        'hinweise' => 'content_notes',
+        'bestpractices' => 'content_notes',
+        'contentnotes' => 'content_notes',
+        'lizenzverfuegbarkeit' => 'content_license',
+        'lizenzinfo' => 'content_license',
+        'licenseinfo' => 'content_license',
+        'lizenz' => 'content_license',
+        'contentlicense' => 'content_license',
+        'fazit' => 'content_conclusion',
+        'contentconclusion' => 'content_conclusion',
+        'weiterfuehrendelinks' => 'content_links',
+        'mslearnweblinks' => 'content_links',
+        'weblinks' => 'content_links',
+        'links' => 'content_links',
+        'link' => 'content_links',
+        'quellen' => 'content_links',
+        'urls' => 'content_links',
+        'url' => 'content_links',
+        'contentlinks' => 'content_links',
+        // Status & Verlinkung
+        'aktiv' => 'is_active',
+        'active' => 'is_active',
+        'isactive' => 'is_active',
+        'nurganzewoerterverlinken' => 'is_whole_word',
+        'nurganzewoerter' => 'is_whole_word',
+        'ganzewoerter' => 'is_whole_word',
+        'wholeword' => 'is_whole_word',
+        'iswholeword' => 'is_whole_word',
+        'grosskleinschreibungbeachten' => 'is_case_sensitive',
+        'grosskleinschreibung' => 'is_case_sensitive',
+        'casesensitive' => 'is_case_sensitive',
+        'iscasesensitive' => 'is_case_sensitive',
+    ];
+
     private static ?self $instance = null;
 
     private EntryRepository $repository;
@@ -230,6 +329,49 @@ final class StandardPackages
     }
 
     /**
+     * Absoluter Pfad der Beispiel-CSV oder leerer String, falls sie fehlt.
+     */
+    public function templateCsvPath(): string
+    {
+        return $this->resolveCsvPath(self::TEMPLATE_FILE_NAME);
+    }
+
+    /**
+     * Spaltenüberschriften der Beispiel-CSV (für die Übersicht im Import-Tab).
+     *
+     * @return array<int, string>
+     */
+    public function templateColumns(): array
+    {
+        $path = $this->templateCsvPath();
+        if ($path === '') {
+            return [];
+        }
+
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            return [];
+        }
+
+        $header = fgetcsv($handle, 0, $this->detectDelimiter($path), '"', '\\');
+        fclose($handle);
+        if (!is_array($header)) {
+            return [];
+        }
+
+        // Steht das BOM vor dem ersten Anführungszeichen, liefert fgetcsv die Quotes mit.
+        return array_values(array_filter(array_map(
+            static fn(mixed $column): string => trim(str_replace("\xEF\xBB\xBF", '', (string) $column), " \t\n\r\0\x0B\""),
+            $header
+        )));
+    }
+
+    /**
+     * Baut aus den CSV-Zeilen eines Pakets die Datensätze für EntryRepository::importPresetEntries().
+     *
+     * `import_fields` listet die Felder, für die die CSV einen Wert liefert. Bestehende Einträge
+     * behalten beim Re-Import alle übrigen Werte (z. B. manuell gepflegte Inhaltsbereiche).
+     *
      * @param array<string, mixed> $package
      * @return array<int, array<string, mixed>>
      */
@@ -243,47 +385,68 @@ final class StandardPackages
                 continue;
             }
 
-            $keyword = trim((string) ($entry['keyword'] ?? $title));
-            $synonyms = $this->normalizeSynonyms($entry['synonyms'] ?? []);
-            $shortDescription = trim((string) ($entry['csv_short_description'] ?? ''));
-            $longDescription = trim((string) ($entry['csv_long_description'] ?? ''));
-            $licenseInfo = trim((string) ($entry['csv_license_info'] ?? ''));
-            $links = is_array($entry['csv_links'] ?? null) ? $entry['csv_links'] : [];
+            $row = is_array($entry['row'] ?? null) ? $entry['row'] : [];
+            $value = static fn(string $field): string => trim((string) ($row[$field] ?? ''));
 
-            $entries[] = [
+            $keyword = $value('keyword');
+            $slug = $value('slug');
+            $category = $value('category');
+            $tooltip = $value('tooltip_text');
+            $shortDescription = $value('excerpt');
+            $longDescription = $value('content');
+            $synonyms = $this->parseSynonyms($value('synonyms'));
+
+            // Leere Zellen gelten als „nicht angegeben“: Neue Einträge erhalten den Standardwert,
+            // bestehende behalten ihren Wert. Die Kategorie kommt notfalls aus dem Dateinamen.
+            $importFields = ['category'];
+            if ($keyword !== '') {
+                $importFields[] = 'keyword';
+            }
+            if ($shortDescription !== '' || $longDescription !== '') {
+                $importFields[] = 'excerpt';
+            }
+            if ($tooltip !== '' || $shortDescription !== '' || $longDescription !== '') {
+                $importFields[] = 'tooltip_text';
+            }
+            if ($synonyms !== []) {
+                $importFields[] = 'synonyms';
+            }
+
+            $data = [
                 'title' => $title,
-                'keyword' => $keyword,
-                'slug' => $title,
+                'keyword' => $keyword !== '' ? $keyword : $title,
+                'slug' => $slug !== '' ? $slug : $title,
                 'excerpt' => $this->buildCsvExcerpt($title, $shortDescription, $longDescription),
-                'tooltip_text' => $this->buildCsvTooltip($title, $shortDescription, $longDescription),
+                'tooltip_text' => $tooltip !== '' ? $tooltip : $this->buildCsvTooltip($title, $shortDescription, $longDescription),
                 'synonyms' => implode("\n", $synonyms),
-                'category' => (string) $package['label'],
-                'priority' => 100 + ((int) $index * 10),
-                ...$this->buildCsvSections($shortDescription, $longDescription, $licenseInfo, $links),
-                'is_active' => '1',
-                'is_whole_word' => '1',
-                'is_case_sensitive' => '0',
-                'max_links_per_page' => '1',
+                'category' => $category !== '' ? $category : (string) $package['label'],
             ];
+
+            // Ungültige Werte (z. B. „vielleicht“ als Ja/Nein) werden wie leere Zellen behandelt.
+            $settings = [
+                'priority' => [$this->parseCsvInteger($value('priority')), (string) (100 + ((int) $index * 10))],
+                'max_links_per_page' => [$this->parseCsvInteger($value('max_links_per_page')), '1'],
+                'is_active' => [$this->parseCsvFlag($value('is_active')), '1'],
+                'is_whole_word' => [$this->parseCsvFlag($value('is_whole_word')), '1'],
+                'is_case_sensitive' => [$this->parseCsvFlag($value('is_case_sensitive')), '0'],
+            ];
+            foreach ($settings as $field => [$parsed, $default]) {
+                $data[$field] = $parsed ?? $default;
+                if ($parsed !== null) {
+                    $importFields[] = $field;
+                }
+            }
+
+            foreach ($this->buildCsvSections($row) as $column => $html) {
+                $data[$column] = $html;
+                $importFields[] = $column;
+            }
+
+            $data['import_fields'] = $importFields;
+            $entries[] = $data;
         }
 
         return $entries;
-    }
-
-    /**
-     * @param mixed $synonyms
-     * @return array<int, string>
-     */
-    private function normalizeSynonyms(mixed $synonyms): array
-    {
-        if (!is_array($synonyms)) {
-            return [];
-        }
-
-        return array_values(array_filter(array_map(
-            static fn(mixed $value): string => trim((string) $value),
-            $synonyms
-        )));
     }
 
     /**
@@ -323,7 +486,11 @@ final class StandardPackages
                     continue;
                 }
 
-                $row[$column] = trim((string) ($rowData[$index] ?? ''));
+                $value = trim((string) ($rowData[$index] ?? ''));
+                // Doppelte Spalten (z. B. „Langbeschreibung“ und „Allgemeine Infos“): der erste gefüllte Wert gewinnt.
+                if (!isset($row[$column]) || $row[$column] === '') {
+                    $row[$column] = $value;
+                }
             }
 
             $title = trim((string) ($row['title'] ?? ''));
@@ -333,12 +500,7 @@ final class StandardPackages
 
             $entries[] = [
                 'title' => $title,
-                'keyword' => trim((string) ($row['keyword'] ?? $title)),
-                'synonyms' => $this->parseSynonyms((string) ($row['synonyms'] ?? '')),
-                'csv_short_description' => (string) ($row['short_description'] ?? ''),
-                'csv_long_description' => (string) ($row['long_description'] ?? ''),
-                'csv_license_info' => (string) ($row['license_info'] ?? ''),
-                'csv_links' => $this->parseCsvLinks((string) ($row['links'] ?? '')),
+                'row' => $row,
             ];
         }
 
@@ -471,24 +633,50 @@ final class StandardPackages
         return true;
     }
 
+    /**
+     * Ordnet eine Spaltenüberschrift einem internen Feld zu. Groß-/Kleinschreibung, Umlaute,
+     * Leer- und Sonderzeichen spielen keine Rolle („Max. Links pro Seite“ = „max_links_per_page“).
+     */
     private function normalizeCsvColumnName(string $value): string
     {
-        $value = trim(str_replace("\xEF\xBB\xBF", '', $value));
-        $value = trim($value, " \t\n\r\0\x0B\"");
-        $value = mb_strtolower($value, 'UTF-8');
+        $value = str_replace("\xEF\xBB\xBF", '', $value);
+        $value = mb_strtolower(trim($value), 'UTF-8');
         $value = str_replace(['ä', 'ö', 'ü', 'ß'], ['ae', 'oe', 'ue', 'ss'], $value);
-        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+        $value = preg_replace('/[^a-z0-9]+/', '', $value) ?? '';
 
-        return match ($value) {
-            'eintrag', 'titel', 'title', 'begriff', 'term' => 'title',
-            'keyword', 'fokusbegriff', 'suchbegriff' => 'keyword',
-            'synonyme', 'synonym', 'keywords', 'alias', 'aliases' => 'synonyms',
-            'kurzbeschreibung', 'short description', 'short_description', 'beschreibung kurz' => 'short_description',
-            'langbeschreibung', 'beschreibung', 'long description', 'long_description', 'beschreibung lang', 'details' => 'long_description',
-            'lizenz-info', 'lizenzinfo', 'license info', 'license_info', 'lizenz', 'lizenz / verfuegbarkeit', 'lizenz & verfuegbarkeit' => 'license_info',
-            'ms learn / weblinks', 'weblinks', 'links', 'link', 'quellen', 'urls', 'url' => 'links',
-            default => '',
-        };
+        return self::CSV_COLUMN_ALIASES[$value] ?? '';
+    }
+
+    /**
+     * Liest Ja/Nein-Werte. Leere oder unbekannte Werte liefern `null` (= Standardwert verwenden).
+     */
+    private function parseCsvFlag(string $value): ?string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        if ($value === '') {
+            return null;
+        }
+
+        if (in_array($value, ['1', 'ja', 'j', 'yes', 'y', 'true', 'wahr', 'x', 'on', 'an', 'aktiv', 'active'], true)) {
+            return '1';
+        }
+
+        if (in_array($value, ['0', 'nein', 'n', 'no', 'false', 'falsch', 'off', 'aus', 'inaktiv', 'inactive', '-'], true)) {
+            return '0';
+        }
+
+        return null;
+    }
+
+    /**
+     * Liest ganze Zahlen. Leere oder ungültige Werte liefern `null` (= Standardwert verwenden);
+     * die Wertebereiche begrenzt EntryRepository::saveEntry().
+     */
+    private function parseCsvInteger(string $value): ?string
+    {
+        $value = trim($value);
+
+        return preg_match('/^\d{1,5}$/', $value) === 1 ? (string) (int) $value : null;
     }
 
     /**
@@ -560,10 +748,12 @@ final class StandardPackages
 
     private function buildCsvExcerpt(string $title, string $shortDescription, string $longDescription): string
     {
-        $excerpt = $shortDescription !== '' ? $shortDescription : $longDescription;
-        if ($excerpt === '') {
-            $excerpt = $title;
+        // Eine gepflegte Kurzbeschreibung wird unverändert übernommen, nur der Fallback wird gekürzt.
+        if ($shortDescription !== '') {
+            return $shortDescription;
         }
+
+        $excerpt = $longDescription !== '' ? $longDescription : $title;
 
         return mb_substr(trim($excerpt), 0, 280, 'UTF-8');
     }
@@ -580,33 +770,103 @@ final class StandardPackages
 
     /**
      * Baut die strukturierten Inhaltsbereiche (Spaltenname => HTML) aus einer CSV-Zeile.
+     * Es werden nur befüllte Bereiche geliefert.
      * Die HTML-Fragmente werden beim Speichern in EditorJS-JSON umgewandelt.
      *
-     * @param array<int, array{label: string, url: string}> $links
+     * @param array<string, string> $row
      * @return array<string, string>
      */
-    private function buildCsvSections(string $shortDescription, string $longDescription, string $licenseInfo, array $links): array
+    private function buildCsvSections(array $row): array
     {
-        $sections = array_fill_keys(ContentSections::columns(), '');
+        $sections = [];
 
-        $overview = $longDescription !== '' ? $longDescription : $shortDescription;
-        if ($overview !== '') {
-            $sections['content'] = '<p>' . htmlspecialchars($overview, ENT_QUOTES, 'UTF-8') . '</p>';
-        }
+        foreach (ContentSections::columns() as $column) {
+            $raw = trim((string) ($row[$column] ?? ''));
 
-        if ($licenseInfo !== '') {
-            $sections['content_license'] = '<p>' . htmlspecialchars($licenseInfo, ENT_QUOTES, 'UTF-8') . '</p>';
-        }
+            // „Allgemeine Infos“ fällt wie bisher auf die Kurzbeschreibung zurück.
+            if ($column === 'content' && $raw === '') {
+                $raw = trim((string) ($row['excerpt'] ?? ''));
+            }
 
-        $linksHtml = $this->buildLinksList($links);
-        if ($linksHtml !== '') {
-            $sections['content_links'] = '<ul>' . $linksHtml . '</ul>';
+            if ($column === 'content_links') {
+                $linksHtml = $this->buildLinksList($this->parseCsvLinks($raw));
+                $html = $linksHtml !== '' ? '<ul>' . $linksHtml . '</ul>' : '';
+            } else {
+                $html = $this->buildCsvTextHtml($raw);
+            }
+
+            if ($html !== '') {
+                $sections[$column] = $html;
+            }
         }
 
         return $sections;
     }
 
     /**
+     * Wandelt Klartext aus einer CSV-Zelle in HTML um: Jede Zeile wird ein Absatz,
+     * Zeilen mit „- “, „* “ oder „• “ eine Aufzählung, Zeilen mit „1. “ eine nummerierte Liste.
+     */
+    private function buildCsvTextHtml(string $text): string
+    {
+        $text = trim(str_replace(["\r\n", "\r"], "\n", $text));
+        if ($text === '') {
+            return '';
+        }
+
+        $html = '';
+        $listTag = '';
+        $listItems = [];
+
+        foreach (explode("\n", $text) as $line) {
+            $line = trim($line);
+            $isBullet = preg_match('/^[-*•]\s+(.+)$/u', $line, $bulletMatch) === 1;
+            $isNumbered = !$isBullet && preg_match('/^\d{1,3}[.)]\s+(.+)$/u', $line, $numberMatch) === 1;
+            $tag = $isBullet ? 'ul' : ($isNumbered ? 'ol' : '');
+
+            if ($listItems !== [] && $tag !== $listTag) {
+                $html .= $this->buildCsvListHtml($listTag, $listItems);
+                $listItems = [];
+            }
+
+            if ($line === '') {
+                continue;
+            }
+
+            if ($tag !== '') {
+                $listTag = $tag;
+                $listItems[] = trim($isBullet ? $bulletMatch[1] : $numberMatch[1]);
+                continue;
+            }
+
+            $html .= '<p>' . htmlspecialchars($line, ENT_QUOTES, 'UTF-8') . '</p>';
+        }
+
+        if ($listItems !== []) {
+            $html .= $this->buildCsvListHtml($listTag, $listItems);
+        }
+
+        return $html;
+    }
+
+    /**
+     * @param array<int, string> $items
+     */
+    private function buildCsvListHtml(string $tag, array $items): string
+    {
+        $tag = $tag === 'ol' ? 'ol' : 'ul';
+        $html = '';
+        foreach ($items as $item) {
+            $html .= '<li>' . htmlspecialchars($item, ENT_QUOTES, 'UTF-8') . '</li>';
+        }
+
+        return '<' . $tag . '>' . $html . '</' . $tag . '>';
+    }
+
+    /**
+     * Liest Weblinks. Mehrere Links per Zeilenumbruch oder „ | “ trennen. Text vor der URL
+     * wird als Linktext genutzt („Microsoft Learn: https://…“), sonst wird er aus der Domain abgeleitet.
+     *
      * @return array<int, array{label: string, url: string}>
      */
     private function parseCsvLinks(string $rawLinks): array
@@ -616,21 +876,37 @@ final class StandardPackages
             return [];
         }
 
-        $parts = preg_split('/\n+|\s*\|\s*|,\s*(?=https?:\/\/)|;\s*(?=https?:\/\/)/', $rawLinks) ?: [];
+        $parts = preg_split('/\n+|\s*\|\s*|[,;]\s*(?=https?:\/\/)/', $rawLinks) ?: [];
         $links = [];
         $seen = [];
 
         foreach ($parts as $part) {
-            $url = trim($part, " \t\n\r\0\x0B\"");
-            if ($url === '' || filter_var($url, FILTER_VALIDATE_URL) === false || isset($seen[$url])) {
+            if (preg_match_all('~https?://[^\s<>"]+~i', $part, $matches, PREG_OFFSET_CAPTURE) < 1) {
                 continue;
             }
 
-            $seen[$url] = true;
-            $links[] = [
-                'label' => $this->labelForCsvLink($url),
-                'url' => $url,
-            ];
+            $cursor = 0;
+            foreach ($matches[0] as [$match, $offset]) {
+                $labelText = substr($part, $cursor, $offset - $cursor);
+                $cursor = $offset + strlen($match);
+
+                $url = rtrim($match, '.,;:');
+                // Schließende Klammer gehört nur zur URL, wenn sie auch eine öffnende enthält (z. B. Wikipedia).
+                if (str_ends_with($url, ')') && !str_contains($url, '(')) {
+                    $url = rtrim($url, ')');
+                }
+
+                if (filter_var($url, FILTER_VALIDATE_URL) === false || isset($seen[$url])) {
+                    continue;
+                }
+
+                $label = trim((string) preg_replace('/^[\s:;,\-–—"\'\[\]()]+|[\s:;,\-–—"\'\[\]()]+$/u', '', $labelText));
+                $seen[$url] = true;
+                $links[] = [
+                    'label' => $label !== '' ? mb_substr($label, 0, 190, 'UTF-8') : $this->labelForCsvLink($url),
+                    'url' => $url,
+                ];
+            }
         }
 
         return $links;
