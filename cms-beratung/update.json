@@ -1,13 +1,14 @@
 {
   "slug": "cms-beratung",
   "name": "CMS Beratung",
-  "version": "2.9.793",
+  "version": "2.9.794",
   "requires": "365CMS",
-  "tested": "3.4.00",
+  "tested": "4.0.0",
   "author": "365 Network",
   "description": "Spezialisierter 365CMS Landingpage Builder für Microsoft 365, Copilot, KI, Security, Compliance und IT Consulting Beratungsleistungen.",
   "download_url": "PLUGINS/cms-beratung/cms-beratung.zip",
   "changelog": {
+    "2.9.794": "Fix PHP 8.5: Der Bild-Upload im Landingpage-Editor nutzte finfo_close(); der Deprecation-Hinweis landete bei aktivem display_errors vor der JSON-Antwort und ließ den Upload scheitern. Geprüft mit 365CMS 4.0.0: Landingpages anlegen, bearbeiten und speichern funktionieren (Fix für „Plugin-Adminseite nicht gefunden“ seit 2.9.792).",
     "2.9.793": "Admin-Seitenleiste: Der Menüeintrag heißt jetzt „365CMS | Beratung“ (bisher „Beratung“), damit die öffentlichen 365CMS-Plugins im Abschnitt „Plugin-Erweiterungen“ zusammen stehen.",
     "2.9.792": "Fix: Frischinstallation scheiterte, weil die Spaltenmigration vor dem Anlegen von form_submissions lief. Landingpage-Übersicht, „Neue Landingpage“ und Vorschau sind wieder erreichbar (Menüeintrag „Landingpages“, Unteransichten per ?view=). Toter admin_menu_items-Filter entfernt, Admin-Builder bricht bei fehlendem Ziel-Selektor nicht mehr ab. Admin-Oberfläche an das einheitliche, schlichte 365CMS-Plugin-Admin-Design angeglichen (Emoji-/Kürzel-Icons entfernt, Icon-Buttons mit Tabler-Icons, Menüname ohne Präfix); geprüft gegen 365CMS 3.4.00 inkl. Produktiv-CSP.",
     "2.9.791": "Fix: Die Admin-Pages-Klasse ist gegen erneute Includes über abweichende Deployment- oder Case-Pfade geschützt; wiederholte Plugin-Ladevorgänge verursachen keinen Cannot-redeclare-Fatal mehr.",
