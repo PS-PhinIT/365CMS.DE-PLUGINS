@@ -1,17 +1,8 @@
 {
-  "version": "1",
-  "updated": "2026-09-30",
+  "version": "2",
+  "updated": "2026-11-14",
+  "requires_cms": "4.0.0",
   "plugins": [
-    {
-      "slug": "cms-contact",
-      "name": "CMS Contact",
-      "manifest": "PLUGINS/cms-contact/update.json"
-    },
-    {
-      "slug": "cms-downloads",
-      "name": "CMS Downloads",
-      "manifest": "PLUGINS/cms-downloads/update.json"
-    },
     {
       "slug": "cms-booking",
       "name": "CMS Booking",
@@ -21,21 +12,6 @@
       "slug": "cms-beratung",
       "name": "CMS Beratung",
       "manifest": "PLUGINS/cms-beratung/update.json"
-    },
-    {
-      "slug": "cms-feed",
-      "name": "CMS Feed",
-      "manifest": "PLUGINS/cms-feed/update.json"
-    },
-    {
-      "slug": "cms-forum",
-      "name": "CMS Forum",
-      "manifest": "PLUGINS/cms-forum/update.json"
-    },
-    {
-      "slug": "cms-newsletter",
-      "name": "CMS Newsletter",
-      "manifest": "PLUGINS/cms-newsletter/update.json"
     },
     {
       "slug": "cms-promos",
@@ -48,9 +24,60 @@
       "manifest": "PLUGINS/cms-projects/update.json"
     },
     {
+      "slug": "cms-365neteventsandspeaker",
+      "name": "365 | Events & Speaker",
+      "manifest": "PLUGINS/365NET-eventsandspeaker/update.json"
+    },
+    {
+      "slug": "cms-365NETexpertsandcompanie",
+      "name": "365 | Experts & Companies",
+      "manifest": "PLUGINS/365NET-expertsandcompanie/update.json"
+    },
+    {
+      "slug": "cms-forum",
+      "name": "CMS Forum",
+      "description": "Nicht mehr in diesem Repository enthalten (Ordner am 14.11.2026 entfernt) und nicht für 365CMS 4.0.0 freigegeben.",
+      "install_supported": false
+    },
+    {
+      "slug": "cms-contact",
+      "name": "CMS Contact",
+      "description": "Kontakt- und Formularbaukasten mit Eingangsfach. Seit 365CMS 4.0.0 Teil des Cores (Inhalte › Formulare).",
+      "integrated_in_core": "4.0.0",
+      "install_supported": false,
+      "core_route": "/admin/forms"
+    },
+    {
+      "slug": "cms-downloads",
+      "name": "CMS Downloads",
+      "description": "Download-Verwaltung mit Versionen, Zugriffsregeln und Statistik. Seit 365CMS 4.0.0 Teil des Cores (Medien › Downloads).",
+      "integrated_in_core": "4.0.0",
+      "install_supported": false,
+      "core_route": "/admin/downloads"
+    },
+    {
+      "slug": "cms-feed",
+      "name": "CMS Feed",
+      "description": "RSS-/Atom-Feeds und Feed-Aggregator. Seit 365CMS 4.0.0 Teil des Cores (Einstellungen › Feeds).",
+      "integrated_in_core": "4.0.0",
+      "install_supported": false,
+      "core_route": "/admin/settings?tab=feeds"
+    },
+    {
       "slug": "cms-knowledgebase",
       "name": "CMS Knowledgebase",
-      "manifest": "PLUGINS/cms-knowledgebase/update.json"
+      "description": "Wissensdatenbank und Glossar mit Auto-Verlinkung und Tooltips. Seit 365CMS 4.0.0 Teil des Cores (Inhalte › Knowledgebase).",
+      "integrated_in_core": "4.0.0",
+      "install_supported": false,
+      "core_route": "/admin/knowledgebase"
+    },
+    {
+      "slug": "cms-newsletter",
+      "name": "CMS Newsletter",
+      "description": "Newsletter mit Double-Opt-In, Abonnenten, Vorlagen und Kampagnenversand. Seit 365CMS 4.0.0 Teil des Cores (Inhalte › Newsletter).",
+      "integrated_in_core": "4.0.0",
+      "install_supported": false,
+      "core_route": "/admin/newsletter"
     }
   ]
 }
