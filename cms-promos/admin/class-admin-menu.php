@@ -13,16 +13,18 @@ final class CMS_Promos_Admin_Menu
 {
     public static function register(): void
     {
-        if (!function_exists('add_menu_page')) {
+        if (!function_exists('add_menu_page') || !function_exists('add_submenu_page')) {
             return;
         }
 
         $dispatcher = [CMS_Promos_Admin_Pages::class, 'render_page_dispatcher'];
+        $root = CMS_Promos_Admin_Pages::ROOT_SLUG;
+        $capability = CMS_Promos_Admin_Pages::CAPABILITY;
 
-        add_menu_page('Promos', '365CMS | Promos', 'manage_options', 'promos-dashboard', $dispatcher, 'PR');
-        add_submenu_page('promos-dashboard', 'Dashboard', 'Dashboard', 'manage_options', 'promos-dashboard', $dispatcher);
-        add_submenu_page('promos-dashboard', 'Promos', 'Promos', 'manage_options', 'promos-items', $dispatcher);
-        add_submenu_page('promos-dashboard', 'Platzierungen', 'Platzierungen', 'manage_options', 'promos-placements', $dispatcher);
-        add_submenu_page('promos-dashboard', 'Einstellungen', 'Einstellungen', 'manage_options', 'promos-settings', $dispatcher);
+        add_menu_page('Promos', '365CMS | Promos', $capability, $root, $dispatcher, 'ti-speakerphone');
+        add_submenu_page($root, 'Übersicht', 'Übersicht', $capability, $root, $dispatcher);
+        add_submenu_page($root, 'Promos', 'Promos', $capability, 'promos-items', $dispatcher);
+        add_submenu_page($root, 'Platzierungen', 'Platzierungen', $capability, 'promos-placements', $dispatcher);
+        add_submenu_page($root, 'Einstellungen', 'Einstellungen', $capability, 'promos-settings', $dispatcher);
     }
 }

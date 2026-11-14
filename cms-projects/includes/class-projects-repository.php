@@ -8,6 +8,13 @@ if (!defined('ABSPATH')) {
 
 final class CMS_Projects_Repository
 {
+    /** Explizite Spaltenlisten (keine Wildcard-Selects). */
+    private const PROJECT_COLUMNS = 'id, name, slug, summary, description, status, visibility, owner_name, accent_color, member_headline, public_headline, created_at, updated_at';
+    private const BOARD_COLUMNS = 'id, project_id, board_type, title, description, position, is_public, is_active, payload, created_at, updated_at';
+    private const WIDGET_COLUMNS = 'id, project_id, scope, widget_type, title, content, position, is_active, payload, created_at, updated_at';
+    private const TASK_COLUMNS = 'id, project_id, board_id, column_key, title, description, priority, assignee_name, due_date, sort_order, is_public, is_active, payload, created_at, updated_at';
+    private const AUDIT_COLUMNS = 'id, actor_id, actor_name, action, entity_type, entity_id, project_id, result, context_json, created_at';
+
     private \CMS\Database $db;
     private string $projectsTable = 'projects_projects';
     private string $boardsTable = 'projects_boards';
@@ -127,14 +134,14 @@ final class CMS_Projects_Repository
 
     public function getProjects(): array
     {
-        $rows = $this->db->get_results("SELECT * FROM `{$this->projectsTableFull}` ORDER BY updated_at DESC, id DESC") ?: [];
+        $rows = $this->db->get_results('SELECT ' . self::PROJECT_COLUMNS . " FROM `{$this->projectsTableFull}` ORDER BY updated_at DESC, id DESC") ?: [];
         return array_map([$this, 'mapProjectRow'], $rows);
     }
 
     public function getPublicProjects(): array
     {
         $rows = $this->db->get_results(
-            "SELECT * FROM `{$this->projectsTableFull}` WHERE status = ? AND visibility = ? ORDER BY updated_at DESC, id DESC",
+            'SELECT ' . self::PROJECT_COLUMNS . " FROM `{$this->projectsTableFull}` WHERE status = ? AND visibility = ? ORDER BY updated_at DESC, id DESC",
             ['active', 'public']
         ) ?: [];
 
@@ -144,7 +151,7 @@ final class CMS_Projects_Repository
     public function getMemberProjects(): array
     {
         $rows = $this->db->get_results(
-            "SELECT * FROM `{$this->projectsTableFull}` WHERE status IN (?, ?) AND visibility IN (?, ?) ORDER BY updated_at DESC, id DESC",
+            'SELECT ' . self::PROJECT_COLUMNS . " FROM `{$this->projectsTableFull}` WHERE status IN (?, ?) AND visibility IN (?, ?) ORDER BY updated_at DESC, id DESC",
             ['active', 'paused', 'member', 'public']
         ) ?: [];
 
@@ -153,13 +160,13 @@ final class CMS_Projects_Repository
 
     public function findProjectById(int $id): ?array
     {
-        $row = $this->db->get_row("SELECT * FROM `{$this->projectsTableFull}` WHERE id = ? LIMIT 1", [$id]);
+        $row = $this->db->get_row('SELECT ' . self::PROJECT_COLUMNS . " FROM `{$this->projectsTableFull}` WHERE id = ? LIMIT 1", [$id]);
         return $row ? $this->mapProjectRow($row) : null;
     }
 
     public function findProjectBySlug(string $slug): ?array
     {
-        $row = $this->db->get_row("SELECT * FROM `{$this->projectsTableFull}` WHERE slug = ? LIMIT 1", [$slug]);
+        $row = $this->db->get_row('SELECT ' . self::PROJECT_COLUMNS . " FROM `{$this->projectsTableFull}` WHERE slug = ? LIMIT 1", [$slug]);
         return $row ? $this->mapProjectRow($row) : null;
     }
 
@@ -190,7 +197,7 @@ final class CMS_Projects_Repository
 
     public function getBoardsByProject(int $projectId, bool $includeInactive = true, ?bool $publicOnly = null): array
     {
-        $sql = "SELECT * FROM `{$this->boardsTableFull}` WHERE project_id = ?";
+        $sql = 'SELECT ' . self::BOARD_COLUMNS . " FROM `{$this->boardsTableFull}` WHERE project_id = ?";
         $params = [$projectId];
 
         if (!$includeInactive) {
@@ -231,7 +238,7 @@ final class CMS_Projects_Repository
 
     public function getWidgetsByProject(int $projectId, string $scope = 'all', bool $includeInactive = true): array
     {
-        $sql = "SELECT * FROM `{$this->widgetsTableFull}` WHERE project_id = ?";
+        $sql = 'SELECT ' . self::WIDGET_COLUMNS . " FROM `{$this->widgetsTableFull}` WHERE project_id = ?";
         $params = [$projectId];
 
         if (!$includeInactive) {
@@ -274,7 +281,7 @@ final class CMS_Projects_Repository
 
     public function getTasksByProject(int $projectId, string $scope = 'admin', bool $includeInactive = true): array
     {
-        $sql = "SELECT * FROM `{$this->tasksTableFull}` WHERE project_id = ?";
+        $sql = 'SELECT ' . self::TASK_COLUMNS . " FROM `{$this->tasksTableFull}` WHERE project_id = ?";
         $params = [$projectId];
 
         if (!$includeInactive) {
@@ -292,7 +299,7 @@ final class CMS_Projects_Repository
 
     public function getTasksByBoard(int $boardId, string $scope = 'admin', bool $includeInactive = true): array
     {
-        $sql = "SELECT * FROM `{$this->tasksTableFull}` WHERE board_id = ?";
+        $sql = 'SELECT ' . self::TASK_COLUMNS . " FROM `{$this->tasksTableFull}` WHERE board_id = ?";
         $params = [$boardId];
 
         if (!$includeInactive) {
@@ -310,7 +317,7 @@ final class CMS_Projects_Repository
 
     public function findTaskById(int $id): ?array
     {
-        $row = $this->db->get_row("SELECT * FROM `{$this->tasksTableFull}` WHERE id = ? LIMIT 1", [$id]);
+        $row = $this->db->get_row('SELECT ' . self::TASK_COLUMNS . " FROM `{$this->tasksTableFull}` WHERE id = ? LIMIT 1", [$id]);
         return $row ? $this->mapTaskRow($row) : null;
     }
 
@@ -497,10 +504,252 @@ final class CMS_Projects_Repository
     {
         $limit = max(1, min(500, $limit));
         $rows = $this->db->get_results(
-            "SELECT * FROM `{$this->auditLogTableFull}` ORDER BY id DESC LIMIT {$limit}"
+            'SELECT ' . self::AUDIT_COLUMNS . " FROM `{$this->auditLogTableFull}` ORDER BY id DESC LIMIT {$limit}"
         ) ?: [];
 
         return array_map([$this, 'mapAuditLogRow'], $rows);
+    }
+
+    /**
+     * Mehrere Löschungen atomar ausführen.
+     *
+     * @param list<array{0:string,1:list<int>}> $statements
+     */
+    private function runInTransaction(array $statements): bool
+    {
+        $pdo = $this->db->getPdo();
+        try {
+            $pdo->beginTransaction();
+            foreach ($statements as [$sql, $params]) {
+                $this->db->execute($sql, $params);
+            }
+            $pdo->commit();
+            return true;
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('[cms-projects] transaction failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /** Projekt inkl. Boards, Widgets und Tickets löschen. */
+    public function deleteProjectCascade(int $id): bool
+    {
+        if ($id <= 0) {
+            return false;
+        }
+
+        return $this->runInTransaction([
+            ["DELETE FROM `{$this->tasksTableFull}` WHERE project_id = ?", [$id]],
+            ["DELETE FROM `{$this->widgetsTableFull}` WHERE project_id = ?", [$id]],
+            ["DELETE FROM `{$this->boardsTableFull}` WHERE project_id = ?", [$id]],
+            ["DELETE FROM `{$this->projectsTableFull}` WHERE id = ?", [$id]],
+        ]);
+    }
+
+    /** Board inkl. seiner Tickets löschen. */
+    public function deleteBoardCascade(int $id): bool
+    {
+        if ($id <= 0) {
+            return false;
+        }
+
+        return $this->runInTransaction([
+            ["DELETE FROM `{$this->tasksTableFull}` WHERE board_id = ?", [$id]],
+            ["DELETE FROM `{$this->boardsTableFull}` WHERE id = ?", [$id]],
+        ]);
+    }
+
+    public function findBoardById(int $id): ?array
+    {
+        $row = $this->db->get_row('SELECT ' . self::BOARD_COLUMNS . " FROM `{$this->boardsTableFull}` WHERE id = ? LIMIT 1", [$id]);
+        return $row ? $this->mapBoardRow($row) : null;
+    }
+
+    public function findWidgetById(int $id): ?array
+    {
+        $row = $this->db->get_row('SELECT ' . self::WIDGET_COLUMNS . " FROM `{$this->widgetsTableFull}` WHERE id = ? LIMIT 1", [$id]);
+        return $row ? $this->mapWidgetRow($row) : null;
+    }
+
+    public function deleteWidget(int $id): bool
+    {
+        return $id > 0 && $this->db->delete($this->widgetsTable, ['id' => $id]);
+    }
+
+    /**
+     * Projekte mit Filtern (Status, Sichtbarkeit, Suche) für die Verwaltung.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function findProjects(string $status = '', string $visibility = '', string $search = ''): array
+    {
+        $where = [];
+        $params = [];
+        if ($status !== '') {
+            $where[] = 'status = ?';
+            $params[] = $status;
+        }
+        if ($visibility !== '') {
+            $where[] = 'visibility = ?';
+            $params[] = $visibility;
+        }
+        $search = trim($search);
+        if ($search !== '') {
+            $like = '%' . addcslashes(mb_substr($search, 0, 100), '%_\\') . '%';
+            $where[] = '(name LIKE ? OR slug LIKE ? OR owner_name LIKE ?)';
+            array_push($params, $like, $like, $like);
+        }
+
+        $rows = $this->db->get_results(
+            'SELECT ' . self::PROJECT_COLUMNS . " FROM `{$this->projectsTableFull}`"
+            . ($where !== [] ? ' WHERE ' . implode(' AND ', $where) : '')
+            . ' ORDER BY updated_at DESC, id DESC LIMIT 500',
+            $params
+        ) ?: [];
+
+        return array_map([$this, 'mapProjectRow'], $rows);
+    }
+
+    /**
+     * Zuletzt geänderte aktive Tickets (Dashboard).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function getRecentTasks(int $limit = 8): array
+    {
+        $limit = max(1, min(50, $limit));
+        $rows = $this->db->get_results(
+            "SELECT t.id, t.project_id, t.title, t.priority, t.due_date, t.column_key, t.updated_at, p.name AS project_name
+             FROM `{$this->tasksTableFull}` t
+             INNER JOIN `{$this->projectsTableFull}` p ON p.id = t.project_id
+             WHERE t.is_active = 1
+             ORDER BY t.updated_at DESC, t.id DESC
+             LIMIT {$limit}"
+        ) ?: [];
+
+        return array_map(static fn (object $row): array => (array) $row, $rows);
+    }
+
+    public function countOverdueTasks(): int
+    {
+        return (int) ($this->db->get_var(
+            "SELECT COUNT(*) FROM `{$this->tasksTableFull}` WHERE is_active = 1 AND due_date IS NOT NULL AND due_date < CURDATE()"
+        ) ?? 0);
+    }
+
+    /**
+     * Audit-Log mit Filtern.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function findAuditLogs(int $limit = 200, int $projectId = 0, string $result = '', string $entityType = ''): array
+    {
+        $limit = max(1, min(5000, $limit));
+        $where = [];
+        $params = [];
+        if ($projectId > 0) {
+            $where[] = 'project_id = ?';
+            $params[] = $projectId;
+        }
+        if (in_array($result, ['success', 'failure'], true)) {
+            $where[] = 'result = ?';
+            $params[] = $result;
+        }
+        if ($entityType !== '') {
+            $where[] = 'entity_type = ?';
+            $params[] = $entityType;
+        }
+
+        $rows = $this->db->get_results(
+            'SELECT ' . self::AUDIT_COLUMNS . " FROM `{$this->auditLogTableFull}`"
+            . ($where !== [] ? ' WHERE ' . implode(' AND ', $where) : '')
+            . " ORDER BY id DESC LIMIT {$limit}",
+            $params
+        ) ?: [];
+
+        return array_map([$this, 'mapAuditLogRow'], $rows);
+    }
+
+    public function countAuditLogs(): int
+    {
+        return (int) ($this->db->get_var("SELECT COUNT(*) FROM `{$this->auditLogTableFull}`") ?? 0);
+    }
+
+    public function countAuditLogsOlderThan(int $days): int
+    {
+        if ($days <= 0) {
+            return 0;
+        }
+
+        return (int) ($this->db->get_var(
+            "SELECT COUNT(*) FROM `{$this->auditLogTableFull}` WHERE created_at < (NOW() - INTERVAL ? DAY)",
+            [$days]
+        ) ?? 0);
+    }
+
+    /** Löscht Audit-Einträge älter als $days Tage in Blöcken; liefert die Anzahl. */
+    public function deleteAuditLogsOlderThan(int $days, int $batch = 1000): int
+    {
+        if ($days <= 0) {
+            return 0;
+        }
+
+        $batch = max(100, min(5000, $batch));
+        $deleted = 0;
+        for ($i = 0; $i < 50; $i++) {
+            $count = $this->db->execute(
+                "DELETE FROM `{$this->auditLogTableFull}` WHERE created_at < (NOW() - INTERVAL ? DAY) LIMIT {$batch}",
+                [$days]
+            )->rowCount();
+            $deleted += $count;
+            if ($count < $batch) {
+                break;
+            }
+        }
+
+        return $deleted;
+    }
+
+    /** Entfernt alle Plugin-Tabellen (Deinstallation). */
+    public function dropTables(): void
+    {
+        foreach ([$this->auditLogTableFull, $this->tasksTableFull, $this->widgetsTableFull, $this->boardsTableFull, $this->projectsTableFull] as $table) {
+            $this->db->query("DROP TABLE IF EXISTS `{$table}`");
+        }
+    }
+
+    /**
+     * Öffentliche, aktive Projekte, die alle Suchwörter in Name, Zusammenfassung oder Beschreibung enthalten.
+     *
+     * @param list<string> $words
+     * @return list<array<string,mixed>>
+     */
+    public function searchPublicProjects(array $words, int $limit = 10): array
+    {
+        $words = array_slice(array_values(array_filter(array_map('trim', $words), static fn (string $w): bool => $w !== '')), 0, 8);
+        if ($words === []) {
+            return [];
+        }
+
+        $limit = max(1, min(50, $limit));
+        $where = ["status = 'active'", "visibility = 'public'"];
+        $params = [];
+        foreach ($words as $word) {
+            $like = '%' . addcslashes(mb_substr($word, 0, 60), '%_\\') . '%';
+            $where[] = '(name LIKE ? OR summary LIKE ? OR description LIKE ?)';
+            array_push($params, $like, $like, $like);
+        }
+
+        $rows = $this->db->get_results(
+            'SELECT ' . self::PROJECT_COLUMNS . " FROM `{$this->projectsTableFull}` WHERE " . implode(' AND ', $where)
+            . " ORDER BY updated_at DESC LIMIT {$limit}",
+            $params
+        ) ?: [];
+
+        return array_map([$this, 'mapProjectRow'], $rows);
     }
 
     private function mapProjectRow(object $row): array

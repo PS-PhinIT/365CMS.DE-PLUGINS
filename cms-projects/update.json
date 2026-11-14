@@ -1,12 +1,15 @@
 {
   "name": "CMS Projects",
   "slug": "cms-projects",
-  "version": "3.0.4",
-  "requires_cms": "3.4.00",
-  "requires_php": "8.4",
-  "tested_up_to": "3.4.00",
-  "release_date": "2026-09-30",
+  "version": "4.0.0",
+  "requires_cms": "4.0.0",
+  "requires_php": "8.4.1",
+  "tested_up_to": "4.0.0",
+  "release_date": "2026-11-14",
   "author": "365 Network",
-  "description": "Projektmanagement mit Projekt-Dashboards, Boards und Widgets für Member- und Public-Bereiche.",
-  "changelog": "3.0.4: Admin-Seitenleiste: Der Menüeintrag heißt jetzt „365CMS | Projekte“ (bisher „Projekte“), damit die öffentlichen 365CMS-Plugins im Abschnitt „Plugin-Erweiterungen“ zusammen stehen. 3.0.3: Fatal im Member-Bereich behoben (member_plugin_section_head übergibt ein Array) – betraf alle Member-Plugin-Seiten. Admin-CSS lädt wieder, Board-Drag-and-Drop in admin-board.js ausgelagert, Ticket-Löschbestätigung per data-cms-confirm, Shortcodes über content_render (inkl. Regex-Fix für [cms_projects_widget]), ABSPATH-Guard für admin/page.php. Admin-Oberfläche an das einheitliche, schlichte 365CMS-Plugin-Admin-Design angeglichen (Emoji-/Kürzel-Icons entfernt, Icon-Buttons mit Tabler-Icons, Menüname ohne Präfix); geprüft gegen 365CMS 3.4.00 inkl. Produktiv-CSP. 365CMS-3.0.2: Der Projects-Admin-Menüeintrag wird für die Core-Sidebar-Sortierung mit 365CMS | vorangestellt. 365CMS-3.0.1/PHP-8.4-Härtung: Admin-Renderer prüft Admin-Zugriff, Slugs werden vor Public-/Member-Lookups normalisiert, Widget-URLs blockieren Credentials/Kontrollzeichen/private Hosts, JSON-Payloads sind begrenzt und Public-/Member-Styles wurden optisch beruhigt."
+  "description": "Projektmanagement mit Projekt-Dashboards, Boards, Tickets und Widgets für Member- und Public-Bereiche.",
+  "changelog": "4.0.0: Angleichung an 365CMS 4.0.0 – Admin im einheitlichen Plugin-Layout (KPI-Kopfzeile, linkes Menü mit Projekt-Reitern Stammdaten/Boards/Widgets/Tickets, Dashboard mit Schnellaktionen, System-Check und letzten Tickets); vollständiges CRUD für Projekte, Boards und Widgets (bisher nur Anlegen), Projekt-JSON-Export, Audit-Log-Seite mit Filter und CSV-Export, Einstellungen mit Löschfrist; Audit-Protokoll als Aufbewahrungsregel in System › Datenaufbewahrung; Sitemap- und Suchintegration für öffentliche Projekte; Systemhinweis bei überfälligen Tickets; Tabellenprüfung nur bei neuer Schema-Version; keine SELECT * mehr; Akzentfarben ohne style-Attribute (CSP); Member-Bereich mit gültiger Capability 'member' und nur aktiven/pausierten Projekten; Lebenszyklus-Callbacks; PRG-Redirects mit Flash-Meldungen. 3.0.4: Admin-Seitenleiste: Der Menüeintrag heißt jetzt „365CMS | Projekte“ (bisher „Projekte“), damit die öffentlichen 365CMS-Plugins im Abschnitt „Plugin-Erweiterungen“ zusammen stehen. 3.0.3: Fatal im Member-Bereich behoben (member_plugin_section_head übergibt ein Array) – betraf alle Member-Plugin-Seiten. Admin-CSS lädt wieder, Board-Drag-and-Drop in admin-board.js ausgelagert, Ticket-Löschbestätigung per data-cms-confirm, Shortcodes über content_render (inkl. Regex-Fix für [cms_projects_widget]), ABSPATH-Guard für admin/page.php. Admin-Oberfläche an das einheitliche, schlichte 365CMS-Plugin-Admin-Design angeglichen (Emoji-/Kürzel-Icons entfernt, Icon-Buttons mit Tabler-Icons, Menüname ohne Präfix); geprüft gegen 365CMS 3.4.00 inkl. Produktiv-CSP. 365CMS-3.0.2: Der Projects-Admin-Menüeintrag wird für die Core-Sidebar-Sortierung mit 365CMS | vorangestellt. 365CMS-3.0.1/PHP-8.4-Härtung: Admin-Renderer prüft Admin-Zugriff, Slugs werden vor Public-/Member-Lookups normalisiert, Widget-URLs blockieren Credentials/Kontrollzeichen/private Hosts, JSON-Payloads sind begrenzt und Public-/Member-Styles wurden optisch beruhigt.",
+  "requires": "4.0.0",
+  "min_php": "8.4.1",
+  "tested": "4.0.0"
 }

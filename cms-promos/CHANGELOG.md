@@ -1,5 +1,31 @@
 # Changelog
 
+## 4.0.0 - 2026-11-14
+
+### Kompatibilität
+
+- Voraussetzung jetzt 365CMS 4.0.0 und PHP 8.4.1 (`Requires CMS`, `Requires PHP`, `update.json`).
+- Lebenszyklus-Callbacks `cms_promos_activate()`, `cms_promos_deactivate()`, `cms_promos_uninstall()` (Deinstallation entfernt Tabellen und Option).
+- Öffentliche Archivseiten werden über `cms_sitemap_entries` gemeldet; Archiv setzt Titel, Beschreibung und Canonical über `SEOService`.
+- Systemhinweis über `AdminNoticeService::registerCheck()`, wenn aktive Promos ihr Enddatum überschritten haben.
+
+### Admin
+
+- Einheitliches 365CMS-Plugin-Layout (`cms_plugin_workspace_open()`): Kopfzeile mit Versions-/Status-Badge und vier KPI-Karten (Promos, live, Impressions, Klickrate), linkes Plugin-Menü mit Zähler-Badges, Übersicht mit Schnellaktionen, System-Check und zuletzt bearbeiteten Promos.
+- Promo-Liste mit Filter-Toolbar (Suche, Status inkl. „live“/„abgelaufen“, Platzierung); Formular als eigene Ansicht.
+- Neu: Promo duplizieren, Statistik je Promo bzw. gesamt zurücksetzen, Einstellungen zurücksetzen, Leistungs-Export als CSV (Excel-tauglich, Formel-Injektion entschärft) und JSON.
+- UTM-Builder zeigt die finale Ziel-URL als Vorschau mit Kopierfunktion, statt die gespeicherte Ziel-URL zu verändern.
+- Lösch- und Rücksetzaktionen mit Bestätigung (`data-cms-confirm`).
+
+### Sicherheit & Performance
+
+- Klick-Webhook ausschließlich über `CMS\Http\Client` (SSRF-Schutz); veraltetes `curl_close()` entfernt.
+- Keine PHP-Session mehr für anonyme Besucher (Frequency-Cap nur per Cookie) – Seiten bleiben cachebar.
+- Klick-Route leitet nur aktive Promos in ihrer Laufzeit weiter, sendet `no-store`/`noindex`.
+- Schema-Prüfung nur bei geänderter DB-Version (bisher 15+ Abfragen pro Request); neue Indizes `idx_hook`, `idx_placement_status`, `idx_status_window`, `idx_priority`; Einstellungen per Upsert; keine `SELECT *`; korrelierte Zählabfragen ersetzt.
+- Öffentliches CSS nur auf `/promos` oder wenn eine Hook-Fläche tatsächlich Promos ausspielt (vorher fehlte es auf Seiten mit Hook-Promos).
+- Admin-CSS ausschließlich mit Core-Tokens (Light/Dark).
+
 ## 3.0.4 - 2026-09-30
 
 ### Geändert

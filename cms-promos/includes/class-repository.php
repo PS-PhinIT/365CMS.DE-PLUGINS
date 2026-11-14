@@ -22,6 +22,20 @@ final class CMS_Promos_Repository
         'before_footer' => 'before_footer – oberhalb des Footers',
     ];
 
+    /** Spalten einer Promo (statt SELECT *). */
+    private const PROMO_COLUMNS = 'pr.id, pr.placement_id, pr.title, pr.title_en, pr.slug, pr.teaser, pr.teaser_en, pr.content_html, pr.content_html_en, pr.target_url, pr.button_label, pr.button_label_en, pr.image_url, pr.status, pr.start_at, pr.end_at, pr.priority, pr.is_featured, pr.frequency_cap, pr.frequency_window_hours, pr.utm_source, pr.utm_medium, pr.utm_campaign, pr.utm_term, pr.utm_content, pr.impression_count, pr.click_count, pr.created_at, pr.updated_at';
+
+    /** Spalten einer Platzierung (statt SELECT *). */
+    private const PLACEMENT_COLUMNS = 'p.id, p.name, p.slug, p.description, p.status, p.theme_hook, p.hook_priority, p.max_items, p.created_at, p.updated_at';
+
+    /** @var array<string,string> */
+    public const STATUS_LABELS = [
+        'draft' => 'Entwurf',
+        'active' => 'Aktiv',
+        'paused' => 'Pausiert',
+        'archived' => 'Archiviert',
+    ];
+
     private \CMS\Database $db;
     private string $prefix;
     private ?array $settingsCache = null;
@@ -60,14 +74,9 @@ final class CMS_Promos_Repository
 
     public function seed_defaults(): void
     {
+        // Fehlende Standardwerte in einem Statement ergänzen, vorhandene Werte bleiben unverändert.
+        $stmt = $this->db->prepare("INSERT IGNORE INTO {$this->prefix}promo_settings (setting_key, setting_value) VALUES (?, ?)");
         foreach (self::DEFAULT_SETTINGS as $key => $value) {
-            $exists = $this->db->prepare("SELECT id FROM {$this->prefix}promo_settings WHERE setting_key = ? LIMIT 1");
-            $exists->execute([$key]);
-            if ($exists->fetchColumn() !== false) {
-                continue;
-            }
-
-            $stmt = $this->db->prepare("INSERT INTO {$this->prefix}promo_settings (setting_key, setting_value) VALUES (?, ?)");
             $stmt->execute([$key, $value]);
         }
 
@@ -156,24 +165,50 @@ final class CMS_Promos_Repository
                 'click_export_webhook_url' => $this->clean_url($post['click_export_webhook_url'] ?? ''),
             ];
 
-            foreach ($settings as $key => $value) {
-                $exists = $this->db->prepare("SELECT id FROM {$this->prefix}promo_settings WHERE setting_key = ? LIMIT 1");
-                $exists->execute([$key]);
-                if ($exists->fetchColumn() !== false) {
-                    $stmt = $this->db->prepare("UPDATE {$this->prefix}promo_settings SET setting_value = ? WHERE setting_key = ?");
-                    $stmt->execute([$value, $key]);
-                } else {
-                    $stmt = $this->db->prepare("INSERT INTO {$this->prefix}promo_settings (setting_key, setting_value) VALUES (?, ?)");
-                    $stmt->execute([$key, $value]);
-                }
+            if ($settings['default_button_label'] === '') {
+                $settings['default_button_label'] = self::DEFAULT_SETTINGS['default_button_label'];
+            }
+            if ($settings['click_export_enabled'] === '1' && $settings['click_export_webhook_url'] === '') {
+                return ['success' => false, 'error' => 'Für den Klick-Export wird eine gültige öffentliche https-Webhook-URL benötigt.'];
             }
 
-            $this->settingsCache = null;
+            $this->write_settings($settings);
             return ['success' => true, 'message' => 'Promo-Einstellungen gespeichert.'];
         } catch (\Throwable $e) {
             $this->log_error('Failed to save settings', $e);
             return ['success' => false, 'error' => 'Die Einstellungen konnten nicht gespeichert werden.'];
         }
+    }
+
+    /**
+     * Setzt alle Einstellungen auf die Standardwerte zurück.
+     *
+     * @return array{success:bool,message?:string,error?:string}
+     */
+    public function reset_settings(): array
+    {
+        try {
+            $this->write_settings(self::DEFAULT_SETTINGS);
+            return ['success' => true, 'message' => 'Einstellungen auf Standardwerte zurückgesetzt.'];
+        } catch (\Throwable $e) {
+            $this->log_error('Failed to reset settings', $e);
+            return ['success' => false, 'error' => 'Die Einstellungen konnten nicht zurückgesetzt werden.'];
+        }
+    }
+
+    /**
+     * @param array<string,string> $settings
+     */
+    private function write_settings(array $settings): void
+    {
+        $stmt = $this->db->prepare(
+            "INSERT INTO {$this->prefix}promo_settings (setting_key, setting_value) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
+        );
+        foreach ($settings as $key => $value) {
+            $stmt->execute([$key, $value]);
+        }
+        $this->settingsCache = null;
     }
 
     public function get_placements(): array
@@ -183,8 +218,14 @@ final class CMS_Promos_Repository
         }
 
         try {
-            $sql = "SELECT p.*, (SELECT COUNT(*) FROM {$this->prefix}promos pr WHERE pr.placement_id = p.id) AS promo_count
+            $sql = 'SELECT ' . self::PLACEMENT_COLUMNS . ", COALESCE(c.promo_count, 0) AS promo_count, COALESCE(c.active_count, 0) AS active_count
                     FROM {$this->prefix}promo_placements p
+                    LEFT JOIN (
+                        SELECT placement_id, COUNT(*) AS promo_count, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_count
+                        FROM {$this->prefix}promos
+                        WHERE placement_id IS NOT NULL
+                        GROUP BY placement_id
+                    ) c ON c.placement_id = p.id
                     ORDER BY CASE WHEN p.theme_hook = 'manual' THEN 1 ELSE 0 END ASC, p.theme_hook ASC, p.hook_priority ASC, p.name ASC";
             $stmt = $this->db->prepare($sql);
             $stmt->execute();
@@ -209,7 +250,7 @@ final class CMS_Promos_Repository
 
     public function get_placement(int $id): ?array
     {
-        $stmt = $this->db->prepare("SELECT * FROM {$this->prefix}promo_placements WHERE id = ? LIMIT 1");
+        $stmt = $this->db->prepare('SELECT ' . self::PLACEMENT_COLUMNS . " FROM {$this->prefix}promo_placements p WHERE p.id = ? LIMIT 1");
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return is_array($row) ? $row : null;
@@ -217,7 +258,7 @@ final class CMS_Promos_Repository
 
     public function get_placement_by_slug(string $slug): ?array
     {
-        $stmt = $this->db->prepare("SELECT * FROM {$this->prefix}promo_placements WHERE slug = ? LIMIT 1");
+        $stmt = $this->db->prepare('SELECT ' . self::PLACEMENT_COLUMNS . " FROM {$this->prefix}promo_placements p WHERE p.slug = ? LIMIT 1");
         $stmt->execute([$slug]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return is_array($row) ? $row : null;
@@ -235,7 +276,7 @@ final class CMS_Promos_Repository
             $slug = $this->ensure_unique_placement_slug($this->slugify($post['slug'] ?? $name), $id);
             $status = ($post['status'] ?? 'active') === 'inactive' ? 'inactive' : 'active';
             $themeHook = $this->normalize_theme_hook($post['theme_hook'] ?? 'manual');
-            $values = [$name, $slug, $this->clean_textarea($post['description'] ?? ''), $status, $themeHook, (int) ($post['hook_priority'] ?? 10), max(1, (int) ($post['max_items'] ?? 3))];
+            $values = [$name, $slug, $this->clean_textarea($post['description'] ?? ''), $status, $themeHook, max(-100, min(1000, (int) ($post['hook_priority'] ?? 10))), max(1, min(24, (int) ($post['max_items'] ?? 3)))];
 
             if ($id > 0) {
                 $stmt = $this->db->prepare("UPDATE {$this->prefix}promo_placements SET name = ?, slug = ?, description = ?, status = ?, theme_hook = ?, hook_priority = ?, max_items = ? WHERE id = ?");
@@ -280,7 +321,7 @@ final class CMS_Promos_Repository
         }
 
         try {
-            $sql = "SELECT pr.*, p.name AS placement_name, p.slug AS placement_slug, p.theme_hook AS placement_theme_hook
+            $sql = 'SELECT ' . self::PROMO_COLUMNS . ", p.name AS placement_name, p.slug AS placement_slug, p.theme_hook AS placement_theme_hook
                     FROM {$this->prefix}promos pr
                     LEFT JOIN {$this->prefix}promo_placements p ON p.id = pr.placement_id
                     ORDER BY pr.priority DESC, pr.updated_at DESC, pr.id DESC";
@@ -301,7 +342,7 @@ final class CMS_Promos_Repository
             return $this->activePromosCache[$cacheKey];
         }
 
-        $sql = "SELECT pr.*, p.name AS placement_name, p.slug AS placement_slug, p.max_items
+        $sql = 'SELECT ' . self::PROMO_COLUMNS . ", p.name AS placement_name, p.slug AS placement_slug, p.max_items
                 FROM {$this->prefix}promos pr
                 LEFT JOIN {$this->prefix}promo_placements p ON p.id = pr.placement_id
                 WHERE pr.status = 'active'
@@ -334,7 +375,7 @@ final class CMS_Promos_Repository
             return $this->hookPlacementsCache[$themeHook];
         }
 
-        $sql = "SELECT p.*, (SELECT COUNT(*) FROM {$this->prefix}promos pr WHERE pr.placement_id = p.id AND pr.status = 'active') AS promo_count
+        $sql = 'SELECT ' . self::PLACEMENT_COLUMNS . "
                 FROM {$this->prefix}promo_placements p
                 WHERE p.status = 'active' AND p.theme_hook = ?
                 ORDER BY p.hook_priority ASC, p.name ASC";
@@ -357,7 +398,7 @@ final class CMS_Promos_Repository
             return $this->placementPromosCache[$cacheKey];
         }
 
-        $sql = "SELECT pr.*, p.name AS placement_name, p.slug AS placement_slug, p.theme_hook AS placement_theme_hook
+        $sql = 'SELECT ' . self::PROMO_COLUMNS . ", p.name AS placement_name, p.slug AS placement_slug, p.theme_hook AS placement_theme_hook
                 FROM {$this->prefix}promos pr
                 INNER JOIN {$this->prefix}promo_placements p ON p.id = pr.placement_id
                 WHERE pr.placement_id = ?
@@ -384,7 +425,7 @@ final class CMS_Promos_Repository
 
     public function get_promo(int $id): ?array
     {
-        $stmt = $this->db->prepare("SELECT * FROM {$this->prefix}promos WHERE id = ? LIMIT 1");
+        $stmt = $this->db->prepare('SELECT ' . self::PROMO_COLUMNS . " FROM {$this->prefix}promos pr WHERE pr.id = ? LIMIT 1");
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return is_array($row) ? $row : null;
@@ -392,7 +433,7 @@ final class CMS_Promos_Repository
 
     public function get_promo_by_slug(string $slug): ?array
     {
-        $stmt = $this->db->prepare("SELECT * FROM {$this->prefix}promos WHERE slug = ? LIMIT 1");
+        $stmt = $this->db->prepare('SELECT ' . self::PROMO_COLUMNS . " FROM {$this->prefix}promos pr WHERE pr.slug = ? LIMIT 1");
         $stmt->execute([$slug]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return is_array($row) ? $row : null;
@@ -440,7 +481,7 @@ final class CMS_Promos_Repository
                 $status,
                 $startAt,
                 $endAt,
-                max(0, (int) ($post['priority'] ?? 0)),
+                max(0, min(9999, (int) ($post['priority'] ?? 0))),
                 !empty($post['is_featured']) ? 1 : 0,
                 max(0, min(50, (int) ($post['frequency_cap'] ?? 0))),
                 max(1, min(24 * 14, (int) ($post['frequency_window_hours'] ?? 24))),
@@ -525,6 +566,227 @@ final class CMS_Promos_Repository
         } catch (\Throwable $e) {
             $this->log_error('Failed to increment impressions', $e);
         }
+    }
+
+    /**
+     * Promo-Liste mit Status-/Suchfilter für die Verwaltung.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function find_promos(string $status = '', string $search = '', int $placementId = 0): array
+    {
+        $where = [];
+        $params = [];
+        if ($status === 'expired') {
+            $where[] = "pr.status = 'active' AND pr.end_at IS NOT NULL AND pr.end_at < NOW()";
+        } elseif ($status === 'live') {
+            $where[] = "pr.status = 'active' AND (pr.start_at IS NULL OR pr.start_at <= NOW()) AND (pr.end_at IS NULL OR pr.end_at >= NOW())";
+        } elseif (array_key_exists($status, self::STATUS_LABELS)) {
+            $where[] = 'pr.status = ?';
+            $params[] = $status;
+        }
+        $search = trim($search);
+        if ($search !== '') {
+            $like = '%' . addcslashes(mb_substr($search, 0, 100), '%_\\') . '%';
+            $where[] = '(pr.title LIKE ? OR pr.slug LIKE ? OR pr.teaser LIKE ?)';
+            array_push($params, $like, $like, $like);
+        }
+        if ($placementId > 0) {
+            $where[] = 'pr.placement_id = ?';
+            $params[] = $placementId;
+        }
+
+        $sql = 'SELECT ' . self::PROMO_COLUMNS . ", p.name AS placement_name, p.slug AS placement_slug, p.theme_hook AS placement_theme_hook
+                FROM {$this->prefix}promos pr
+                LEFT JOIN {$this->prefix}promo_placements p ON p.id = pr.placement_id"
+            . ($where !== [] ? ' WHERE ' . implode(' AND ', $where) : '')
+            . ' ORDER BY pr.priority DESC, pr.updated_at DESC, pr.id DESC LIMIT 500';
+
+        try {
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) {
+            $this->log_error('Failed to filter promos', $e);
+            return [];
+        }
+    }
+
+    /**
+     * Zuletzt geänderte Promos für das Dashboard.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function get_recent_promos(int $limit = 6): array
+    {
+        $limit = max(1, min(50, $limit));
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT pr.id, pr.title, pr.status, pr.end_at, pr.impression_count, pr.click_count, pr.updated_at, p.name AS placement_name
+                 FROM {$this->prefix}promos pr
+                 LEFT JOIN {$this->prefix}promo_placements p ON p.id = pr.placement_id
+                 ORDER BY pr.updated_at DESC, pr.id DESC
+                 LIMIT {$limit}"
+            );
+            $stmt->execute();
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) {
+            $this->log_error('Failed to load recent promos', $e);
+            return [];
+        }
+    }
+
+    /** Aktive Promos mit überschrittenem Enddatum. */
+    public function count_expired_active(): int
+    {
+        try {
+            return (int) $this->db->get_var("SELECT COUNT(*) FROM {$this->prefix}promos WHERE status = 'active' AND end_at IS NOT NULL AND end_at < NOW()");
+        } catch (\Throwable $e) {
+            $this->log_error('Failed to count expired promos', $e);
+            return 0;
+        }
+    }
+
+    /** Aktuell ausgespielte Promos (aktiv und innerhalb der Laufzeit). */
+    public function count_live_promos(): int
+    {
+        try {
+            return (int) $this->db->get_var(
+                "SELECT COUNT(*) FROM {$this->prefix}promos
+                 WHERE status = 'active' AND (start_at IS NULL OR start_at <= NOW()) AND (end_at IS NULL OR end_at >= NOW())"
+            );
+        } catch (\Throwable $e) {
+            $this->log_error('Failed to count live promos', $e);
+            return 0;
+        }
+    }
+
+    /** Letzte Änderung einer Promo (für die Sitemap). */
+    public function get_last_modified(): string
+    {
+        try {
+            $value = (string) $this->db->get_var("SELECT MAX(updated_at) FROM {$this->prefix}promos WHERE status = 'active'");
+            return $value !== '' ? $value : date('Y-m-d H:i:s');
+        } catch (\Throwable $e) {
+            return date('Y-m-d H:i:s');
+        }
+    }
+
+    /**
+     * true, wenn mindestens eine aktive Hook-Platzierung eine ausspielbare Promo hat
+     * (steuert das Laden des öffentlichen Stylesheets; eine Abfrage pro Request).
+     */
+    public function has_live_hook_placements(): bool
+    {
+        static $result = null;
+        if ($result !== null) {
+            return $result;
+        }
+
+        try {
+            $value = $this->db->get_var(
+                "SELECT 1 FROM {$this->prefix}promo_placements p
+                 INNER JOIN {$this->prefix}promos pr ON pr.placement_id = p.id
+                 WHERE p.status = 'active' AND p.theme_hook <> 'manual' AND pr.status = 'active'
+                   AND (pr.start_at IS NULL OR pr.start_at <= NOW()) AND (pr.end_at IS NULL OR pr.end_at >= NOW())
+                 LIMIT 1"
+            );
+            $result = $value !== null && $value !== false;
+        } catch (\Throwable $e) {
+            $this->log_error('Failed to check hook placements', $e);
+            $result = false;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Dupliziert eine Promo als Entwurf (Zähler auf 0).
+     *
+     * @return array{success:bool,message?:string,error?:string,id?:int}
+     */
+    public function duplicate_promo(int $id): array
+    {
+        $promo = $id > 0 ? $this->get_promo($id) : null;
+        if ($promo === null) {
+            return ['success' => false, 'error' => 'Promo nicht gefunden.'];
+        }
+
+        $copy = $promo;
+        $copy['promo_id'] = 0;
+        $copy['title'] = mb_substr((string) $promo['title'] . ' (Kopie)', 0, 180);
+        $copy['slug'] = (string) $promo['slug'] . '-kopie';
+        $copy['status'] = 'draft';
+        foreach (['start_at', 'end_at'] as $key) {
+            $copy[$key] = !empty($promo[$key]) ? date('Y-m-d\\TH:i', (int) strtotime((string) $promo[$key])) : '';
+        }
+
+        $result = $this->save_promo($copy);
+        if (!empty($result['success'])) {
+            $result['message'] = 'Promo als Entwurf dupliziert.';
+            $result['id'] = (int) $this->db->lastInsertId();
+        }
+
+        return $result;
+    }
+
+    /**
+     * Setzt Impressions und Klicks zurück (einzelne Promo oder alle).
+     *
+     * @return array{success:bool,message?:string,error?:string}
+     */
+    public function reset_stats(int $id = 0): array
+    {
+        try {
+            if ($id > 0) {
+                $stmt = $this->db->prepare("UPDATE {$this->prefix}promos SET impression_count = 0, click_count = 0 WHERE id = ?");
+                $stmt->execute([$id]);
+            } else {
+                $this->db->query("UPDATE {$this->prefix}promos SET impression_count = 0, click_count = 0");
+            }
+            $this->invalidate_read_caches();
+            return ['success' => true, 'message' => $id > 0 ? 'Statistik der Promo zurückgesetzt.' : 'Statistik aller Promos zurückgesetzt.'];
+        } catch (\Throwable $e) {
+            $this->log_error('Failed to reset stats', $e);
+            return ['success' => false, 'error' => 'Die Statistik konnte nicht zurückgesetzt werden.'];
+        }
+    }
+
+    /**
+     * Export-Zeilen (Leistungsdaten) für CSV/JSON.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function get_export_rows(): array
+    {
+        $rows = [];
+        foreach ($this->get_promos() as $promo) {
+            $impressions = (int) ($promo['impression_count'] ?? 0);
+            $clicks = (int) ($promo['click_count'] ?? 0);
+            $rows[] = [
+                'id' => (int) $promo['id'],
+                'title' => (string) $promo['title'],
+                'slug' => (string) $promo['slug'],
+                'status' => (string) $promo['status'],
+                'placement' => (string) ($promo['placement_name'] ?? ''),
+                'target_url' => (string) ($promo['target_url'] ?? ''),
+                'start_at' => (string) ($promo['start_at'] ?? ''),
+                'end_at' => (string) ($promo['end_at'] ?? ''),
+                'priority' => (int) ($promo['priority'] ?? 0),
+                'featured' => (int) ($promo['is_featured'] ?? 0),
+                'impressions' => $impressions,
+                'clicks' => $clicks,
+                'ctr_percent' => $impressions > 0 ? round($clicks / $impressions * 100, 2) : 0.0,
+                'updated_at' => (string) ($promo['updated_at'] ?? ''),
+            ];
+        }
+
+        return $rows;
+    }
+
+    public function status_label(string $status): string
+    {
+        return self::STATUS_LABELS[$status] ?? $status;
     }
 
     private function normalize_datetime(string $value): ?string

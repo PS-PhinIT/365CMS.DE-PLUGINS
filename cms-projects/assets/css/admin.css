@@ -1,0 +1,205 @@
+/**
+ * CMS Projects – Admin-Ergänzungen zum 365CMS-Layout-Vertrag (admin-plugins.css).
+ * Die gemeinsamen Board-/Widget-Bausteine aus style.css erhalten hier die Core-Tokens
+ * (Light/Dark über --cms-plugin-*, max. 2px Radius).
+ */
+
+.cms-plugin-admin-content {
+    --cp-primary: var(--cms-plugin-primary);
+    --cp-primary-dark: var(--cms-plugin-accent-strong, var(--cms-plugin-primary));
+    --cp-primary-soft: var(--cms-plugin-surface-soft);
+    --cp-bg: transparent;
+    --cp-card: var(--cms-plugin-surface);
+    --cp-border: var(--cms-plugin-border-soft);
+    --cp-border-strong: var(--cms-plugin-border);
+    --cp-text: var(--cms-plugin-text);
+    --cp-muted: var(--cms-plugin-muted);
+    --phinit-radius-md: var(--cms-plugin-radius);
+    --phinit-shadow-card: var(--cms-plugin-shadow);
+    --phinit-shadow-raised: var(--cms-plugin-shadow);
+}
+
+.cms-plugin-admin-content :is(.cp-item-card, .cp-widget-card, .cp-board-preview-column, .cp-ticket-card, .cp-stat-card) {
+    border-radius: var(--cms-plugin-radius);
+}
+
+.cms-plugin-admin-content .cp-toolbar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+    min-width: 0;
+    margin: 0 0 1rem;
+    padding: 0.875rem 1rem;
+    background: var(--cms-plugin-surface);
+    border: 1px solid var(--cms-plugin-border);
+    border-radius: var(--cms-plugin-radius);
+}
+
+.cms-plugin-admin-content .cp-toolbar__field,
+.cms-plugin-admin-content .cp-toolbar__actions {
+    min-width: 0;
+}
+
+.cms-plugin-admin-content .cp-toolbar__field .form-label {
+    margin-bottom: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--cms-plugin-muted);
+}
+
+.cms-plugin-admin-content .cp-toolbar__actions,
+.cms-plugin-admin-content .cp-form-actions,
+.cms-plugin-admin-content .cp-action-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.cms-plugin-admin-content .cp-action-group {
+    justify-content: flex-end;
+    gap: 0.375rem;
+}
+
+.cms-plugin-admin-content .cp-action-group form,
+.cms-plugin-admin-content .cp-form-actions form {
+    margin: 0;
+}
+
+.cms-plugin-admin-content .cp-form-actions {
+    margin: 1rem 0;
+}
+
+.cms-plugin-admin-content .admin-card + .admin-card,
+.cms-plugin-admin-content .cp-form > .admin-card + .admin-card,
+.cms-plugin-admin-content .cp-split + .cp-split,
+.cms-plugin-admin-content .admin-card + .cp-split {
+    margin-top: 1rem;
+}
+
+.cms-plugin-admin-content .cp-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+    min-width: 0;
+}
+
+@media (max-width: 1280px) {
+    .cms-plugin-admin-content .cp-split {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.cms-plugin-admin-content .cp-panel-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 0.75rem;
+    margin: 0 0 0.875rem;
+}
+
+.cms-plugin-admin-content .cp-panel-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.cms-plugin-admin-content .cp-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: 0 1rem;
+    min-width: 0;
+}
+
+.cms-plugin-admin-content .cp-form .form-group {
+    min-width: 0;
+    margin-bottom: 0.875rem;
+}
+
+.cms-plugin-admin-content .form-hint {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--cms-plugin-muted);
+}
+
+.cms-plugin-admin-content .cp-code-input {
+    min-height: 12rem;
+    font-family: var(--tblr-font-monospace, monospace);
+    font-size: 0.8125rem;
+}
+
+.cms-plugin-admin-content .cp-inline-form-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.cms-plugin-admin-content .cp-inline-form-row .form-group {
+    margin: 0;
+}
+
+.cms-plugin-admin-content .cp-admin-link {
+    font-weight: 600;
+    color: var(--cms-plugin-primary);
+    text-decoration: none;
+}
+
+.cms-plugin-admin-content .cp-admin-link:hover {
+    text-decoration: underline;
+}
+
+.cms-plugin-admin-content .cp-muted {
+    font-size: 0.75rem;
+    color: var(--cms-plugin-muted);
+}
+
+.cms-plugin-admin-content .cp-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.cms-plugin-admin-content .cp-nowrap {
+    white-space: nowrap;
+}
+
+.cms-plugin-admin-content .cp-row--active > td {
+    background: var(--cms-plugin-primary-soft);
+}
+
+.cms-plugin-admin-content .cp-swatch {
+    display: inline-block;
+    width: 0.625rem;
+    height: 0.625rem;
+    margin-right: 0.375rem;
+    border-radius: var(--cms-plugin-radius);
+    background: var(--cp-project-accent, var(--cms-plugin-primary));
+    vertical-align: middle;
+}
+
+.cms-plugin-admin-content .cp-badge {
+    display: inline-block;
+    margin: 0 0.25rem 0.125rem 0;
+    padding: 0.0625rem 0.4375rem;
+    border: 1px solid var(--cms-plugin-border-soft);
+    border-radius: var(--cms-plugin-radius);
+    background: var(--cms-plugin-surface-soft);
+    color: var(--cms-plugin-soft);
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.cms-plugin-admin-content .cp-badge--active { background: var(--tblr-success-lt); color: var(--tblr-success); }
+.cms-plugin-admin-content .cp-badge--paused,
+.cms-plugin-admin-content .cp-badge--overdue { background: var(--tblr-warning-lt); color: var(--tblr-warning); }
+.cms-plugin-admin-content .cp-badge--archived,
+.cms-plugin-admin-content .cp-badge--draft { background: var(--cms-plugin-surface-soft); color: var(--cms-plugin-muted); }
+
+.cms-plugin-admin-content .cp-danger-zone {
+    margin-top: 1.5rem;
+    border-color: var(--tblr-danger-lt);
+}

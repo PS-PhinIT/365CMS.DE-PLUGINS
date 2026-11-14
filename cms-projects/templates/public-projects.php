@@ -50,15 +50,6 @@ $buildProjectPath = static function (string $slug, string $lang) : string {
     return $lang === 'en' ? '/en/' . $relativePath : '/' . $relativePath;
 };
 
-$projectAccentStyle = static function (array $project): string {
-    $color = (string) ($project['accent_color'] ?? '#2563eb');
-    if (preg_match('/^#[0-9a-fA-F]{6}$/', $color) !== 1) {
-        $color = '#2563eb';
-    }
-
-    return '--cp-project-accent:' . strtolower($color) . ';';
-};
-
 $renderBoardBlock = static function (array $board) use ($t): void {
     $payload = (array) ($board['payload_data'] ?? []);
     $groups = [];
@@ -183,7 +174,7 @@ $renderWidgetBlock = static function (array $widget): void {
             <?php else: ?>
                 <?php foreach ($projects as $project): ?>
                     <article class="cp-project-card">
-                        <span class="cp-project-color" style="<?php echo htmlspecialchars($projectAccentStyle($project), ENT_QUOTES, 'UTF-8'); ?>"></span>
+                        <?php echo CMS_Projects_Service::accentSwatch($project); ?>
                         <div class="cp-card-meta-row">
                             <span class="cp-badge"><?php echo htmlspecialchars((string) ($project['status'] ?? 'active'), ENT_QUOTES, 'UTF-8'); ?></span>
                             <span class="cp-badge"><?php echo htmlspecialchars((string) (($project['owner_name'] ?? '') !== '' ? ($project['owner_name'] ?? '') : $t('default_owner', 'Project team')), ENT_QUOTES, 'UTF-8'); ?></span>
@@ -204,7 +195,7 @@ $renderWidgetBlock = static function (array $widget): void {
         <section class="cp-dashboard-shell">
             <div class="cp-dashboard-main">
                 <article class="cp-project-detail-card">
-                    <span class="cp-project-color" style="<?php echo htmlspecialchars($projectAccentStyle((array) ($dashboard['project'] ?? [])), ENT_QUOTES, 'UTF-8'); ?>"></span>
+                    <?php echo CMS_Projects_Service::accentSwatch((array) ($dashboard['project'] ?? [])); ?>
                     <div class="cp-card-meta-row">
                         <span class="cp-badge"><?php echo htmlspecialchars((string) ($dashboard['project']['status'] ?? 'active'), ENT_QUOTES, 'UTF-8'); ?></span>
                         <?php if (!empty($dashboard['project']['owner_name'])): ?>

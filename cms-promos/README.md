@@ -1,18 +1,25 @@
-# CMS Promos
+# 365CMS | Promos
 
-Promo- und Kampagnen-Plugin für 365CMS mit Platzierungen, CTA-Elementen, Ziel-URLs und einfacher Performance-Basis über Impressions und Klicks.
+Promo- und Kampagnen-Plugin für 365CMS 4.0.0 mit Platzierungen, CTA-Elementen, Ziel-URLs, Laufzeiten, Frequency-Cap, UTM-Parametern und Klick-/Impression-Statistik.
 
-## Features
+- **Voraussetzungen:** 365CMS 4.0.0, PHP 8.4.1
+- **Admin:** `/admin/plugins/promos-dashboard` (Übersicht, Promos, Platzierungen, Einstellungen) im einheitlichen Plugin-Layout
+- **Technische Dokumentation:** [DOC/README.md](DOC/README.md)
+- **Öffentlich:** `/promos`, `/promos/placement/<slug>`, Klick-Weiterleitung `/promo/click/<slug>` (jeweils auch unter `/en/…`)
 
-- Promo-Elemente mit Titel, Teaser, Content, Bild-URL und CTA verwalten
-- Platzierungen wie Hero, Sidebar oder CTA-Zonen definieren
-- Automatische Ausspielung über definierte Theme-Hooks wie `after_header`, `home_content` und `before_footer`
-- Klick-Weiterleitung über `/promo/click/:slug`
-- Öffentliche Übersicht über `/promos`
-- Admin-Dashboard mit Statistik- und Verwaltungsseiten
+## Funktionen
 
-## Sicherheitsstatus (2026-04-04)
+- Promos mit Titel, Teaser, Zusatztext (DE/EN), Bild, CTA, Laufzeit, Priorität, Featured-Flag
+- Platzierungen mit automatischer Ausspielung über die Theme-Hooks `body_start`, `after_header`, `home_content`, `before_footer`
+- Frequency-Cap je Besucher (Cookie, ohne Session)
+- Filter, Duplizieren, Statistik zurücksetzen, CSV/JSON-Export
+- Klick-Export über die Action `cms_promos_click_export` und optional per Webhook (Core-HTTP-Client mit SSRF-Schutz)
+- Sitemap-Einträge (`cms_sitemap_entries`), Systemhinweis für abgelaufene Promos
 
-- Snyk-Code-Audit für `cms-promos` abgeschlossen, aktuell ohne offene Findings.
-- Admin-Redirects verweisen nach schreibenden Aktionen jetzt ausschließlich auf feste interne Dashboard-Routen.
-- Das reduziert Redirect-Manipulationen und beseitigt den vorherigen Open-Redirect-Befund.
+## Lebenszyklus
+
+| Ereignis | Verhalten |
+|---|---|
+| Aktivieren | Tabellen `promos`, `promo_placements`, `promo_settings` anlegen/migrieren, Standardwerte setzen |
+| Deaktivieren | Daten bleiben erhalten |
+| Löschen | Tabellen und Option `cms_promos_db_version` werden entfernt |

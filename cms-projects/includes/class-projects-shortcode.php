@@ -8,6 +8,27 @@ if (!defined('ABSPATH')) {
 
 final class CMS_Projects_Shortcode
 {
+    private static bool $stylesLoaded = false;
+
+    public static function markStylesLoaded(): void
+    {
+        self::$stylesLoaded = true;
+    }
+
+    /** Stylesheet einmalig mit der ersten Shortcode-Ausgabe liefern (Shortcodes stehen auf beliebigen Seiten). */
+    private function stylesheetOnce(): string
+    {
+        if (self::$stylesLoaded) {
+            return '';
+        }
+        self::$stylesLoaded = true;
+        $cssFile = CMS_PROJECTS_PLUGIN_DIR . 'assets/css/style.css';
+
+        return is_file($cssFile)
+            ? '<link rel="stylesheet" href="' . htmlspecialchars(CMS_PROJECTS_PLUGIN_URL . 'assets/css/style.css?v=' . (string) filemtime($cssFile), ENT_QUOTES, 'UTF-8') . '">'
+            : '';
+    }
+
     public function __construct(private readonly CMS_Projects_Service $service)
     {
         if (class_exists('CMS\\Hooks')) {
@@ -55,7 +76,8 @@ final class CMS_Projects_Shortcode
             return '';
         }
 
-        if ($scope === 'member' && ($project['visibility'] ?? '') === 'private') {
+        // Member-Inhalte nur für angemeldete Besucher – auch wenn der Shortcode auf einer öffentlichen Seite steht.
+        if ($scope === 'member' && (($project['visibility'] ?? '') === 'private' || !$this->isLoggedIn())) {
             return '';
         }
 
@@ -65,10 +87,11 @@ final class CMS_Projects_Shortcode
         }
 
         ob_start();
+        echo $this->stylesheetOnce();
         echo '<section class="cp-dashboard-shell">';
         echo '<div class="cp-dashboard-main">';
         echo '<article class="cp-project-detail-card">';
-        echo '<span class="cp-project-color" style="' . htmlspecialchars($this->buildProjectAccentStyle($project), ENT_QUOTES, 'UTF-8') . '"></span>';
+        echo CMS_Projects_Service::accentSwatch($project);
         echo '<h2>' . htmlspecialchars((string) ($project['name'] ?? ''), ENT_QUOTES, 'UTF-8') . '</h2>';
         echo '<p>' . nl2br(htmlspecialchars((string) ($project['summary'] ?? ''), ENT_QUOTES, 'UTF-8')) . '</p>';
         echo '</article>';
@@ -109,7 +132,13 @@ final class CMS_Projects_Shortcode
             return '';
         }
 
-        if ($scope === 'member' && ($project['visibility'] ?? '') === 'private') {
+        // Member-Inhalte nur für angemeldete Besucher – auch wenn der Shortcode auf einer öffentlichen Seite steht.
+        if ($scope === 'member' && (($project['visibility'] ?? '') === 'private' || !$this->isLoggedIn())) {
+            return '';
+        }
+
+        $allowedStatuses = $scope === 'public' ? ['active'] : ['active', 'paused'];
+        if (!in_array((string) ($project['status'] ?? ''), $allowedStatuses, true)) {
             return '';
         }
 
@@ -130,6 +159,7 @@ final class CMS_Projects_Shortcode
         }
 
         ob_start();
+        echo $this->stylesheetOnce();
         echo '<div class="cp-widget-grid">';
         foreach ($widgets as $widget) {
             $this->renderWidget($widget);
@@ -148,14 +178,9 @@ final class CMS_Projects_Shortcode
         return $parsed;
     }
 
-    private function buildProjectAccentStyle(array $project): string
+    private function isLoggedIn(): bool
     {
-        $color = (string) ($project['accent_color'] ?? '#2563eb');
-        if (preg_match('/^#[0-9a-fA-F]{6}$/', $color) !== 1) {
-            $color = '#2563eb';
-        }
-
-        return '--cp-project-accent:' . strtolower($color) . ';';
+        return class_exists('CMS\\Auth') && \CMS\Auth::isLoggedIn();
     }
 
     private function renderBoard(array $board): void

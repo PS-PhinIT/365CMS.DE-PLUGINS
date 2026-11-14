@@ -21,13 +21,14 @@ final class CMS_Projects_Member_Dashboard
         $registry->register([
             'plugin' => 'cms-projects',
             'slug' => 'projects',
-            'label' => 'PROJECTS',
-            'icon' => 'PRJ',
+            'label' => 'Projekte',
+            'icon' => 'ti-layout-kanban',
             'category' => 'plugins',
             'priority' => 30,
-            'capability' => null,
+            // Alle angemeldeten Mitglieder (4.0.0: nur 'member', 'admin', Rollen oder echte Capabilities).
+            'capability' => 'member',
             'dashboard_widget' => [
-                'title' => 'PROJECTS',
+                'title' => 'Projekte',
                 'description' => 'Projektboards, Widgets und Statusübersichten verwalten.',
                 'color' => '#2563eb',
                 'stats_callback' => [$this, 'getDashboardStats'],
@@ -78,7 +79,9 @@ final class CMS_Projects_Member_Dashboard
 
         if ($selectedSlug !== '') {
             $candidate = $this->service->findProjectBySlug($selectedSlug);
-            if ($candidate !== null && ($candidate['visibility'] ?? '') !== 'private') {
+            if ($candidate !== null
+                && in_array((string) ($candidate['visibility'] ?? ''), ['member', 'public'], true)
+                && in_array((string) ($candidate['status'] ?? ''), ['active', 'paused'], true)) {
                 $currentProject = $candidate;
             }
         }

@@ -1,15 +1,15 @@
 {
   "name": "CMS Promos",
   "slug": "cms-promos",
-  "version": "3.0.4",
+  "version": "4.0.0",
   "author": "365 Network",
   "homepage": "https://365network.de/cms-promos",
   "download_url": "https://365network.de/downloads/cms-promos.zip",
-  "requires": "3.0.0",
-  "tested": "3.4.00",
-  "min_php": "8.4",
-  "requires_php": "8.4",
-  "last_updated": "2026-09-30",
-  "changelog": "3.0.4: Admin-Seitenleiste: Der Menüeintrag heißt jetzt „365CMS | Promos“ (bisher „Promos“), damit die öffentlichen 365CMS-Plugins im Abschnitt „Plugin-Erweiterungen“ zusammen stehen. 3.0.3: Installer-Fix: Aktivierung scheiterte an SHOW COLUMNS … LIKE ? (MariaDB/MySQL-Syntaxfehler). UTM-Builder in promos-admin.js ausgelagert (CSP-konform); aktive Unterseite in Sidebar/Breadcrumb. Admin-Oberfläche an das einheitliche, schlichte 365CMS-Plugin-Admin-Design angeglichen (Emoji-/Kürzel-Icons entfernt, Icon-Buttons mit Tabler-Icons, Menüname ohne Präfix); geprüft gegen 365CMS 3.4.00 inkl. Produktiv-CSP. 365CMS 3.0.2: Der Promos-Admin-Menüeintrag wird für die Core-Sidebar-Sortierung mit 365CMS | vorangestellt. 365CMS 3.0.1 Security-/UX-Pass: CSRF-Casts und 303-Redirects ergänzt, URL-/HTML-Sanitizing gehärtet, Public-Template semantisch modernisiert und Admin-Oberfläche entemojifiziert.",
-  "requires_cms": "3.4.00"
+  "requires": "4.0.0",
+  "tested": "4.0.0",
+  "min_php": "8.4.1",
+  "requires_php": "8.4.1",
+  "last_updated": "2026-11-14",
+  "changelog": "4.0.0: Angleichung an 365CMS 4.0.0 – Admin im einheitlichen Plugin-Layout (Split-Header mit KPI-Karten, linkes Plugin-Menü, Dashboard mit Schnellaktionen, System-Check und letzten Änderungen); Filter-Toolbar, Duplizieren, Statistik zurücksetzen, CSV/JSON-Export, Einstellungen zurücksetzen; Schema-Migration nur noch bei neuer DB-Version statt bei jedem Request, neue Indizes, keine SELECT * mehr; Klick-Webhook über CMS\\Http\\Client (SSRF-Schutz), keine öffentliche PHP-Session mehr; Lebenszyklus-Callbacks, Sitemap-Einträge, Systemhinweis für abgelaufene Promos; Requires CMS 4.0.0 / PHP 8.4.1. 3.0.4: Admin-Seitenleiste: Der Menüeintrag heißt jetzt „365CMS | Promos“ (bisher „Promos“), damit die öffentlichen 365CMS-Plugins im Abschnitt „Plugin-Erweiterungen“ zusammen stehen. 3.0.3: Installer-Fix: Aktivierung scheiterte an SHOW COLUMNS … LIKE ? (MariaDB/MySQL-Syntaxfehler). UTM-Builder in promos-admin.js ausgelagert (CSP-konform); aktive Unterseite in Sidebar/Breadcrumb. Admin-Oberfläche an das einheitliche, schlichte 365CMS-Plugin-Admin-Design angeglichen (Emoji-/Kürzel-Icons entfernt, Icon-Buttons mit Tabler-Icons, Menüname ohne Präfix); geprüft gegen 365CMS 3.4.00 inkl. Produktiv-CSP. 365CMS 3.0.2: Der Promos-Admin-Menüeintrag wird für die Core-Sidebar-Sortierung mit 365CMS | vorangestellt. 365CMS 3.0.1 Security-/UX-Pass: CSRF-Casts und 303-Redirects ergänzt, URL-/HTML-Sanitizing gehärtet, Public-Template semantisch modernisiert und Admin-Oberfläche entemojifiziert.",
+  "requires_cms": "4.0.0"
 }
