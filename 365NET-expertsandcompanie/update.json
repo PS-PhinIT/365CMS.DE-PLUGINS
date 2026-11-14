@@ -1,15 +1,16 @@
 {
   "slug": "cms-365netexpertsandcompanie",
-  "name": "365NET | Experts & Companie",
+  "name": "365NET | Experts & Companies",
   "type": "plugin",
   "license": "free",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "min_cms_version": "3.0.0",
   "min_php": "8.1",
   "released": "2026-11-14",
   "download_url": "",
   "checksum_sha256": "",
   "changelog": {
+    "1.2.0": "Admin: Einheitliches Plugin-Layout von 365CMS 4.0.0 (PhinIT-Admin-Navigation 3.0) und neuer Name „PHINIT | Experts & Companies“ (bisher „Experts & Companie“). Kopfzeile mit Pluginname, Version, Einzeiler und den vier KPI-Karten (Experts, Companies, öffentlich sichtbar, ausgeblendet) rechts daneben; darunter links das Plugin-Menü (Übersicht, Experts, Companies, Einstellungen), rechts der Inhalt. Die Übersicht zeigt Schnellaktionen (Neuer Expert, Neue Company, Texte & Layout, öffentlicher Hub), einen Status-/System-Check (Datenbanktabellen, öffentliche Experts und Companies, Hauptmenü-Link, Verknüpfung mit Events & Speaker) und die zuletzt bearbeiteten Experts und Companies; der doppelte Seitenkopf und die Bereichs-Kacheln entfallen, „Seed neu einspielen“ bleibt.",
     "1.1.0": "Admin: Einheitliches PhinIT-Admin-Layout 2.0 wie 365CMS 4.0.0: Der Seitenleisten-Link öffnet das Dashboard; oben auf allen Plugin-Seiten stehen der Pluginname mit den wichtigsten Kennzahlen (Experts, Companies, öffentlich sichtbar, ausgeblendet) und ein linksbündiges Menüband mit allen Bereichen (Dashboard, Experts, Companies, Einstellungen). Die bisherige Übersicht ist das Dashboard mit Kennzahlen-Karten und Bereichs-Kacheln; die doppelten Zähler-Karten und Navigations-Buttons („Experts verwalten“, „Companies verwalten“, „Einstellungen“, „Zur Übersicht“) entfallen, stattdessen Schnellaktionen „+ Neuer Expert“ und „+ Neue Company“. Nach „Seed neu einspielen“ erscheint eine Bestätigung.",
     "1.0.18": "Admin: Einheitliche PhinIT-Admin-Navigation. Das Plugin erscheint in der Seitenleiste als ein Eintrag ohne aufklappbare Unterpunkte; alle Bereiche sind als Reiter oben auf der Plugin-Seite erreichbar, alte Unterseiten-Adressen leiten weiter. Menü, Reiter und Überschriften ohne Emojis, Aktions-Symbole als Tabler-Icons wie im 365CMS-Core. Geprüft mit 365CMS 4.0.0. PHP 8.5: finfo_close() bei der Bildprüfung entfernt (Deprecation-Hinweis).",
     "1.0.17": "Mobil/Tablet: Das Karten-Raster bricht bei 980 px auf zwei und bei 640 px auf eine Spalte um (vorher horizontaler Überlauf); die Suchkarte im Header umbricht, Aktionen nehmen die volle Breite ein. Firmen ohne Logo: Der Avatar-Fallback behält seinen Verlaufshintergrund (weiße Initialen waren auf weißem Grund unsichtbar). Kontrast: Meta-Zeile der Karten #5f6b7b statt #7b8798 (WCAG AA).",

@@ -997,6 +997,7 @@ if (!class_exists('PhinIT_Plugin_Admin_Nav', false)) {
                     'active' => $index === $active,
                     'badge' => $tab['badge'] ?? null,
                     'badge_tone' => (string) ($tab['badge_tone'] ?? ''),
+                    'group' => (string) ($tab['group'] ?? ''),
                 ];
             }
 

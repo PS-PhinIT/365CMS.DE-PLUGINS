@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: 365 | Experts & Companie
+ * Plugin Name: 365 | Experts & Companies
  * Plugin URI: https://365network.de/cms-365NETexpertsandcompanie
  * Description: Vereint Experten und Firmen vollständig in einem eigenständigen Plugin mit gemeinsamer Übersicht und Admin-Zentrale.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: 365 Network
  * Author URI: https://365network.de
  *
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 $pluginDirPath = str_replace('\\', '/', dirname(__FILE__));
 $pluginFolderName = basename($pluginDirPath);
 
-defined('CMS_365NET_EXCOMP_VERSION') || define('CMS_365NET_EXCOMP_VERSION', '1.1.0');
+defined('CMS_365NET_EXCOMP_VERSION') || define('CMS_365NET_EXCOMP_VERSION', '1.2.0');
 defined('CMS_365NET_EXCOMP_PLUGIN_DIR') || define('CMS_365NET_EXCOMP_PLUGIN_DIR', rtrim($pluginDirPath, '/') . '/');
 defined('CMS_365NET_EXCOMP_PLUGIN_URL') || define('CMS_365NET_EXCOMP_PLUGIN_URL', '/plugins/' . $pluginFolderName . '/');
 defined('CMS_365NET_EXCOMP_TEXT_DOMAIN') || define('CMS_365NET_EXCOMP_TEXT_DOMAIN', 'cms-365netexpertsandcompanie');

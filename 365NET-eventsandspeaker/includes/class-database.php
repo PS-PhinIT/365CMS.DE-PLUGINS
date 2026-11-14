@@ -2776,6 +2776,12 @@ final class CMS_365NET_Events_Database
         return $similarity >= 82.0;
     }
 
+    /** Für das Admin-Dashboard: Ist die Google-Suche für den Speaker-Backfill konfiguriert? */
+    public function isGoogleSearchConfigured(): bool
+    {
+        return $this->googleSearchConfig()['configured'];
+    }
+
     /**
      * @return array{configured:bool,apiKey:string,cseId:string}
      */

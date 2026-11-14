@@ -3,7 +3,7 @@
  * Plugin Name: 365 | Events & Speaker
  * Plugin URI: https://365network.de/cms-365neteventsandspeaker
  * Description: Modulares Event- und Speaker-Verzeichnis für 365CMS mit Seed-Daten, Admin-CRUD und Public-Views.
- * Version: 3.1.0
+ * Version: 3.2.0
  * Author: 365 Network
  * Author URI: https://365network.de
  *
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 $pluginDirPath = str_replace('\\', '/', dirname(__FILE__));
 $pluginFolderName = basename($pluginDirPath);
 
-defined('CMS_365NET_EVENTS_VERSION') || define('CMS_365NET_EVENTS_VERSION', '3.1.0');
+defined('CMS_365NET_EVENTS_VERSION') || define('CMS_365NET_EVENTS_VERSION', '3.2.0');
 defined('CMS_365NET_EVENTS_PLUGIN_DIR') || define('CMS_365NET_EVENTS_PLUGIN_DIR', rtrim($pluginDirPath, '/') . '/');
 defined('CMS_365NET_EVENTS_PLUGIN_URL') || define('CMS_365NET_EVENTS_PLUGIN_URL', '/plugins/' . $pluginFolderName . '/');
 defined('CMS_365NET_EVENTS_TEXT_DOMAIN') || define('CMS_365NET_EVENTS_TEXT_DOMAIN', 'cms-365neteventsandspeaker');

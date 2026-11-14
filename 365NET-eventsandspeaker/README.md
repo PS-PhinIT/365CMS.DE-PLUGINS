@@ -1,6 +1,6 @@
 # 365NET | Events & Speaker
 
-Version: 3.1.0
+Version: 3.2.0
 Modulares 365CMS-Plugin für Events, Messen und verknüpfte Speaker.
 
 ## Features
@@ -11,7 +11,8 @@ Modulares 365CMS-Plugin für Events, Messen und verknüpfte Speaker.
 - MySQL-Tabellen mit `unique_id`, `slug`, `status`, `created_at` und `updated_at`.
 - Prepared Statements über `CMS\Database`/PDO.
 - MariaDB-kompatible Tabellenchecks über den zentralen `Database::tableExists()`-Helper statt `SHOW TABLES LIKE ?`.
-- Admin-Dashboard mit Kennzahlen und Bereichs-Kacheln unter `/admin/365netevents/dashboard` (Ziel des Seitenleisten-Links); Admin-CRUD für Events und Speaker unter `/admin/365netevents`.
+- Admin im einheitlichen Plugin-Layout von 365CMS 4.0.0: Kopfzeile mit Pluginname, Version, Einzeiler und vier KPI-Karten (kommende Events, Events gesamt, Speaker, Entwürfe), links das Plugin-Menü (Übersicht, Events mit Entwürfe-Zähler, Speaker, Kategorien & Tags, Einstellungen), rechts der Inhalt.
+- Übersicht unter `/admin/365netevents/dashboard` (Ziel des Seitenleisten-Links): Schnellaktionen (Neues Event, Neuer Speaker, Vergangene Events, öffentliche Eventseite), Status-/System-Check (Tabellen, kommende Events, Entwürfe, Speaker-Verzeichnis, Experts & Companies, Google-Suche), zuletzt bearbeitete Events und die nächsten fünf Events. Admin-CRUD für Events und Speaker unter `/admin/365netevents`.
 - Erweiterter Adminbereich mit vertikal gestapelten UX-Sektionen für Basisdaten, EditorJS-Beschreibung/Bio, Medien, Ort/Online, Kontakt, Kategorien, Tags, Preisklassen, Speaker-Zuordnung und SEO.
 - Einstellungsseite unter `/admin/365netevents/settings` für alle Public-Texte, Farben, Rundungen, Containerbreite sowie Header-/Footer-Abstände.
 - Settings-Backfill für bestehende Event-Beschreibungen sowie Speaker-Enrichment auf Basis von Google-Custom-Search-Treffern.

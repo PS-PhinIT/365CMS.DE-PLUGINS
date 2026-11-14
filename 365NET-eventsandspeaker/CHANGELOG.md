@@ -1,5 +1,10 @@
 # 365 | Events & Speaker – Changelog
 
+## 3.2.0 – 2026-11-14
+
+- Admin: Einheitliches Plugin-Layout von 365CMS 4.0.0 (PhinIT-Admin-Navigation 3.0). Kopfzeile mit Pluginname, Version, Einzeiler und den vier KPI-Karten rechts daneben; darunter links das Plugin-Menü (Übersicht, Events, Speaker, Kategorien & Tags, Einstellungen) mit aktivem Zustand und Entwürfe-Zähler bei „Events“, rechts der Seiteninhalt. Auf Mobilgeräten steht das Menü als umbrechende Leiste über dem Inhalt.
+- Übersicht neu aufgebaut: Schnellaktionen (Neues Event, Neuer Speaker, Vergangene Events, öffentliche Eventseite), Status-/System-Check (Datenbanktabellen, kommende veröffentlichte Events, Entwürfe, öffentliche Speaker, Verknüpfung mit Experts & Companies, Google-Suche für den Speaker-Backfill) und die zuletzt bearbeiteten Events mit Status-Badge. Der doppelte Seitenkopf mit Pluginname und die Bereichs-Kacheln entfallen; die Tabelle „Nächste Events“ bleibt.
+
 ## 3.1.0 – 2026-11-14
 
 - Admin: Einheitliches PhinIT-Admin-Layout 2.0 wie 365CMS 4.0.0: Der Seitenleisten-Link öffnet das Dashboard; oben auf allen Plugin-Seiten stehen der Pluginname mit den wichtigsten Kennzahlen (kommende Events, Events gesamt, Speaker, Entwürfe) und ein linksbündiges Menüband mit allen Bereichen (Dashboard, Events, Speaker, Kategorien & Tags, Einstellungen).

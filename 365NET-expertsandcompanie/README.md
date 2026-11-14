@@ -1,6 +1,6 @@
-# 365NET | Experts & Companie
+# 365NET | Experts & Companies
 
-Version: 1.1.0
+Version: 1.2.0
 Kombi-Plugin für eine gemeinsame Public-Übersicht von **Experts** und **Companies**.
 
 ## Features
@@ -11,7 +11,8 @@ Kombi-Plugin für eine gemeinsame Public-Übersicht von **Experts** und **Compan
   - `/experts-companies`
   - `/experts`
   - `/companies`
-- Eigener Admin-Einstieg: **PHINIT | Experts & Companie**
+- Eigener Admin-Einstieg: **PHINIT | Experts & Companies** im einheitlichen Plugin-Layout von 365CMS 4.0.0: Kopfzeile mit vier KPI-Karten (Experts, Companies, öffentlich sichtbar, ausgeblendet), links das Plugin-Menü (Übersicht, Experts, Companies, Einstellungen), rechts der Inhalt
+- Übersicht unter `/admin/experts-companie`: Schnellaktionen (Neuer Expert, Neue Company, Texte & Layout, öffentlicher Hub), Status-/System-Check (Tabellen, öffentliche Experts/Companies, Hauptmenü-Link, Speaker-Verknüpfung) und zuletzt bearbeitete Einträge
 - Vollständig standalone: eigene Tabellen, eigene Seed-Daten, eigenes CRUD
 - UI angelehnt an Events/Speakers:
   - **Experts** in Orange-Tönen

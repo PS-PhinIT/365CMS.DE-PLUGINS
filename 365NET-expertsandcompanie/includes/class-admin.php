@@ -30,14 +30,18 @@ final class CMS_365NET_Experts_And_Companie_Admin
 
         if (class_exists('CMS\\Hooks')) {
             CMS\Hooks::addAction('cms_admin_menu', [$this, 'registerAdminMenu'], 10);
-            // Einheitliche PhinIT-Admin-Navigation: ein Seitenleisten-Eintrag, Unterseiten als Reiter.
+            // Einheitliches Plugin-Layout (365CMS 4.0.0): Kopfzeile mit KPI-Karten, links das Plugin-Menü,
+            // rechts der Inhalt; die Übersicht liefert adminDashboard().
             if (is_file(__DIR__ . '/phinit-admin-nav.php')) {
                 require_once __DIR__ . '/phinit-admin-nav.php';
                 \PhinIT_Plugin_Admin_Nav::adopt('experts-companie', [
                     'icon' => 'ti ti-heart-handshake',
-                    'title' => 'PHINIT | Experts & Companie',
+                    'title' => 'PHINIT | Experts & Companies',
+                    'menu_title' => 'PHINIT | Experts & Companies',
                     'version' => defined('CMS_365NET_EXCOMP_VERSION') ? (string) CMS_365NET_EXCOMP_VERSION : '',
+                    'description' => 'Expert:innen und Unternehmen für /experts, /companies und den gemeinsamen Hub pflegen.',
                     'stats' => [self::class, 'adminStats'],
+                    'dashboard' => [self::class, 'adminDashboard'],
                     'hidden' => ['experts-companie-expert-new', 'experts-companie-company-new'],
                     'icons' => [
                         'experts-companie-public' => 'ti ti-world',
@@ -72,8 +76,8 @@ final class CMS_365NET_Experts_And_Companie_Admin
         }
 
         add_menu_page(
-            '365 | Experts & Companie',
-            'PHINIT | Experts & Companie',
+            '365 | Experts & Companies',
+            'PHINIT | Experts & Companies',
             'manage_options',
             'experts-companie',
             [self::class, 'bridgeOverview'],
@@ -85,7 +89,7 @@ final class CMS_365NET_Experts_And_Companie_Admin
             return;
         }
 
-        add_submenu_page('experts-companie', 'Dashboard', 'Dashboard', 'manage_options', 'experts-companie', [self::class, 'bridgeOverview']);
+        add_submenu_page('experts-companie', 'Übersicht', 'Übersicht', 'manage_options', 'experts-companie', [self::class, 'bridgeOverview']);
         add_submenu_page('experts-companie', 'Public Hub', 'Public Hub', 'manage_options', 'experts-companie-public', [self::class, 'bridgePublic']);
         add_submenu_page('experts-companie', 'Experts verwalten', 'Experts', 'manage_options', 'experts-companie-experts', [self::class, 'bridgeExperts']);
         add_submenu_page('experts-companie', 'Companies verwalten', 'Companies', 'manage_options', 'experts-companie-companies', [self::class, 'bridgeCompanies']);
@@ -135,7 +139,7 @@ final class CMS_365NET_Experts_And_Companie_Admin
         $items[] = [
             'type' => 'item',
             'slug' => 'experts-companie',
-            'label' => 'PHINIT | Experts & Companie',
+            'label' => 'PHINIT | Experts & Companies',
             'icon' => '🤝',
             'url' => '/admin/experts-companie',
             'active' => str_starts_with($path, '/admin/experts-companie'),
@@ -180,10 +184,103 @@ final class CMS_365NET_Experts_And_Companie_Admin
             $stats[] = ['label' => 'Öffentlich sichtbar', 'value' => $visible, 'icon' => 'ti ti-eye', 'tone' => 'success', 'hint' => 'Experts und Companies mit Status „active“'];
             $stats[] = ['label' => 'Ausgeblendet', 'value' => $hidden, 'icon' => 'ti ti-eye-off', 'tone' => $hidden > 0 ? 'warning' : 'muted', 'hint' => 'Experts und Companies mit Status „inactive“'];
         } catch (\Throwable $e) {
-            error_log('CMS 365NET Experts & Companie [adminStats]: ' . $e->getMessage());
+            error_log('CMS 365NET Experts & Companies [adminStats]: ' . $e->getMessage());
         }
 
         return $stats;
+    }
+
+    /**
+     * Übersicht (Layout-Vertrag 365CMS 4.0.0): Schnellaktionen, Status-/System-Check und zuletzt bearbeitete Einträge.
+     *
+     * @return array<string, mixed>
+     */
+    public static function adminDashboard(): array
+    {
+        $actions = [
+            ['label' => 'Neuer Expert', 'url' => '/admin/experts-companie/experts/new', 'icon' => 'ti ti-user-plus', 'primary' => true, 'description' => 'Profil mit Skills, Zertifizierungen und Firma anlegen.'],
+            ['label' => 'Neue Company', 'url' => '/admin/experts-companie/companies/new', 'icon' => 'ti ti-building-plus', 'description' => 'Unternehmen mit Partner-Level und Beschreibung anlegen.'],
+            ['label' => 'Texte & Layout', 'url' => '/admin/experts-companie/settings', 'icon' => 'ti ti-settings', 'description' => 'Navigation, Texte, Abstände und Farben der Publicseiten.'],
+            ['label' => 'Öffentlicher Hub', 'url' => '/experts-companie', 'icon' => 'ti ti-world', 'external' => true, 'description' => 'Experts und Companies so prüfen, wie Besucher sie sehen.'],
+        ];
+
+        if (!class_exists('CMS\\Database') || !class_exists('CMS_365NET_Experts_And_Companie_Database', false)) {
+            return ['actions' => $actions, 'checks' => [['label' => 'Datenbank', 'status' => 'error', 'value' => 'nicht verfügbar']]];
+        }
+
+        $db = CMS_365NET_Experts_And_Companie_Database::instance();
+        $checks = [];
+        $items = [];
+        try {
+            $checks[] = $db->isSchemaCurrent()
+                ? ['label' => 'Datenbanktabellen', 'status' => 'ok', 'value' => 'aktuell']
+                : ['label' => 'Datenbanktabellen', 'status' => 'warning', 'value' => 'Aktualisierung ausstehend', 'hint' => 'Wird beim nächsten Seitenaufruf bzw. bei der Plugin-Aktivierung angelegt und angehoben.'];
+
+            $experts = $db->countExpertsPublic();
+            $companies = $db->countCompaniesPublic();
+            $checks[] = ['label' => 'Öffentliche Experts', 'status' => $experts > 0 ? 'ok' : 'warning', 'value' => $experts . ' sichtbar', 'url' => '/experts'];
+            $checks[] = ['label' => 'Öffentliche Companies', 'status' => $companies > 0 ? 'ok' : 'warning', 'value' => $companies . ' sichtbar', 'url' => '/companies'];
+
+            $settings = $db->getSettings();
+            $checks[] = ($settings['show_nav_link'] ?? '0') === '1'
+                ? ['label' => 'Link im Hauptmenü', 'status' => 'ok', 'value' => (string) ($settings['nav_label'] ?? 'Experts & Companies'), 'url' => '/admin/experts-companie/settings']
+                : ['label' => 'Link im Hauptmenü', 'status' => 'muted', 'value' => 'ausgeschaltet', 'url' => '/admin/experts-companie/settings'];
+        } catch (\Throwable $e) {
+            error_log('CMS 365NET Experts & Companies [adminDashboard]: ' . $e->getMessage());
+            $checks[] = ['label' => 'Datenbank', 'status' => 'error', 'value' => 'Abfrage fehlgeschlagen', 'hint' => 'Details stehen im Fehlerprotokoll.'];
+        }
+
+        $checks[] = defined('CMS_365NET_EVENTS_VERSION')
+            ? ['label' => 'Events & Speaker', 'status' => 'ok', 'value' => 'Speaker-Verknüpfung verfügbar']
+            : ['label' => 'Events & Speaker', 'status' => 'muted', 'value' => 'Plugin nicht aktiv', 'hint' => 'Speaker lassen sich dann nicht mit Experts verknüpfen.'];
+
+        try {
+            $rows = [];
+            foreach ($db->getExpertsAdmin('', 6, 'date_new_old') as $expert) {
+                $rows[] = [
+                    'type' => 'Expert',
+                    'title' => trim((string) ($expert->first_name ?? '') . ' ' . (string) ($expert->last_name ?? '')),
+                    'url' => '/admin/experts-companie/experts/edit/' . (int) ($expert->id ?? 0),
+                    'status' => (string) ($expert->status ?? ''),
+                    'updated' => (string) ($expert->updated_at ?? ''),
+                ];
+            }
+            foreach ($db->getCompaniesAdmin('', 6, 'date_new_old') as $company) {
+                $rows[] = [
+                    'type' => 'Company',
+                    'title' => (string) ($company->name ?? ''),
+                    'url' => '/admin/experts-companie/companies/edit/' . (int) ($company->id ?? 0),
+                    'status' => (string) ($company->status ?? ''),
+                    'updated' => (string) ($company->updated_at ?? ''),
+                ];
+            }
+            usort($rows, static fn (array $a, array $b): int => strcmp($b['updated'], $a['updated']));
+            foreach (array_slice($rows, 0, 6) as $row) {
+                $updated = strtotime($row['updated']);
+                $active = $row['status'] !== 'inactive';
+                $items[] = [
+                    'title' => $row['title'] !== '' ? $row['title'] : $row['type'],
+                    'url' => $row['url'],
+                    'meta' => $row['type'] . ($updated !== false ? ' · geändert ' . date('d.m.Y, H:i', $updated) : ''),
+                    'badge' => $active ? 'Sichtbar' : 'Ausgeblendet',
+                    'tone' => $active ? 'success' : 'muted',
+                ];
+            }
+        } catch (\Throwable $e) {
+            error_log('CMS 365NET Experts & Companies [adminDashboard activity]: ' . $e->getMessage());
+        }
+
+        return [
+            'actions' => $actions,
+            'checks' => $checks,
+            'activity' => [
+                'heading' => 'Zuletzt bearbeitet',
+                'items' => $items,
+                'empty' => 'Noch keine Experts oder Companies vorhanden.',
+                'more_url' => '/admin/experts-companie/experts',
+                'more_label' => 'Alle Experts',
+            ],
+        ];
     }
 
     public function renderOverview(array $data): void
@@ -191,13 +288,13 @@ final class CMS_365NET_Experts_And_Companie_Admin
         // Datensatz-Zähler stehen als Kennzahlen im Seitenkopf und in den Dashboard-Karten (adminStats()).
         $csrfSeed = trim((string) ($data['csrf_seed'] ?? ''));
 
-        $descriptions = self::sectionDescriptions();
-
-        $this->start('365 | Experts & Companie', 'experts-companie');
+        $this->start('365 | Experts & Companies', 'experts-companie');
+        $layout = class_exists('PhinIT_Plugin_Admin_Nav', false) && method_exists('PhinIT_Plugin_Admin_Nav', 'handlesTabs');
+        if (!$layout):
         ?>
         <div class="cms-excomp-admin-header">
             <div>
-                <h2>🤝 365 | Experts & Companie</h2>
+                <h2>🤝 365 | Experts & Companies</h2>
                 <p>Vollständig eigenständige Verwaltung für Experts und Companies – ohne Datenzugriff auf alte Einzel-Plugins.</p>
             </div>
             <div class="cms-excomp-admin-actions">
@@ -207,6 +304,7 @@ final class CMS_365NET_Experts_And_Companie_Admin
                 <a class="btn btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/companies', ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer">Public Companies</a>
             </div>
         </div>
+        <?php endif; ?>
 
         <?php if (isset($_GET['seeded'])): ?>
             <div class="admin-card cms-excomp-admin-note"><p>Seed-Daten wurden neu eingespielt.</p></div>
@@ -215,15 +313,9 @@ final class CMS_365NET_Experts_And_Companie_Admin
         <?php endif; ?>
 
         <?php
-        if (class_exists('PhinIT_Plugin_Admin_Nav', false) && method_exists('PhinIT_Plugin_Admin_Nav', 'dashboard')) {
-            echo \PhinIT_Plugin_Admin_Nav::dashboard('experts-companie', [
-                'tiles' => [
-                    ['label' => 'Experts', 'url' => '/admin/experts-companie/experts', 'icon' => 'ti ti-user-star', 'description' => $descriptions['experts-companie-experts']],
-                    ['label' => 'Companies', 'url' => '/admin/experts-companie/companies', 'icon' => 'ti ti-building', 'description' => $descriptions['experts-companie-companies']],
-                    ['label' => 'Einstellungen', 'url' => '/admin/experts-companie/settings', 'icon' => 'ti ti-settings', 'description' => $descriptions['experts-companie-settings']],
-                    ['label' => 'Public Hub', 'url' => '/experts', 'icon' => 'ti ti-world', 'description' => $descriptions['experts-companie-public']],
-                ],
-            ]);
+        if ($layout) {
+            // Kopfzeile mit KPI-Karten und Plugin-Menü setzt der Helfer; hier nur die Übersicht.
+            echo \PhinIT_Plugin_Admin_Nav::dashboard('experts-companie');
         }
         ?>
 
@@ -943,10 +1035,10 @@ final class CMS_365NET_Experts_And_Companie_Admin
     {
         // Einheitliche PhinIT-Admin-Navigation (Reiter und Design wie die übrigen PhinIT-Plugins).
         if (class_exists('PhinIT_Plugin_Admin_Nav', false)) {
-            // Erster Reiter = Dashboard (bisherige Übersicht); Name, Version und Kennzahlen aus adopt().
+            // Erster Menüpunkt = Übersicht; Name, Version, Kennzahlen und Dashboard-Daten aus adopt().
             $descriptions = self::sectionDescriptions();
             \PhinIT_Plugin_Admin_Nav::begin([
-                ['label' => 'Dashboard', 'url' => '/admin/experts-companie', 'icon' => 'ti ti-layout-dashboard'],
+                ['label' => 'Übersicht', 'url' => '/admin/experts-companie', 'icon' => 'ti ti-layout-dashboard'],
                 ['label' => 'Experts', 'url' => '/admin/experts-companie/experts', 'icon' => 'ti ti-user-star', 'description' => $descriptions['experts-companie-experts']],
                 ['label' => 'Companies', 'url' => '/admin/experts-companie/companies', 'icon' => 'ti ti-building', 'description' => $descriptions['experts-companie-companies']],
                 ['label' => 'Einstellungen', 'url' => '/admin/experts-companie/settings', 'icon' => 'ti ti-settings', 'description' => $descriptions['experts-companie-settings']],

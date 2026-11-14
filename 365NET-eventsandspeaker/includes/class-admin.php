@@ -30,14 +30,18 @@ final class CMS_365NET_Events_Admin
         $this->loadSharedAdminContract();
         if (class_exists('CMS\\Hooks')) {
             CMS\Hooks::addAction('cms_admin_menu', [$this, 'registerAdminMenu'], 10);
-            // Einheitliche PhinIT-Admin-Navigation: ein Seitenleisten-Eintrag, Unterseiten als Reiter.
+            // Einheitliches Plugin-Layout (365CMS 4.0.0): Kopfzeile mit KPI-Karten, links das Plugin-Menü,
+            // rechts der Inhalt; die Übersicht liefert adminDashboard().
             if (is_file(__DIR__ . '/phinit-admin-nav.php')) {
                 require_once __DIR__ . '/phinit-admin-nav.php';
                 \PhinIT_Plugin_Admin_Nav::adopt('365netevents', [
                     'icon' => 'ti ti-calendar-event',
                     'title' => 'PHINIT | Events & Speaker',
                     'version' => defined('CMS_365NET_EVENTS_VERSION') ? (string) CMS_365NET_EVENTS_VERSION : '',
+                    'description' => 'Events, Messen und Speaker für die öffentlichen Seiten /events und /speakers pflegen.',
                     'stats' => [self::class, 'adminStats'],
+                    'dashboard' => [self::class, 'adminDashboard'],
+                    'badges' => [self::class, 'adminBadges'],
                     'icons' => [
                         '365netevents-events' => 'ti ti-calendar-event',
                         '365netevents-speakers' => 'ti ti-microphone',
@@ -72,8 +76,8 @@ final class CMS_365NET_Events_Admin
 
         add_menu_page('365 | Events & Speaker', 'PHINIT | Events & Speaker', 'manage_options', '365netevents', [self::class, 'bridgeDashboard'], '📅', 45);
         if (function_exists('add_submenu_page')) {
-            // Erster Bereich = Dashboard (/admin/365netevents/dashboard); die Event-Liste bleibt unter /admin/365netevents.
-            add_submenu_page('365netevents', 'Dashboard', 'Dashboard', 'manage_options', '365netevents', [self::class, 'bridgeDashboard']);
+            // Erster Bereich = Übersicht (/admin/365netevents/dashboard); die Event-Liste bleibt unter /admin/365netevents.
+            add_submenu_page('365netevents', 'Übersicht', 'Übersicht', 'manage_options', '365netevents', [self::class, 'bridgeDashboard']);
             add_submenu_page('365netevents', 'Events', 'Events', 'manage_options', '365netevents-events', [self::class, 'bridgeEvents']);
             add_submenu_page('365netevents', 'Speaker', 'Speaker', 'manage_options', '365netevents-speakers', [self::class, 'bridgeSpeakers']);
             add_submenu_page('365netevents', 'Kategorien & Tags', 'Kategorien & Tags', 'manage_options', '365netevents-taxonomies', [self::class, 'bridgeTaxonomies']);
@@ -162,28 +166,126 @@ final class CMS_365NET_Events_Admin
         return $stats;
     }
 
+    /**
+     * Übersicht (Layout-Vertrag 365CMS 4.0.0): Schnellaktionen, Status-/System-Check und zuletzt bearbeitete Events.
+     *
+     * @return array<string, mixed>
+     */
+    public static function adminDashboard(): array
+    {
+        $actions = [
+            ['label' => 'Neues Event', 'url' => '/admin/365netevents/new', 'icon' => 'ti ti-plus', 'primary' => true, 'description' => 'Event, Messe oder Webinar anlegen und Speaker zuordnen.'],
+            ['label' => 'Neuer Speaker', 'url' => '/admin/365netevents/speakers/new', 'icon' => 'ti ti-microphone', 'description' => 'Speaker-Profil anlegen und mit Experts & Companies verknüpfen.'],
+            ['label' => 'Vergangene Events', 'url' => '/admin/365netevents?past=1', 'icon' => 'ti ti-history', 'description' => 'Zurückliegende Events nachpflegen oder archivieren.'],
+            ['label' => 'Öffentliche Eventseite', 'url' => '/events', 'icon' => 'ti ti-world', 'external' => true, 'description' => 'Die Eventübersicht so prüfen, wie Besucher sie sehen.'],
+        ];
+
+        if (!class_exists('CMS\\Database') || !class_exists('CMS_365NET_Events_Database', false)) {
+            return [
+                'actions' => $actions,
+                'checks' => [['label' => 'Datenbank', 'status' => 'error', 'value' => 'nicht verfügbar']],
+            ];
+        }
+
+        $db = CMS_365NET_Events_Database::instance();
+        $checks = [];
+        $items = [];
+        try {
+            $checks[] = $db->isSchemaCurrent()
+                ? ['label' => 'Datenbanktabellen', 'status' => 'ok', 'value' => '4 Tabellen aktuell']
+                : ['label' => 'Datenbanktabellen', 'status' => 'warning', 'value' => 'Aktualisierung ausstehend', 'hint' => 'Wird beim nächsten Seitenaufruf bzw. bei der Plugin-Aktivierung angelegt und angehoben.'];
+
+            $upcoming = $db->countEvents(['status' => 'published', 'date_mode' => 'future', 'from' => date('Y-m-d')]);
+            $checks[] = $upcoming > 0
+                ? ['label' => 'Öffentliche Eventseite', 'status' => 'ok', 'value' => $upcoming . ' kommende Events', 'url' => '/events']
+                : ['label' => 'Öffentliche Eventseite', 'status' => 'warning', 'value' => 'keine kommenden Events', 'hint' => '/events zeigt derzeit nur den Leerzustand.', 'url' => '/admin/365netevents/new'];
+
+            $drafts = $db->countEvents(['status' => 'draft']);
+            $checks[] = $drafts > 0
+                ? ['label' => 'Entwürfe', 'status' => 'info', 'value' => $drafts . ' nicht veröffentlicht', 'url' => '/admin/365netevents']
+                : ['label' => 'Entwürfe', 'status' => 'ok', 'value' => 'keine offenen Entwürfe'];
+
+            $speakers = $db->countSpeakers(['status' => 'published']);
+            $checks[] = ['label' => 'Speaker-Verzeichnis', 'status' => $speakers > 0 ? 'ok' : 'warning', 'value' => $speakers . ' öffentlich', 'url' => '/speakers'];
+        } catch (\Throwable $e) {
+            error_log('CMS 365NET Events [adminDashboard]: ' . $e->getMessage());
+            $checks[] = ['label' => 'Datenbank', 'status' => 'error', 'value' => 'Abfrage fehlgeschlagen', 'hint' => 'Details stehen im Fehlerprotokoll.'];
+        }
+
+        $checks[] = defined('CMS_365NET_EXCOMP_VERSION')
+            ? ['label' => 'Experts & Companies', 'status' => 'ok', 'value' => 'Verknüpfung verfügbar']
+            : ['label' => 'Experts & Companies', 'status' => 'muted', 'value' => 'Plugin nicht aktiv', 'hint' => 'Firmen und Experten lassen sich dann nicht verknüpfen.'];
+
+        try {
+            $checks[] = $db->isGoogleSearchConfigured()
+                ? ['label' => 'Google-Suche (Speaker-Backfill)', 'status' => 'ok', 'value' => 'konfiguriert']
+                : ['label' => 'Google-Suche (Speaker-Backfill)', 'status' => 'muted', 'value' => 'nicht konfiguriert', 'hint' => 'Optional; API-Key und Suchmaschinen-ID kommen aus Umgebungsvariablen (siehe README).'];
+
+            foreach ($db->getEvents(['order' => 'updated_desc', 'limit' => 6]) as $event) {
+                $updated = strtotime((string) ($event->updated_at ?? ''));
+                $date = trim((string) ($event->date_label ?? ''));
+                $published = (string) ($event->status ?? '') === 'published';
+                $items[] = [
+                    'title' => (string) ($event->title ?? ''),
+                    'url' => '/admin/365netevents/edit/' . (int) ($event->id ?? 0),
+                    'meta' => ($updated !== false ? 'geändert ' . date('d.m.Y, H:i', $updated) : 'geändert') . ($date !== '' ? ' · Termin ' . $date : ''),
+                    'badge' => $published ? 'Veröffentlicht' : 'Entwurf',
+                    'tone' => $published ? 'success' : 'warning',
+                ];
+            }
+        } catch (\Throwable $e) {
+            error_log('CMS 365NET Events [adminDashboard activity]: ' . $e->getMessage());
+        }
+
+        return [
+            'actions' => $actions,
+            'checks' => $checks,
+            'activity' => [
+                'heading' => 'Zuletzt bearbeitete Events',
+                'items' => $items,
+                'empty' => 'Noch keine Events vorhanden.',
+                'more_url' => '/admin/365netevents',
+                'more_label' => 'Alle Events',
+            ],
+        ];
+    }
+
+    /**
+     * Zähler-Badges im Plugin-Menü (Option „badges“): Entwürfe bei „Events“.
+     *
+     * @return array<string, mixed>
+     */
+    public static function adminBadges(): array
+    {
+        if (!class_exists('CMS\\Database') || !class_exists('CMS_365NET_Events_Database', false)) {
+            return [];
+        }
+        try {
+            $drafts = CMS_365NET_Events_Database::instance()->countEvents(['status' => 'draft']);
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return $drafts > 0 ? ['365netevents-events' => ['value' => $drafts, 'tone' => 'warning']] : [];
+    }
+
     /** @param array<int, object> $upcomingEvents */
     public function renderDashboard(array $upcomingEvents): void
     {
         $this->start('365NET Events Dashboard', '365netevents');
         $site = rtrim((string) SITE_URL, '/');
-        $descriptions = self::sectionDescriptions();
-        ?>
+        $layout = class_exists('PhinIT_Plugin_Admin_Nav', false) && method_exists('PhinIT_Plugin_Admin_Nav', 'handlesTabs');
+        if (!$layout): ?>
         <div class="cms365-admin-header">
             <div><h2>Events &amp; Speaker</h2><p>Überblick über Events, Speaker und die öffentlichen Eventseiten.</p></div>
             <div class="cms365-admin-actions"><a class="btn btn-secondary" href="<?= htmlspecialchars($site . '/events', ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer">Öffentlich</a><a class="btn btn-secondary" href="<?= htmlspecialchars($site . '/admin/365netevents/speakers/new', ENT_QUOTES, 'UTF-8') ?>">Neuer Speaker</a><a class="btn btn-primary" href="<?= htmlspecialchars($site . '/admin/365netevents/new', ENT_QUOTES, 'UTF-8') ?>">Neues Event</a></div>
         </div>
+        <?php endif; ?>
         <?php $this->flash(); ?>
         <?php
-        if (class_exists('PhinIT_Plugin_Admin_Nav', false) && method_exists('PhinIT_Plugin_Admin_Nav', 'dashboard')) {
-            echo \PhinIT_Plugin_Admin_Nav::dashboard('365netevents', [
-                'tiles' => [
-                    ['label' => 'Events', 'url' => '/admin/365netevents', 'icon' => 'ti ti-calendar-event', 'description' => $descriptions['365netevents-events']],
-                    ['label' => 'Speaker', 'url' => '/admin/365netevents/speakers', 'icon' => 'ti ti-microphone', 'description' => $descriptions['365netevents-speakers']],
-                    ['label' => 'Kategorien & Tags', 'url' => '/admin/365netevents/taxonomies', 'icon' => 'ti ti-tags', 'description' => $descriptions['365netevents-taxonomies']],
-                    ['label' => 'Einstellungen', 'url' => '/admin/365netevents/settings', 'icon' => 'ti ti-settings', 'description' => $descriptions['365netevents-settings']],
-                ],
-            ]);
+        if ($layout) {
+            // Kopfzeile mit KPI-Karten und Plugin-Menü setzt der Helfer; hier nur die Übersicht.
+            echo \PhinIT_Plugin_Admin_Nav::dashboard('365netevents');
         }
         ?>
         <div class="admin-card cms365-admin-card">
@@ -579,11 +681,12 @@ final class CMS_365NET_Events_Admin
     {
         // Einheitliche PhinIT-Admin-Navigation (Reiter und Design wie die übrigen PhinIT-Plugins).
         if (class_exists('PhinIT_Plugin_Admin_Nav', false)) {
-            // Erster Reiter = Dashboard; aktiv ist der längste passende Pfad (/admin/365netevents/new → Events).
+            // Erster Menüpunkt = Übersicht; aktiv ist der längste passende Pfad (/admin/365netevents/new → Events).
             $descriptions = self::sectionDescriptions();
+            $badges = self::adminBadges();
             \PhinIT_Plugin_Admin_Nav::begin([
-                ['label' => 'Dashboard', 'url' => '/admin/365netevents/dashboard', 'icon' => 'ti ti-layout-dashboard'],
-                ['label' => 'Events', 'url' => '/admin/365netevents', 'icon' => 'ti ti-calendar-event', 'description' => $descriptions['365netevents-events']],
+                ['label' => 'Übersicht', 'url' => '/admin/365netevents/dashboard', 'icon' => 'ti ti-layout-dashboard'],
+                ['label' => 'Events', 'url' => '/admin/365netevents', 'icon' => 'ti ti-calendar-event', 'description' => $descriptions['365netevents-events'], 'badge' => $badges['365netevents-events']['value'] ?? null, 'badge_tone' => 'warning'],
                 ['label' => 'Speaker', 'url' => '/admin/365netevents/speakers', 'icon' => 'ti ti-microphone', 'description' => $descriptions['365netevents-speakers']],
                 ['label' => 'Kategorien & Tags', 'url' => '/admin/365netevents/taxonomies', 'icon' => 'ti ti-tags', 'description' => $descriptions['365netevents-taxonomies']],
                 ['label' => 'Einstellungen', 'url' => '/admin/365netevents/settings', 'icon' => 'ti ti-settings', 'description' => $descriptions['365netevents-settings']],

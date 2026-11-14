@@ -49,6 +49,16 @@ final class CMS_365NET_Experts_And_Companie_Database
         $this->saveSetting('schema_version', self::SCHEMA_VERSION);
     }
 
+    /** Für das Admin-Dashboard: Tabellen und Seeds auf dem Stand dieses Plugins? */
+    public function isSchemaCurrent(): bool
+    {
+        try {
+            return ($this->getSettings()['schema_version'] ?? '') === self::SCHEMA_VERSION;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
     /** @return array{experts:string,companies:string} */
     public function getSourceTables(): array
     {

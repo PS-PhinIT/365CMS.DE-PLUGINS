@@ -864,27 +864,34 @@ body.admin-body .cms-plugin-admin-content .cms-plugin-tile__chevron {
     }
 }
 
-/* ── Dark-Mode: folgt den Tabler-Tokens, sobald das Backend dunkel ist ── */
+/* ── Dark-Mode ─────────────────────────────────────────────────────────────
+ * Aktiv mit data-bs-theme="dark" (Tabler) oder .theme-dark am <html>/<body>. Der Core 4.0.0 legt die
+ * Tabler-Tokens in :root auf helle Werte fest; deshalb eigene Tokens --cms-dark-* mit Rückfallwerten,
+ * die ein dunkles Admin-Theme überschreiben kann. */
 :is([data-bs-theme="dark"], .theme-dark) body.admin-body .cms-plugin-admin-content,
 body.admin-body:is([data-bs-theme="dark"], .theme-dark) .cms-plugin-admin-content {
-    --cms-plugin-surface: var(--tblr-bg-surface, #1f2937);
-    --cms-plugin-surface-soft: var(--tblr-bg-surface-secondary, #273244);
-    --cms-plugin-border: var(--tblr-border-color, #3b475a);
-    --cms-plugin-border-soft: var(--tblr-border-color-translucent, rgba(148, 163, 184, 0.24));
-    --cms-plugin-text: var(--tblr-body-color, #e5e7eb);
-    --cms-plugin-muted: var(--tblr-secondary-color, #9ca3af);
-    --cms-plugin-soft: var(--tblr-body-color, #cbd5e1);
-    --cms-plugin-primary-soft: color-mix(in srgb, var(--cms-plugin-primary) 18%, transparent);
-    --cms-plugin-primary-border: color-mix(in srgb, var(--cms-plugin-primary) 45%, transparent);
+    --cms-plugin-surface: var(--cms-dark-surface, #1d2430);
+    --cms-plugin-surface-soft: var(--cms-dark-surface-soft, #242c3a);
+    --cms-plugin-border: var(--cms-dark-border, #3a4456);
+    --cms-plugin-border-soft: var(--cms-dark-border-soft, #2e3747);
+    --cms-plugin-text: var(--cms-dark-text, #e6e9ef);
+    --cms-plugin-muted: var(--cms-dark-text-muted, #9aa4b5);
+    --cms-plugin-soft: var(--cms-dark-text-soft, #c3cad6);
+    --cms-plugin-primary-soft: color-mix(in srgb, var(--cms-plugin-primary) 22%, transparent);
+    --cms-plugin-primary-border: color-mix(in srgb, var(--cms-plugin-primary) 50%, transparent);
     --cms-plugin-shadow: none;
 }
 
 :is([data-bs-theme="dark"], .theme-dark) body.admin-body .cms-plugin-admin-content .cms-plugin-layout,
 body.admin-body:is([data-bs-theme="dark"], .theme-dark) .cms-plugin-admin-content .cms-plugin-layout {
-    --cms-plugin-accent-strong: color-mix(in srgb, var(--cms-plugin-primary) 70%, #ffffff);
+    --cms-plugin-accent-strong: color-mix(in srgb, var(--cms-plugin-primary) 55%, var(--cms-plugin-text));
+    --cms-plugin-success: color-mix(in srgb, var(--cms-success, #15803d) 60%, var(--cms-plugin-text));
+    --cms-plugin-warning: color-mix(in srgb, var(--cms-warning, #b45309) 60%, var(--cms-plugin-text));
+    --cms-plugin-danger: color-mix(in srgb, var(--cms-danger, #b91c1c) 60%, var(--cms-plugin-text));
     --cms-plugin-success-soft: color-mix(in srgb, var(--cms-plugin-success) 18%, transparent);
     --cms-plugin-warning-soft: color-mix(in srgb, var(--cms-plugin-warning) 18%, transparent);
     --cms-plugin-danger-soft: color-mix(in srgb, var(--cms-plugin-danger) 18%, transparent);
+    color: var(--cms-plugin-text);
 }
 
 @media (prefers-reduced-motion: reduce) {
