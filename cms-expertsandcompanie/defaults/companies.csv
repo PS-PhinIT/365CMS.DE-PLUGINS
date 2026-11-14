@@ -1,0 +1,105 @@
+NAME;EMAIL;PHONE;INDUSTRY;COMPANY_SIZE;DESCRIPTION;WEBSITE;CITY;ZIP;COUNTRY;FOUNDED_YEAR;EMPLOYEE_COUNT;IS_PARTNER;IS_TOP_PARTNER;IS_SPONSOR;STATUS
+ALSO Deutschland GmbH;;;IT-Distribution / Channel;enterprise;IT-Channel- und Distributionsunternehmen mit starkem Microsoft- und Infrastruktur-Fokus.;https://www.also.de/;;;Deutschland;;;1;0;0;active
+T-Systems International GmbH;;;Cloud / Enterprise IT;enterprise;Unternehmens- und Public-Sector-IT mit Schwerpunkten auf Cloud, AI und Infrastruktur.;https://www.t-systems.com/;;;Deutschland;;;1;1;0;active
+Governikus GmbH & Co. KG;;;Digital Identity / eGovernment;mid-market;Spezialist für digitale Identitäten, eID und sichere Verwaltungsprozesse.;https://www.governikus.de/;;;Deutschland;;;1;0;0;active
+BMW Group;;;Automotive / Digital Transformation;enterprise;Automobilkonzern mit CIO- und Digital-Transformation-Themen aus dem Event-Datensatz.;https://www.bmwgroup.com/;;;Deutschland;;;0;0;1;active
+Siemens AG;;;Industrial Technology / Software;enterprise;Industrie- und Technologiekonzern mit Architektur-, Automatisierungs- und AI-Bezug.;https://www.siemens.com/;;;Deutschland;;;1;0;0;active
+Bosch Sensortec GmbH;;;Sensor Technology / IoT;mid-market;IoT- und Sensortechnologie-Unternehmen aus dem Embedded- und Industrie-Kontext.;https://www.bosch-sensortec.com/;;;Deutschland;;;0;0;0;active
+SoftwareOne Deutschland GmbH;;;Cloud / Licensing / Security;enterprise;Cloud-, Security- und Lizenzberatung mit Azure- und Governance-Schwerpunkt.;https://www.softwareone.com/;;;Deutschland;;;1;0;0;active
+adesso SE;;;IT-Consulting / Software;enterprise;IT-Beratung und Software-Engineering mit Cloud-, Security- und Migrations-Know-how.;https://www.adesso.de/;;;Deutschland;;;1;0;0;active
+SAP SE;;;ERP / Enterprise Software;enterprise;Enterprise-Software-Anbieter mit Fokus auf Business- und Cloud-Plattformen.;https://www.sap.com/;;;Deutschland;;;0;0;0;active
+Net at Work GmbH;;;Messaging / Collaboration / Security;mid-market;Spezialist für Exchange, Collaboration, Unified Communications und Security.;https://www.netatwork.de/;;;Deutschland;;;1;0;0;active
+Fortinet GmbH;;;Cybersecurity;enterprise;Security-Anbieter für Network Security, Firewalling und Security-Plattformen.;https://www.fortinet.com/;;;Deutschland;;;0;0;1;active
+Ceyoniq Technology GmbH;;;DMS / Digital Transformation;mid-market;Software-Anbieter für Dokumentenmanagement und digitale Geschäftsprozesse.;https://www.ceyoniq.com/;;;Deutschland;;;1;0;0;active
+FC-Gruppe GmbH;;;Ingenieur- & Digitalisierungsdienstleister;enterprise;Deutscher Ingenieur- und Digitalisierungsdienstleister (Bau, IT, Energie, Gesundheit, Mobilität, Sicherheit). Rund 450 Mitarbeitende an 19 Standorten, Sitz Karlsruhe.;https://www.fc-gruppe.de/;Karlsruhe;;Deutschland;;450;0;0;0;active
+FC-Bit GmbH;;;IT-Dienstleistung / Managed Services;small;IT-Beratung, Serviceleistungen und Hard-/Softwarehandel. Teil der FC-Gruppe, hervorgegangen aus der blaich IT GmbH. Sitz Simmersfeld (Schwarzwald).;https://www.fc-gruppe.de/;Simmersfeld;72226;Deutschland;;;0;0;0;active
+IT+S GmbH;;;IT-Dienstleistung / ERP / M365;small;Ganzheitlicher IT- und ERP-Partner aus Freudenstadt. Microsoft 365, IP-Telefonie, Managed Services, Dokumentenmanagement.;https://www.itunds.de/;Freudenstadt;;Deutschland;;;0;0;0;active
+SNKB IT & PC Service;;;IT-Service / Managed Services;small;Familiengeführtes IT-Systemhaus aus Freudenstadt. IT-Betreuung, Managed Services, Fernwartung und Office 365 für die Region Baiersbronn/Freudenstadt.;https://www.snkb.de/;Freudenstadt;;Deutschland;;;0;0;0;active
+itka Systemhaus;;;IT-Service / M365 / Security;small;IT-Service- und Microsoft-365-Dienstleister mit Fokus auf KMU, IT-Sicherheit und Support (Region Würzburg).;https://itka-systemhaus.de/;Würzburg;;Deutschland;;;0;0;0;active
+ITANIX GmbH;;;IT-Systemhaus / Cloud / M365;mid-market;Deutschlandweites IT-Systemhaus (8 Standorte) mit Fokus auf M365-/Azure-Migrationen, Modern Workplace und Cyber Security. Microsoft Solution Partner.;https://www.itanix.de/;;;Deutschland;;;0;0;0;active
+NIC Systemhaus GmbH;;;IT-Outsourcing / M365;mid-market;IT-Outsourcing für den Mittelstand der Metropolregion Stuttgart. Microsoft 365, Managed Services, IT-Betrieb.;https://www.nic-team.com/;Göppingen;;Deutschland;;;0;0;0;active
+Mountain IT;;;Azure / Cloud Consulting;small;Cloud- und Azure-Beratung (Eric Berg, Microsoft MVP). Governance und hybride Infrastruktur.;https://ericberg.de/;;;Deutschland;;;1;0;0;active
+Visorian GmbH;;;Azure / Cloud-Native / Security;small;Azure-, Cloud-Native-, Security- und DevOps-Beratung (Jan-Henrik Damaschke, Microsoft MVP).;;;;Deutschland;;;1;0;0;active
+nova laboro UG;;;M365 / SharePoint / Azure;small;SharePoint-, M365-, Dynamics- und Intune-Beratung (Nico Thiemer, Microsoft MVP).;https://nicothiemer.de/;;;Deutschland;;;1;0;0;active
+Xperts at Work;;;SharePoint / M365 / Azure;small;SharePoint-, M365- und Azure-Beratung mit Datenschutz-Fokus (Nicki Borell, Microsoft MVP / Regional Director).;https://www.nickiborell.com/;;;Deutschland;;;1;0;0;active
+Rachfahl IT-Solutions;;;Hyper-V / Azure Stack HCI;small;Spezialist für Hyper-V, Azure Stack HCI und Windows Server (Carsten Rachfahl, Microsoft MVP). Veranstalter der Cloud & Datacenter Conference Germany.;https://www.cdc-germany.de/;;;Deutschland;;;1;0;1;active
+atwork GmbH;;;M365 / Cloud Services;small;Microsoft-365- und Cloud-Beratung aus Österreich (Martina Grom, Microsoft MVP / Regional Director).;https://blog.atwork.at/;Wien;;Österreich;;;1;0;0;active
+glueckkanja-gab AG;;;Azure / Security / M365;mid-market;Cloud-Security- und Microsoft-365-Spezialist (u.a. Fabian Bader, Microsoft MVP). Microsoft Solutions Partner.;;;;Deutschland;;;1;0;0;active
+SOLVION;;;M365 / Power Platform / AI;mid-market;Microsoft-Beratungshaus mit Fokus auf Conversational AI, Power Platform und M365 (u.a. Stephan Bisser, Microsoft MVP).;https://bisser.io/;;;Österreich;;;1;0;0;active
+sid-500 (Patrick Gruenauer);;;PowerShell / M365 / Security;small;PowerShell-, M365- und Cybersecurity-Beratung und -Training (Patrick Gruenauer, Microsoft MVP).;https://sid-500.com/;;;Österreich;;;1;0;0;active
+A1 Digital;;;IT Security Solutions;;Aus dem Event-Datensatz 2026: A1 Digital, Schwerpunkt IT Security Solutions.;;;;;;;0;0;0;active
+Accenture;;;Organizational Transformation / AI;;Aus dem Event-Datensatz 2026: Accenture, Schwerpunkt Organizational Transformation / AI.;https://www.accenture.com/;;;;;;0;0;0;active
+adam-bien.com;;;Java / Cloud Native;;Aus dem Event-Datensatz 2026: adam-bien.com, Schwerpunkt Java / Cloud Native.;http://adam-bien.com/;;;;;;0;0;0;active
+Adva Network Security;;;Quantum-Safe Cryptography;;Aus dem Event-Datensatz 2026: Adva Network Security, Schwerpunkt Quantum-Safe Cryptography.;https://www.omnisecure.berlin/;;;;;;0;0;0;active
+Agile Developer Inc.;;;Java / Agile Development;;Aus dem Event-Datensatz 2026: Agile Developer Inc., Schwerpunkt Java / Agile Development.;https://www.javaland.eu/;;;;;;0;0;0;active
+Alexander Thamm GmbH;;;Data Science / AI;;Aus dem Event-Datensatz 2026: Alexander Thamm GmbH, Schwerpunkt Data Science / AI.;https://www.datafestival.de/;;;;;;0;0;0;active
+Allianz Group;;;Privacy / AI Trust Officer;;Aus dem Event-Datensatz 2026: Allianz Group, Schwerpunkt Privacy / AI Trust Officer.;https://www.datenschutzkongress.de/;;;;;;0;0;0;active
+Amazon (CTO);;;Technology Leadership / Cloud;;Aus dem Event-Datensatz 2026: Amazon (CTO), Schwerpunkt Technology Leadership / Cloud.;https://www.wearedevelopers.com/;;;;;;0;0;0;active
+Amber Iris AI / Uni Digital Science;;;AI Research / Industry;;Aus dem Event-Datensatz 2026: Amber Iris AI / Uni Digital Science, Schwerpunkt AI Research / Industry.;https://riseof.ai/;;;;;;0;0;0;active
+BARC;;;Data Analytics / BI / AI;;Aus dem Event-Datensatz 2026: BARC, Schwerpunkt Data Analytics / BI / AI.;https://www.techshowfrankfurt.de/;;;;;;0;0;0;active
+Barmer (CEO);;;Healthcare / Digital;;Aus dem Event-Datensatz 2026: Barmer (CEO), Schwerpunkt Healthcare / Digital.;https://bigbangfestival.de/;;;;;;0;0;0;active
+BlnBDI;;;Datenschutzpolitik;;Aus dem Event-Datensatz 2026: BlnBDI, Schwerpunkt Datenschutzpolitik.;https://www.datenschutzkongress.de/;;;;;;0;0;0;active
+BM Digitales;;;Digitalpolitik;;Aus dem Event-Datensatz 2026: BM Digitales, Schwerpunkt Digitalpolitik.;https://www.it-strategietage.de/;;;;;;0;0;0;active
+BM Gesundheit;;;Healthcare Policy / Digital Health;;Aus dem Event-Datensatz 2026: BM Gesundheit, Schwerpunkt Healthcare Policy / Digital Health.;https://www.dmea.de/;;;;;;0;0;0;active
+Commerzbank;;;Finance / Banking;;Aus dem Event-Datensatz 2026: Commerzbank, Schwerpunkt Finance / Banking.;https://omr.com/;;;;;;0;0;0;active
+Dataport AöR;;;Public Sector IT Security;;Aus dem Event-Datensatz 2026: Dataport AöR, Schwerpunkt Public Sector IT Security.;https://cybersecuritysumm.it/;;;;;;0;0;0;active
+Deutsche Bahn;;;CIO / IT-Strategie;;Aus dem Event-Datensatz 2026: Deutsche Bahn, Schwerpunkt CIO / IT-Strategie.;https://www.it-strategietage.de/;;;;;;0;0;0;active
+Deutsche Bank;;;Finance / Banking;;Aus dem Event-Datensatz 2026: Deutsche Bank, Schwerpunkt Finance / Banking.;https://omr.com/;;;;;;0;0;0;active
+Deutsche Bank (CMO);;;Marketing / Finance;;Aus dem Event-Datensatz 2026: Deutsche Bank (CMO), Schwerpunkt Marketing / Finance.;https://dmexco.com/;;;;;;0;0;0;active
+Deutsche Telekom;;;Cloud Security / Zero Trust;;Aus dem Event-Datensatz 2026: Deutsche Telekom, Schwerpunkt Cloud Security / Zero Trust.;https://www.we-conect.com/;;;;;;0;0;0;active
+Deutsche Telekom (CEO);;;Telecom / Digital Transformation;;Aus dem Event-Datensatz 2026: Deutsche Telekom (CEO), Schwerpunkt Telecom / Digital Transformation.;https://bigbangfestival.de/;;;;;;0;0;0;active
+DFKI;;;AI Research / HCI;;Aus dem Event-Datensatz 2026: DFKI, Schwerpunkt AI Research / HCI.;https://www.dfki.de/;;;;;;0;0;0;active
+DIERCK GROUP (CEO);;;IT-Panel;;Aus dem Event-Datensatz 2026: DIERCK GROUP (CEO), Schwerpunkt IT-Panel.;https://www.inno-it.de/;;;;;;0;0;0;active
+DStGB;;;Kommunale Digitalisierung;;Aus dem Event-Datensatz 2026: DStGB, Schwerpunkt Kommunale Digitalisierung.;https://kommdigitale.de/;;;;;;0;0;0;active
+E-Government Consulting;;;Verwaltungsdigitalisierung;;Aus dem Event-Datensatz 2026: E-Government Consulting, Schwerpunkt Verwaltungsdigitalisierung.;https://kommdigitale.de/;;;;;;0;0;0;active
+embarc GmbH;;;Software-Architektur;;Aus dem Event-Datensatz 2026: embarc GmbH, Schwerpunkt Software-Architektur.;https://www.oop-konferenz.de/;;;;;;0;0;0;active
+ESPI;;;Science / Policy;;Aus dem Event-Datensatz 2026: ESPI, Schwerpunkt Science / Policy.;https://live.handelsblatt.com/;;;;;;0;0;0;active
+Extreme Networks;;;VP Sales DACH / Networking;;Aus dem Event-Datensatz 2026: Extreme Networks, Schwerpunkt VP Sales DACH / Networking.;https://www.inno-it.de/;;;;;;0;0;0;active
+F.A.Z. / implicator.ai;;;Technology Journalism;;Aus dem Event-Datensatz 2026: F.A.Z. / implicator.ai, Schwerpunkt Technology Journalism.;https://www.techshowfrankfurt.de/;;;;;;0;0;0;active
+FOM University;;;Healthcare Management / Digital Health;;Aus dem Event-Datensatz 2026: FOM University, Schwerpunkt Healthcare Management / Digital Health.;https://www.dmea.de/;;;;;;0;0;0;active
+Freie Universität Berlin;;;Informatik / Digital ID;;Aus dem Event-Datensatz 2026: Freie Universität Berlin, Schwerpunkt Informatik / Digital ID.;https://www.omnisecure.berlin/;;;;;;0;0;0;active
+Freigeist Capital;;;Innovation / Investment;;Aus dem Event-Datensatz 2026: Freigeist Capital, Schwerpunkt Innovation / Investment.;https://bigbangfestival.de/;;;;;;0;0;0;active
+Future Today Institute;;;Technology Trends / AI;;Aus dem Event-Datensatz 2026: Future Today Institute, Schwerpunkt Technology Trends / AI.;https://amywebb.io/;;;;;;0;0;0;active
+GEOMAR;;;Klimaforschung & AI;;Aus dem Event-Datensatz 2026: GEOMAR, Schwerpunkt Klimaforschung & AI.;https://www.inno-it.de/;;;;;;0;0;0;active
+Giesecke+Devrient / Bitkom;;;Digital Transformation / Bitkom-Präsident;;Aus dem Event-Datensatz 2026: Giesecke+Devrient / Bitkom, Schwerpunkt Digital Transformation / Bitkom-Präsident.;;;;;;;0;0;0;active
+Google Cloud (VP EMEA North);;;Cloud Technology;;Aus dem Event-Datensatz 2026: Google Cloud (VP EMEA North), Schwerpunkt Cloud Technology.;https://bigbangfestival.de/;;;;;;0;0;0;active
+Greenberg Traurig;;;AI / Datenschutz / Cybersecurity;;Aus dem Event-Datensatz 2026: Greenberg Traurig, Schwerpunkt AI / Datenschutz / Cybersecurity.;https://www.datenschutzkongress.de/;;;;;;0;0;0;active
+Hackers4Good;;;Cybersecurity / Ethical Hacking;;Aus dem Event-Datensatz 2026: Hackers4Good, Schwerpunkt Cybersecurity / Ethical Hacking.;https://cybersecuritysumm.it/;;;;;;0;0;0;active
+Heidelberg iT Management;;;AI / Data Center;;Aus dem Event-Datensatz 2026: Heidelberg iT Management, Schwerpunkt AI / Data Center.;https://www.ai-conference.de/;;;;;;0;0;0;active
+HmbBfDI;;;Datenschutzpolitik;;Aus dem Event-Datensatz 2026: HmbBfDI, Schwerpunkt Datenschutzpolitik.;https://www.datenschutzkongress.de/;;;;;;0;0;0;active
+HS Offenburg;;;Embedded Systems;;Aus dem Event-Datensatz 2026: HS Offenburg, Schwerpunkt Embedded Systems.;https://www.embedded-world.de/;;;;;;0;0;0;active
+IT-Business Magazin;;;IT Media / Panel;;Aus dem Event-Datensatz 2026: IT-Business Magazin, Schwerpunkt IT Media / Panel.;https://www.inno-it.de/;;;;;;0;0;0;active
+KAUST / NNAISENSE;;;AI Research / Neural Networks;;Aus dem Event-Datensatz 2026: KAUST / NNAISENSE, Schwerpunkt AI Research / Neural Networks.;https://riseof.ai/;;;;;;0;0;0;active
+KIT;;;Verkehrsplanung;;Aus dem Event-Datensatz 2026: KIT, Schwerpunkt Verkehrsplanung.;https://www.kit.edu/;;;;;;0;0;0;active
+Kuehne+Nagel;;;CISO / Enterprise Cybersecurity;;Aus dem Event-Datensatz 2026: Kuehne+Nagel, Schwerpunkt CISO / Enterprise Cybersecurity.;https://dach.cyberseries.io/;;;;;;0;0;0;active
+L'Oréal;;;Media Director DACH;;Aus dem Event-Datensatz 2026: L'Oréal, Schwerpunkt Media Director DACH.;https://dmexco.com/;;;;;;0;0;0;active
+LfDI Brandenburg;;;Datenschutzpolitik;;Aus dem Event-Datensatz 2026: LfDI Brandenburg, Schwerpunkt Datenschutzpolitik.;https://www.datenschutzkongress.de/;;;;;;0;0;0;active
+LfDI Rheinland-Pfalz;;;Datenschutzregulierung;;Aus dem Event-Datensatz 2026: LfDI Rheinland-Pfalz, Schwerpunkt Datenschutzregulierung.;https://www.datenschutzkongress.de/;;;;;;0;0;0;active
+LMU München;;;Computer Vision / AI;;Aus dem Event-Datensatz 2026: LMU München, Schwerpunkt Computer Vision / AI.;https://bigbangfestival.de/;;;;;;0;0;0;active
+Merantix AG;;;AI Startups / Deep Learning;;Aus dem Event-Datensatz 2026: Merantix AG, Schwerpunkt AI Startups / Deep Learning.;https://riseof.ai/;;;;;;0;0;0;active
+Microchip Technology;;;IoT / AI Keynote;;Aus dem Event-Datensatz 2026: Microchip Technology, Schwerpunkt IoT / AI Keynote.;https://www.embedded-world.de/;;;;;;0;0;0;active
+Microsoft;;;Microsoft Copilot;;Aus dem Event-Datensatz 2026: Microsoft, Schwerpunkt Microsoft Copilot.;;;;;;;0;0;0;active
+Munich Re;;;Enterprise Cybersecurity;;Aus dem Event-Datensatz 2026: Munich Re, Schwerpunkt Enterprise Cybersecurity.;https://cybersecuritysumm.it/;;;;;;0;0;0;active
+Nespresso;;;Marketing / Brand;;Aus dem Event-Datensatz 2026: Nespresso, Schwerpunkt Marketing / Brand.;https://omr.com/;;;;;;0;0;0;active
+Nestlé (Global CMO);;;Marketing / Digital;;Aus dem Event-Datensatz 2026: Nestlé (Global CMO), Schwerpunkt Marketing / Digital.;https://dmexco.com/;;;;;;0;0;0;active
+NiCE;;;Conversational AI;;Aus dem Event-Datensatz 2026: NiCE, Schwerpunkt Conversational AI.;https://www.ccw.eu/;;;;;;0;0;0;active
+NYU Stern;;;Business Analysis / Tech;;Aus dem Event-Datensatz 2026: NYU Stern, Schwerpunkt Business Analysis / Tech.;https://omr.com/;;;;;;0;0;0;active
+On AG / LightSpray;;;Industrial Technology;;Aus dem Event-Datensatz 2026: On AG / LightSpray, Schwerpunkt Industrial Technology.;https://www.hannovermesse.de/;;;;;;0;0;0;active
+OTH Amberg-Weiden;;;Informatik / Kryptographie;;Aus dem Event-Datensatz 2026: OTH Amberg-Weiden, Schwerpunkt Informatik / Kryptographie.;https://www.omnisecure.berlin/;;;;;;0;0;0;active
+PICTURE GmbH;;;Prozessmanagement / Change;;Aus dem Event-Datensatz 2026: PICTURE GmbH, Schwerpunkt Prozessmanagement / Change.;https://kommdigitale.de/;;;;;;0;0;0;active
+Ratepay;;;Cybersecurity / FinTech;;Aus dem Event-Datensatz 2026: Ratepay, Schwerpunkt Cybersecurity / FinTech.;https://cybersecuritysumm.it/;;;;;;0;0;0;active
+REWE Group;;;Customer Insights & Media;;Aus dem Event-Datensatz 2026: REWE Group, Schwerpunkt Customer Insights & Media.;https://dmexco.com/;;;;;;0;0;0;active
+Rheinmetall;;;Defense & Technology;;Aus dem Event-Datensatz 2026: Rheinmetall, Schwerpunkt Defense & Technology.;https://www.hannovermesse.de/;;;;;;0;0;0;active
+Schwarz Group;;;Chat & Voice Technology;;Aus dem Event-Datensatz 2026: Schwarz Group, Schwerpunkt Chat & Voice Technology.;https://www.ccw.eu/;;;;;;0;0;0;active
+Schwarz-Digits;;;AI / Technology;;Aus dem Event-Datensatz 2026: Schwarz-Digits, Schwerpunkt AI / Technology.;https://bigbangfestival.de/;;;;;;0;0;0;active
+Signal;;;Tech / AI Policy;;Aus dem Event-Datensatz 2026: Signal, Schwerpunkt Tech / AI Policy.;https://omr.com/;;;;;;0;0;0;active
+Ströer SE;;;Cyber Security Architecture;;Aus dem Event-Datensatz 2026: Ströer SE, Schwerpunkt Cyber Security Architecture.;https://dach.cyberseries.io/;;;;;;0;0;0;active
+SySS GmbH;;;Cybersecurity / Penetration Testing;;Aus dem Event-Datensatz 2026: SySS GmbH, Schwerpunkt Cybersecurity / Penetration Testing.;https://www.syss.de/;;;;;;0;0;0;active
+TikTok (GM DACH);;;Social Media / Marketing;;Aus dem Event-Datensatz 2026: TikTok (GM DACH), Schwerpunkt Social Media / Marketing.;https://dmexco.com/;;;;;;0;0;0;active
+TU Kaiserslautern;;;AI / Algorithmen;;Aus dem Event-Datensatz 2026: TU Kaiserslautern, Schwerpunkt AI / Algorithmen.;https://www.inno-it.de/;;;;;;0;0;0;active
+TU Wien;;;Embedded Systems;;Aus dem Event-Datensatz 2026: TU Wien, Schwerpunkt Embedded Systems.;https://www.embedded-world.de/;;;;;;0;0;0;active
+TUM;;;Strategie / AI;;Aus dem Event-Datensatz 2026: TUM, Schwerpunkt Strategie / AI.;https://www.inno-it.de/;;;;;;0;0;0;active
+Uni Münster;;;IT-Recht / Informationssicherheit;;Aus dem Event-Datensatz 2026: Uni Münster, Schwerpunkt IT-Recht / Informationssicherheit.;https://www.datenschutzkongress.de/;;;;;;0;0;0;active
+Vantron Technology;;;Embedded / IoT;;Aus dem Event-Datensatz 2026: Vantron Technology, Schwerpunkt Embedded / IoT.;https://www.embedded-world.de/;;;;;;0;0;0;active
+Whatnot;;;Live Shopping / E-Commerce;;Aus dem Event-Datensatz 2026: Whatnot, Schwerpunkt Live Shopping / E-Commerce.;https://omr.com/;;;;;;0;0;0;active
+Whoop;;;Sports Technology;;Aus dem Event-Datensatz 2026: Whoop, Schwerpunkt Sports Technology.;https://omr.com/;;;;;;0;0;0;active

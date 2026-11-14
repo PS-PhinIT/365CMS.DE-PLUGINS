@@ -1,0 +1,73 @@
+.cms365-section--taxonomy-target .cms365-form-grid--taxonomy-target {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.9rem;
+    overflow-x: auto;
+    padding-bottom: 0.4rem;
+}
+
+.cms365-section--taxonomy-target .cms365-form-grid--taxonomy-target .form-group {
+    flex: 0 0 220px;
+    min-width: 220px;
+    margin-bottom: 0;
+    background: #fff;
+    border: 1px solid #dbe4ef;
+    border-radius: 14px;
+    padding: 0.65rem 0.75rem;
+}
+
+.cms365-section--taxonomy-target .cms365-form-grid--taxonomy-target .form-group .description {
+    display: block;
+    margin-top: 0.35rem;
+}
+
+.cms365-section--taxonomy-target .cms365-form-grid--taxonomy-target .cms365-multiselect {
+    min-height: 170px;
+    max-height: 220px;
+}
+
+.cms365-section--taxonomy-target .cms365-form-group--full {
+    margin-top: 0.9rem;
+}
+
+@media (max-width: 1280px) {
+    .cms365-section--taxonomy-target .cms365-form-grid--taxonomy-target {
+        flex-wrap: wrap;
+        overflow: visible;
+    }
+
+    .cms365-section--taxonomy-target .cms365-form-grid--taxonomy-target .form-group {
+        flex: 1 1 260px;
+        min-width: 240px;
+    }
+}
+
+.cms365-image-field {
+    grid-template-columns: minmax(240px, 1fr) minmax(260px, 600px);
+}
+
+.cms365-image-preview {
+    width: 100%;
+    max-width: 600px;
+    max-height: 250px;
+    min-height: 120px;
+}
+
+.cms365-image-preview img {
+    width: auto;
+    height: auto;
+    max-width: 600px;
+    max-height: 250px;
+    object-fit: contain;
+}
+
+@media (max-width: 760px) {
+    .cms365-image-field {
+        grid-template-columns: 1fr;
+    }
+
+    .cms365-image-preview,
+    .cms365-image-preview img {
+        max-width: 100%;
+    }
+}
