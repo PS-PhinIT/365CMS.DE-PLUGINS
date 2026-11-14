@@ -19,9 +19,245 @@ final class CMS_Projects_Service
     {
     }
 
-    public function boot(): void
+    public const DB_VERSION = '2';
+    public const DB_VERSION_OPTION = 'cms_projects_db_version';
+    public const AUDIT_RETENTION_OPTION = 'cms_projects_audit_retention_days';
+    public const AUDIT_RETENTION_DEFAULT = 365;
+
+    /**
+     * Tabellen nur anlegen/migrieren, wenn sich die Schema-Version geändert hat
+     * (Autoload-Option über OptionStore – keine zusätzliche Abfrage pro Request).
+     */
+    public function boot(bool $force = false): void
     {
-        $this->repository->ensureTables();
+        if (!$force && $this->installedDbVersion() === self::DB_VERSION) {
+            return;
+        }
+
+        try {
+            $this->repository->ensureTables();
+            if (function_exists('update_option')) {
+                update_option(self::DB_VERSION_OPTION, self::DB_VERSION);
+            }
+        } catch (\Throwable $e) {
+            error_log('[cms-projects] Tabellen konnten nicht angelegt werden: ' . $e->getMessage());
+        }
+    }
+
+    public function installedDbVersion(): string
+    {
+        if (class_exists('CMS\\Services\\OptionStore')) {
+            return (string) \CMS\Services\OptionStore::getInstance()->get(self::DB_VERSION_OPTION, '');
+        }
+
+        return function_exists('get_option') ? (string) get_option(self::DB_VERSION_OPTION, '') : '';
+    }
+
+    /** Deinstallation: Tabellen und Optionen entfernen. */
+    public function uninstall(): void
+    {
+        try {
+            $this->repository->dropTables();
+            $db = \CMS\Database::instance();
+            $db->execute("DELETE FROM {$db->getPrefix()}settings WHERE option_name IN (?, ?)", [self::DB_VERSION_OPTION, self::AUDIT_RETENTION_OPTION]);
+        } catch (\Throwable $e) {
+            error_log('[cms-projects] Deinstallation fehlgeschlagen: ' . $e->getMessage());
+        }
+    }
+
+    public function getAuditRetentionDays(): int
+    {
+        $value = class_exists('CMS\\Services\\OptionStore')
+            ? \CMS\Services\OptionStore::getInstance()->get(self::AUDIT_RETENTION_OPTION)
+            : (function_exists('get_option') ? get_option(self::AUDIT_RETENTION_OPTION) : null);
+
+        return $value === null || $value === '' ? self::AUDIT_RETENTION_DEFAULT : max(0, min(3650, (int) $value));
+    }
+
+    public function saveAuditRetentionDays(int $days): array
+    {
+        $days = max(0, min(3650, $days));
+        if (!function_exists('update_option') || !update_option(self::AUDIT_RETENTION_OPTION, (string) $days)) {
+            return ['success' => false, 'message' => 'Die Aufbewahrungsfrist konnte nicht gespeichert werden.'];
+        }
+
+        return ['success' => true, 'message' => $days > 0 ? sprintf('Audit-Einträge werden nach %d Tagen gelöscht.', $days) : 'Audit-Einträge werden unbegrenzt aufbewahrt.'];
+    }
+
+    public function countAuditLogs(): int
+    {
+        return $this->repository->countAuditLogs();
+    }
+
+    public function countAuditLogsDue(): int
+    {
+        return $this->repository->countAuditLogsOlderThan($this->getAuditRetentionDays());
+    }
+
+    public function pruneAuditLogs(): int
+    {
+        return $this->repository->deleteAuditLogsOlderThan($this->getAuditRetentionDays());
+    }
+
+    /**
+     * @return list<array<string,mixed>>
+     */
+    public function findAuditLogs(int $limit = 200, int $projectId = 0, string $result = '', string $entityType = ''): array
+    {
+        return $this->repository->findAuditLogs($limit, $projectId, $result, preg_replace('/[^a-z_]/', '', $entityType) ?? '');
+    }
+
+    /**
+     * @return list<array<string,mixed>>
+     */
+    public function findProjects(string $status = '', string $visibility = '', string $search = ''): array
+    {
+        $status = isset($this->getProjectStatuses()[$status]) ? $status : '';
+        $visibility = isset($this->getProjectVisibilities()[$visibility]) ? $visibility : '';
+
+        return $this->decorateProjects($this->repository->findProjects($status, $visibility, $search));
+    }
+
+    /**
+     * @return list<array<string,mixed>>
+     */
+    public function getRecentTasks(int $limit = 8): array
+    {
+        return array_map(function (array $task): array {
+            $task['priority_label'] = (string) ($this->getTaskPriorities()[$task['priority'] ?? 'medium'] ?? 'Mittel');
+            return $task;
+        }, $this->repository->getRecentTasks($limit));
+    }
+
+    /**
+     * @param list<string> $words
+     * @return list<array<string,mixed>>
+     */
+    public function searchPublicProjects(array $words, int $limit = 10): array
+    {
+        return $this->repository->searchPublicProjects($words, $limit);
+    }
+
+    public function countOverdueTasks(): int
+    {
+        return $this->repository->countOverdueTasks();
+    }
+
+    public function findBoard(int $boardId): ?array
+    {
+        $board = $boardId > 0 ? $this->repository->findBoardById($boardId) : null;
+        if ($board === null) {
+            return null;
+        }
+        $board['payload_data'] = $this->sanitizeBoardPayload($this->decodePayload((string) ($board['payload'] ?? '')));
+
+        return $board;
+    }
+
+    public function findWidget(int $widgetId): ?array
+    {
+        $widget = $widgetId > 0 ? $this->repository->findWidgetById($widgetId) : null;
+        if ($widget === null) {
+            return null;
+        }
+        $widget['payload_data'] = $this->sanitizeWidgetPayload((string) ($widget['widget_type'] ?? 'text'), $this->decodePayload((string) ($widget['payload'] ?? '')));
+
+        return $widget;
+    }
+
+    public function deleteProject(int $projectId): array
+    {
+        $project = $this->findProject($projectId);
+        if ($project === null) {
+            return ['success' => false, 'message' => 'Das Projekt wurde nicht gefunden.'];
+        }
+
+        $ok = $this->repository->deleteProjectCascade($projectId);
+        $this->recordAuditLog('project.delete', 'project', $projectId, $projectId, $ok, ['slug' => (string) ($project['slug'] ?? '')]);
+
+        return $ok
+            ? ['success' => true, 'message' => 'Projekt inkl. Boards, Widgets und Tickets gelöscht.']
+            : ['success' => false, 'message' => 'Projekt konnte nicht gelöscht werden.'];
+    }
+
+    public function deleteBoard(int $boardId, int $projectId): array
+    {
+        $board = $this->repository->findBoardById($boardId);
+        if ($board === null || (int) ($board['project_id'] ?? 0) !== $projectId) {
+            return ['success' => false, 'message' => 'Das Board wurde nicht gefunden.'];
+        }
+
+        $ok = $this->repository->deleteBoardCascade($boardId);
+        $this->recordAuditLog('board.delete', 'board', $boardId, $projectId, $ok, []);
+
+        return $ok
+            ? ['success' => true, 'message' => 'Board inkl. seiner Tickets gelöscht.']
+            : ['success' => false, 'message' => 'Board konnte nicht gelöscht werden.'];
+    }
+
+    public function deleteWidget(int $widgetId, int $projectId): array
+    {
+        $widget = $this->repository->findWidgetById($widgetId);
+        if ($widget === null || (int) ($widget['project_id'] ?? 0) !== $projectId) {
+            return ['success' => false, 'message' => 'Das Widget wurde nicht gefunden.'];
+        }
+
+        $ok = $this->repository->deleteWidget($widgetId);
+        $this->recordAuditLog('widget.delete', 'widget', $widgetId, $projectId, $ok, []);
+
+        return $ok
+            ? ['success' => true, 'message' => 'Widget gelöscht.']
+            : ['success' => false, 'message' => 'Widget konnte nicht gelöscht werden.'];
+    }
+
+    /**
+     * Vollständiger Projekt-Export (Stammdaten, Boards, Widgets, Tickets) als Array für JSON.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function exportProject(int $projectId): ?array
+    {
+        $project = $this->repository->findProjectById($projectId);
+        if ($project === null) {
+            return null;
+        }
+
+        $strip = static function (array $row): array {
+            unset($row['payload']);
+            return $row;
+        };
+
+        return [
+            'format' => 'cms-projects-export',
+            'version' => 1,
+            'exported_at' => date('c'),
+            'project' => $project,
+            'boards' => array_map(fn (array $b): array => $strip($b) + ['payload' => $this->decodePayload((string) ($b['payload'] ?? ''))], $this->repository->getBoardsByProject($projectId)),
+            'widgets' => array_map(fn (array $w): array => $strip($w) + ['payload' => $this->decodePayload((string) ($w['payload'] ?? ''))], $this->repository->getWidgetsByProject($projectId)),
+            'tasks' => array_map($strip, $this->repository->getTasksByProject($projectId)),
+        ];
+    }
+
+    /**
+     * CSP-konformer Farbpunkt mit Projekt-Akzentfarbe: Die validierte Farbe wird als Klasse
+     * über einen nonce-geschützten <style>-Block gesetzt (keine style-Attribute).
+     */
+    public static function accentSwatch(array $project, string $class = 'cp-project-color'): string
+    {
+        static $emitted = [];
+        $color = strtolower((string) ($project['accent_color'] ?? '#2563eb'));
+        if (preg_match('/^#[0-9a-f]{6}$/', $color) !== 1) {
+            $color = '#2563eb';
+        }
+        $token = substr($color, 1);
+        $html = '';
+        if (!isset($emitted[$token])) {
+            $emitted[$token] = true;
+            $nonce = class_exists('CMS\\Security') ? ' ' . \CMS\Security::instance()->nonceAttr() : '';
+            $html .= '<style' . $nonce . '>.cp-accent-' . $token . '{--cp-project-accent:' . $color . '}</style>';
+        }
+
+        return $html . '<span class="' . htmlspecialchars($class, ENT_QUOTES, 'UTF-8') . ' cp-accent-' . $token . '" aria-hidden="true"></span>';
     }
 
     public function getSummary(): array
@@ -480,6 +716,14 @@ final class CMS_Projects_Service
 
         $decoded = $this->sanitizeBoardPayload($decoded);
 
+        $boardId = max(0, (int) ($input['board_id'] ?? 0));
+        if ($boardId > 0) {
+            $existing = $this->repository->findBoardById($boardId);
+            if ($existing === null || (int) ($existing['project_id'] ?? 0) !== $projectId) {
+                return ['success' => false, 'message' => 'Das zu bearbeitende Board wurde nicht gefunden.'];
+            }
+        }
+
         $saveId = $this->repository->saveBoard([
             'project_id' => $projectId,
             'board_type' => $boardType,
@@ -489,15 +733,16 @@ final class CMS_Projects_Service
             'is_public' => $this->toBooleanFlag($input['is_public'] ?? 0),
             'is_active' => $this->toBooleanFlag($input['is_active'] ?? 0),
             'payload' => json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-        ]);
+        ], $boardId > 0 ? $boardId : null);
 
+        $auditAction = $boardId > 0 ? 'board.update' : 'board.create';
         if ($saveId === false) {
             $this->logOperationFailure('save_board', ['project_id' => $projectId, 'board_type' => $boardType]);
-            $this->recordAuditLog('board.create', 'board', 0, $projectId, false, ['board_type' => $boardType]);
+            $this->recordAuditLog($auditAction, 'board', $boardId, $projectId, false, ['board_type' => $boardType]);
             return ['success' => false, 'message' => 'Board konnte nicht gespeichert werden.'];
         }
 
-        $this->recordAuditLog('board.create', 'board', (int) $saveId, $projectId, true, ['board_type' => $boardType]);
+        $this->recordAuditLog($auditAction, 'board', (int) $saveId, $projectId, true, ['board_type' => $boardType]);
         return ['success' => true, 'message' => 'Board wurde gespeichert.', 'id' => (int) $saveId];
     }
 
@@ -539,6 +784,14 @@ final class CMS_Projects_Service
 
         $decoded = $this->sanitizeWidgetPayload($widgetType, $decoded);
 
+        $widgetId = max(0, (int) ($input['widget_id'] ?? 0));
+        if ($widgetId > 0) {
+            $existing = $this->repository->findWidgetById($widgetId);
+            if ($existing === null || (int) ($existing['project_id'] ?? 0) !== $projectId) {
+                return ['success' => false, 'message' => 'Das zu bearbeitende Widget wurde nicht gefunden.'];
+            }
+        }
+
         $saveId = $this->repository->saveWidget([
             'project_id' => $projectId,
             'scope' => $scope,
@@ -548,15 +801,16 @@ final class CMS_Projects_Service
             'position' => max(0, (int) ($input['position'] ?? 0)),
             'is_active' => $this->toBooleanFlag($input['is_active'] ?? 0),
             'payload' => json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-        ]);
+        ], $widgetId > 0 ? $widgetId : null);
 
+        $auditAction = $widgetId > 0 ? 'widget.update' : 'widget.create';
         if ($saveId === false) {
             $this->logOperationFailure('save_widget', ['project_id' => $projectId, 'widget_type' => $widgetType]);
-            $this->recordAuditLog('widget.create', 'widget', 0, $projectId, false, ['widget_type' => $widgetType, 'scope' => $scope]);
+            $this->recordAuditLog($auditAction, 'widget', $widgetId, $projectId, false, ['widget_type' => $widgetType, 'scope' => $scope]);
             return ['success' => false, 'message' => 'Widget konnte nicht gespeichert werden.'];
         }
 
-        $this->recordAuditLog('widget.create', 'widget', (int) $saveId, $projectId, true, ['widget_type' => $widgetType, 'scope' => $scope]);
+        $this->recordAuditLog($auditAction, 'widget', (int) $saveId, $projectId, true, ['widget_type' => $widgetType, 'scope' => $scope]);
         return ['success' => true, 'message' => 'Widget wurde gespeichert.', 'id' => (int) $saveId];
     }
 

@@ -4,6 +4,7 @@ Promo- und Kampagnen-Plugin für 365CMS 4.0.0 mit Platzierungen, CTA-Elementen, 
 
 - **Voraussetzungen:** 365CMS 4.0.0, PHP 8.4.1
 - **Admin:** `/admin/plugins/promos-dashboard` (Übersicht, Promos, Platzierungen, Einstellungen) im einheitlichen Plugin-Layout
+- **Technische Dokumentation:** [DOC/ADMIN-UND-INTEGRATION.md](DOC/ADMIN-UND-INTEGRATION.md)
 - **Öffentlich:** `/promos`, `/promos/placement/<slug>`, Klick-Weiterleitung `/promo/click/<slug>` (jeweils auch unter `/en/…`)
 
 ## Funktionen

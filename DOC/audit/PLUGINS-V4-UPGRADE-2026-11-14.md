@@ -16,8 +16,10 @@
 |---|---|---|---|---:|---:|---|---|
 | CMS Beratung | `cms-beratung/` | `365CMS \| Beratung` | 2.9.794 → 3.0.0 | 5.030 | 1.771 / 4.852 | `beratung_landingpages`, `beratung_presets`, `beratung_settings`, `beratung_form_submissions` | [ ] |
 | CMS Booking | `cms-booking/` | `365CMS \| Booking` | 3.0.8 → 4.0.0 | 6.484 | 430 / 773 | `bookings`, `booking_providers`, `booking_services`, `booking_availability`, `booking_meta`, `booking_settings` | [ ] |
-| CMS Projects | `cms-projects/` | `365CMS \| Projekte` | 3.0.4 → 4.0.0 | 3.788 | 171 / 626 | `projects`, `project_boards`, `project_tasks`, `project_widgets`, `project_audit_log` | [ ] |
+| CMS Projects | `cms-projects/` | `365CMS \| Projekte` | 3.0.4 → 4.0.0 | 3.788 | 171 / 626 | `projects_projects`, `projects_boards`, `projects_widgets`, `projects_tasks`, `projects_audit_logs` | [x] |
 | CMS Promos | `cms-promos/` | `365CMS \| Promos` | 3.0.4 → 4.0.0 | 2.456 | 40 / 531 | `promos`, `promo_placements`, `promo_settings` | [x] |
+
+Je Plugin liegt die aktuelle technische Dokumentation unter `<plugin>/DOC/*.md` (Admin-Menü, KPIs, Routen, Core-Integrationen, Lebenszyklus, Sicherheit, Assets).
 
 Abgehakt (`[x]`) wird ein Plugin erst, wenn alle fünf Phasen umgesetzt und alle PHP-Dateien mit `php -l` fehlerfrei geprüft sind.
 
@@ -68,4 +70,37 @@ _(wird je Plugin während der Umsetzung ergänzt)_
 4. **Sicherheit:** Webhook über `CMS\Http\Client` (SSRF-Schutz, Timeout, Größenlimit); CSRF auf allen POSTs, Export mit persistentem Token; CSV-Formel-Injektion entschärft; `data-cms-confirm` statt ungesicherter Löschbuttons; Klick-Route nur für live Promos; keine Inline-Skripte/Styles, JS-Ausgabe nur per `textContent`.
 5. **Speed:** Migration nur bei geänderter `cms_promos_db_version` (Autoload-Option über `OptionStore`); neue Indizes; Upsert für Einstellungen; explizite Spaltenlisten; Aggregat-Join statt korrelierter Unterabfrage; öffentliche Session entfernt; CSS nur bei Bedarf, Admin-JS nur auf der Promo-Seite mit `defer`.
 
+**Dokumentation:** `cms-promos/DOC/ADMIN-UND-INTEGRATION.md` (neu), `README.md`, `CHANGELOG.md`, `update.json`.
+
 **Prüfung:** `php -l` für alle 10 PHP-Dateien fehlerfrei; Render-Smoke-Test aller 7 Admin-Ansichten mit Core-Partial `plugin-workspace.php` ohne Notices, ohne `style=`/`on*=`-Attribute.
+
+### 3.2 CMS Projects (`cms-projects`, 3.0.4 → 4.0.0) – [x] abgeschlossen
+
+**Befunde**
+
+| # | Bereich | Befund | Schwere |
+|---|---|---|---|
+| PJ-1 | Design | Eine einzige Sammelseite `admin/page.php` (583 Zeilen) für „Übersicht“ **und** „Projekte“ – identischer Inhalt unter zwei Menüpunkten; Stat-Karten im Inhalt, keine KPI-Kopfzeile, kein Plugin-Menü | hoch |
+| PJ-2 | 4.0.0 | Menü-Capability `admin` (kein gültiger Capability-Name), Menü-Icon „PRJ“, `cms_plugin_admin_layout_start()`/`shared/admin/plugin-admin-contract.php` (existieren im Core 4.0.0 nicht), CSS über `admin_head` mit Pfadraten | mittel |
+| PJ-3 | 4.0.0 | Member-Registrierung mit `capability => null`, Label „PROJECTS“, Icon „PRJ“; Detailauswahl ließ archivierte Projekte zu | mittel |
+| PJ-4 | Unfertig | Boards und Widgets konnten nur **angelegt**, nicht bearbeitet oder gelöscht werden; Projekte nicht löschbar; Audit-Log nur als ungefilterte Tabelle ohne Export; kein Export | hoch |
+| PJ-5 | Unfertig | POST ohne Redirect (Doppel-Absendung bei Reload), Formularwerte nach Fehlern verloren | mittel |
+| PJ-6 | Performance | `ensureTables()` (5× `CREATE TABLE IF NOT EXISTS`) bei **jedem** Request | hoch |
+| PJ-7 | Performance | `SELECT *` in 11 Abfragen | niedrig |
+| PJ-8 | Datenschutz | Audit-Protokoll mit Benutzernamen wächst unbegrenzt, keine Löschfrist | mittel |
+| PJ-9 | CSP | Projekt-Akzentfarbe als `style="--cp-project-accent:…"` in Templates und Shortcode (von `style-src` blockiert) | mittel |
+| PJ-10 | Sicherheit | Shortcode `scope="member"` gab Member-Inhalte auch an anonyme Besucher aus; Widget-Shortcode ignorierte den Projektstatus | mittel |
+| PJ-11 | Integration | Keine Sitemap-/Suchintegration für öffentliche Projekte, kein Systemhinweis, keine Lebenszyklus-Callbacks | niedrig |
+| PJ-12 | Code | 38 hartkodierte Farbwerte in `style.css`, Admin-Overrides mit 4px-Radius | niedrig |
+
+**Umsetzung (Phasen 1–5)**
+
+1. **Design:** `admin/page.php` aufgeteilt in `admin/views/` (Liste, Projektkopf, Reiter Stammdaten/Boards/Widgets/Tickets, Audit, Einstellungen, Helfer). Kopfzeile `365CMS | Projekte` mit 4 KPIs (Projekte, aktiv, Tickets, überfällig); linkes Menü Übersicht · Projekte · Audit-Log · Einstellungen, bei geöffnetem Projekt die Reiter als Menügruppe „Projekt: *Name*“ mit Zähler-Badges; Übersicht über `cms_plugin_dashboard()`. Neues `admin.css` mappt die `--cp-*`-Variablen auf Core-Tokens (Light/Dark, 2px).
+2. **4.0.0:** `manage_options`, Tabler-Icons, Router-Shell, `current_user_can()`, `safeLocalPath()`; Member-Capability `member`; Lebenszyklus-Callbacks; `cms_sitemap_entries`, `search_results`, `DataRetentionService::registerRule('cms_projects_audit_logs')`, `AdminNoticeService::registerCheck('cms_projects_overdue')`.
+3. **Ausbau:** Projekte löschen (transaktional mit Boards/Widgets/Tickets), Boards/Widgets bearbeiten & löschen (mit Projektzugehörigkeitsprüfung und Audit-Einträgen), Projektliste mit Filtern, Projekt-JSON-Export, Audit-Log mit Filtern und CSV-Export, Einstellungen (Löschfrist, Bereinigen, Tabellenreparatur), PRG-Redirects mit Flash-Meldungen.
+4. **Sicherheit:** CSRF auf allen POSTs, persistentes Token für Exporte, CSV-Formel-Schutz, `JSON_HEX_TAG`; Akzentfarben über nonce-geschützte `<style>`-Regeln (`accentSwatch()`); Member-Shortcodes nur für angemeldete Besucher; Statusprüfung im Widget-Shortcode und Member-Detail.
+5. **Speed:** Schema-Prüfung nur bei geänderter `cms_projects_db_version`; explizite Spaltenlisten; Audit-Bereinigung in Blöcken über den Core-Cron; CSS nur auf Projektseiten bzw. einmalig mit Shortcode-Ausgabe; Board-JS nur im Ticket-Reiter.
+
+**Dokumentation:** `cms-projects/DOC/ADMIN-UND-INTEGRATION.md` (neu), `README.md`, `CHANGELOG.md`, `update.json`.
+
+**Prüfung:** `php -l` für alle PHP-Dateien fehlerfrei; Render-Smoke-Test aller 9 Admin-Ansichten (inkl. aller Projekt-Reiter) mit Core-Partial ohne Notices, ohne `style=`-Attribute, genau ein `aria-current` je Seite.
