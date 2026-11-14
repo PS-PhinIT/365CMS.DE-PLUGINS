@@ -4,7 +4,7 @@
 
 - **Voraussetzungen:** 365CMS 4.0.0, PHP 8.4.1
 - **Admin:** `/admin/plugins/cms-projects` (Übersicht, Projekte mit Reitern Stammdaten/Boards/Widgets/Tickets, Audit-Log, Einstellungen)
-- **Technische Dokumentation:** [DOC/ADMIN-UND-INTEGRATION.md](DOC/ADMIN-UND-INTEGRATION.md)
+- **Technische Dokumentation:** [DOC/README.md](DOC/README.md)
 
 ## Enthalten
 

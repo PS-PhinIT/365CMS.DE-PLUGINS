@@ -19,7 +19,7 @@
 | CMS Projects | `cms-projects/` | `365CMS \| Projekte` | 3.0.4 → 4.0.0 | 3.788 | 171 / 626 | `projects_projects`, `projects_boards`, `projects_widgets`, `projects_tasks`, `projects_audit_logs` | [x] |
 | CMS Promos | `cms-promos/` | `365CMS \| Promos` | 3.0.4 → 4.0.0 | 2.456 | 40 / 531 | `promos`, `promo_placements`, `promo_settings` | [x] |
 
-Je Plugin liegt die aktuelle technische Dokumentation unter `<plugin>/DOC/*.md` (Admin-Menü, KPIs, Routen, Core-Integrationen, Lebenszyklus, Sicherheit, Assets).
+Je Plugin liegt die aktuelle technische Dokumentation unter `<plugin>/DOC/`: `README.md` (Admin-Menü, KPIs, Routen, Core-Integrationen, Lebenszyklus, Sicherheit, Assets), `DATABASE.md`, `HOOKS.md`, `API.md`; die Versionshistorie bleibt in `<plugin>/CHANGELOG.md`.
 
 Abgehakt (`[x]`) wird ein Plugin erst, wenn alle fünf Phasen umgesetzt und alle PHP-Dateien mit `php -l` fehlerfrei geprüft sind.
 
@@ -70,7 +70,7 @@ _(wird je Plugin während der Umsetzung ergänzt)_
 4. **Sicherheit:** Webhook über `CMS\Http\Client` (SSRF-Schutz, Timeout, Größenlimit); CSRF auf allen POSTs, Export mit persistentem Token; CSV-Formel-Injektion entschärft; `data-cms-confirm` statt ungesicherter Löschbuttons; Klick-Route nur für live Promos; keine Inline-Skripte/Styles, JS-Ausgabe nur per `textContent`.
 5. **Speed:** Migration nur bei geänderter `cms_promos_db_version` (Autoload-Option über `OptionStore`); neue Indizes; Upsert für Einstellungen; explizite Spaltenlisten; Aggregat-Join statt korrelierter Unterabfrage; öffentliche Session entfernt; CSS nur bei Bedarf, Admin-JS nur auf der Promo-Seite mit `defer`.
 
-**Dokumentation:** `cms-promos/DOC/ADMIN-UND-INTEGRATION.md` (neu), `README.md`, `CHANGELOG.md`, `update.json`.
+**Dokumentation:** `cms-promos/DOC/README.md`, `DATABASE.md`, `HOOKS.md`, `API.md` (neu, Aufbau gemäß `.github/copilot-instructions.md` §11), `README.md`, `CHANGELOG.md`, `update.json`.
 
 **Prüfung:** `php -l` für alle 10 PHP-Dateien fehlerfrei; Render-Smoke-Test aller 7 Admin-Ansichten mit Core-Partial `plugin-workspace.php` ohne Notices, ohne `style=`/`on*=`-Attribute.
 
@@ -101,6 +101,6 @@ _(wird je Plugin während der Umsetzung ergänzt)_
 4. **Sicherheit:** CSRF auf allen POSTs, persistentes Token für Exporte, CSV-Formel-Schutz, `JSON_HEX_TAG`; Akzentfarben über nonce-geschützte `<style>`-Regeln (`accentSwatch()`); Member-Shortcodes nur für angemeldete Besucher; Statusprüfung im Widget-Shortcode und Member-Detail.
 5. **Speed:** Schema-Prüfung nur bei geänderter `cms_projects_db_version`; explizite Spaltenlisten; Audit-Bereinigung in Blöcken über den Core-Cron; CSS nur auf Projektseiten bzw. einmalig mit Shortcode-Ausgabe; Board-JS nur im Ticket-Reiter.
 
-**Dokumentation:** `cms-projects/DOC/ADMIN-UND-INTEGRATION.md` (neu), `README.md`, `CHANGELOG.md`, `update.json`.
+**Dokumentation:** `cms-projects/DOC/README.md`, `DATABASE.md`, `HOOKS.md`, `API.md` (neu, Aufbau gemäß `.github/copilot-instructions.md` §11), `README.md`, `CHANGELOG.md`, `update.json`.
 
 **Prüfung:** `php -l` für alle PHP-Dateien fehlerfrei; Render-Smoke-Test aller 9 Admin-Ansichten (inkl. aller Projekt-Reiter) mit Core-Partial ohne Notices, ohne `style=`-Attribute, genau ein `aria-current` je Seite.
