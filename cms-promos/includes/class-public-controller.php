@@ -61,6 +61,8 @@ final class CMS_Promos_Public_Controller
         $promos = $this->apply_frequency_cap($repository->get_active_promos($slug !== '' ? $slug : null));
         $repository->increment_impressions(array_map(static fn (array $promo): int => (int) ($promo['id'] ?? 0), $promos));
 
+        $this->set_archive_meta($settings, $currentPlacement, $lang, $slug);
+
         $theme = class_exists('CMS\\ThemeManager') ? \CMS\ThemeManager::instance() : null;
         if ($theme !== null) {
             $theme->getHeader();
@@ -84,9 +86,14 @@ final class CMS_Promos_Public_Controller
         $slug = $this->normalize_slug($slug);
         $promo = CMS_Promos_Repository::instance()->get_promo_by_slug($slug);
         $targetUrl = $promo !== null ? $this->build_target_url($promo) : '';
-        if ($promo === null || $targetUrl === '') {
+        if ($promo === null || $targetUrl === '' || !$this->is_promo_live($promo)) {
             http_response_code(404);
-            echo '<h1>' . $this->escape_html($this->public_label('not_found_title', $lang)) . '</h1>';
+            header('X-Robots-Tag: noindex, nofollow', true);
+            $theme = class_exists('CMS\\ThemeManager') ? \CMS\ThemeManager::instance() : null;
+            $theme?->getHeader();
+            echo '<main class="promos-shell promos-shell--404"><h1>' . $this->escape_html($this->public_label('not_found_title', $lang)) . '</h1>'
+                . '<p><a href="' . $this->escape_attr($this->localized_path('promos', $lang)) . '">' . $this->escape_html($this->public_label('back_to_archive', $lang)) . '</a></p></main>';
+            $theme?->getFooter();
             return;
         }
 
@@ -99,6 +106,8 @@ final class CMS_Promos_Public_Controller
             return;
         }
 
+        header('Cache-Control: no-store, private');
+        header('X-Robots-Tag: noindex, nofollow');
         header('Location: ' . $targetUrl, true, 302);
         exit;
     }
@@ -198,6 +207,51 @@ final class CMS_Promos_Public_Controller
             echo '</div>';
             echo '</section>';
         }
+    }
+
+    /**
+     * Titel, Beschreibung und Canonical der Archivseite für den Core-SEO-Dienst.
+     *
+     * @param array<string,string>     $settings
+     * @param array<string,mixed>|null $placement
+     */
+    private function set_archive_meta(array $settings, ?array $placement, string $lang, string $slug): void
+    {
+        if (!class_exists('CMS\\Services\\SEOService')) {
+            return;
+        }
+
+        $title = $this->i18n_value($settings, 'archive_title', $lang, 'Promotions & Highlights');
+        if ($placement !== null) {
+            $title = $this->i18n_value($placement, 'name', $lang, $title) . ' – ' . $title;
+        }
+        $path = $slug !== '' ? 'promos/placement/' . rawurlencode($slug) : 'promos';
+
+        try {
+            \CMS\Services\SEOService::getInstance()->setRequestMeta([
+                'title' => $title,
+                'description' => mb_substr($this->i18n_value($settings, 'archive_description', $lang), 0, 160),
+                'canonical_url' => rtrim((string) (defined('SITE_URL') ? SITE_URL : ''), '/') . $this->localized_path($path, $lang),
+                'robots_index' => $placement === null,
+                'robots_follow' => true,
+            ]);
+        } catch (\Throwable $e) {
+            $this->log_error('SEO meta could not be set: ' . $e->getMessage());
+        }
+    }
+
+    /** Nur aktive Promos innerhalb ihrer Laufzeit dürfen per Klick-Route weiterleiten. */
+    private function is_promo_live(array $promo): bool
+    {
+        if ((string) ($promo['status'] ?? '') !== 'active') {
+            return false;
+        }
+
+        $now = time();
+        $start = !empty($promo['start_at']) ? strtotime((string) $promo['start_at']) : false;
+        $end = !empty($promo['end_at']) ? strtotime((string) $promo['end_at']) : false;
+
+        return ($start === false || $start <= $now) && ($end === false || $end >= $now);
     }
 
     private function escape_html(string $value): string
@@ -369,11 +423,6 @@ final class CMS_Promos_Public_Controller
      */
     private function read_frequency_history(): array
     {
-        $sessionHistory = $this->read_frequency_history_from_session();
-        if ($sessionHistory !== []) {
-            return $sessionHistory;
-        }
-
         $raw = (string) ($_COOKIE[self::FREQUENCY_COOKIE] ?? '');
         if ($raw === '') {
             return [];
@@ -417,8 +466,6 @@ final class CMS_Promos_Public_Controller
             $normalized = array_slice($normalized, -200, null, true);
         }
 
-        $this->write_frequency_history_to_session($normalized);
-
         if (headers_sent()) {
             return;
         }
@@ -436,58 +483,6 @@ final class CMS_Promos_Public_Controller
             'samesite' => 'Lax',
         ]);
         $_COOKIE[self::FREQUENCY_COOKIE] = $payload;
-    }
-
-    /**
-     * @return array<string,array<int,int>>
-     */
-    private function read_frequency_history_from_session(): array
-    {
-        $this->ensure_public_session();
-        if (session_status() !== PHP_SESSION_ACTIVE) {
-            return [];
-        }
-
-        $value = $_SESSION[self::FREQUENCY_COOKIE] ?? null;
-        if (!is_array($value)) {
-            return [];
-        }
-
-        $history = [];
-        foreach ($value as $promoId => $timestamps) {
-            if (!is_array($timestamps)) {
-                continue;
-            }
-            $key = preg_replace('/[^0-9]/', '', (string) $promoId) ?? '';
-            if ($key === '') {
-                continue;
-            }
-            $history[$key] = array_values(array_filter(array_map('intval', $timestamps), static fn (int $timestamp): bool => $timestamp > 0));
-        }
-
-        return $history;
-    }
-
-    /**
-     * @param array<string,array<int,int>> $history
-     */
-    private function write_frequency_history_to_session(array $history): void
-    {
-        $this->ensure_public_session();
-        if (session_status() !== PHP_SESSION_ACTIVE) {
-            return;
-        }
-
-        $_SESSION[self::FREQUENCY_COOKIE] = $history;
-    }
-
-    private function ensure_public_session(): void
-    {
-        if (session_status() === PHP_SESSION_ACTIVE || headers_sent()) {
-            return;
-        }
-
-        session_start();
     }
 
     private function dispatch_click_export_event(array $promo, string $targetUrl, string $lang, array $settings): void
@@ -535,34 +530,25 @@ final class CMS_Promos_Public_Controller
             return;
         }
 
-        if (function_exists('curl_init')) {
-            $ch = curl_init($url);
-            if ($ch === false) {
-                return;
-            }
-            curl_setopt_array($ch, [
-                CURLOPT_POST => true,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-                CURLOPT_POSTFIELDS => $body,
-                CURLOPT_TIMEOUT_MS => 1200,
-                CURLOPT_CONNECTTIMEOUT_MS => 600,
-            ]);
-            curl_exec($ch);
-            curl_close($ch);
+        // Ausschließlich über den Core-HTTP-Client (SSRF-Schutz: keine privaten/internen Ziele).
+        if (!class_exists('CMS\\Http\\Client')) {
             return;
         }
 
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'POST',
-                'header' => "Content-Type: application/json\r\n",
-                'content' => $body,
-                'timeout' => 1.2,
-                'ignore_errors' => true,
-            ],
-        ]);
-        @file_get_contents($url, false, $context);
+        try {
+            $response = \CMS\Http\Client::getInstance()->post($url, $body, [
+                'headers' => ['Content-Type: application/json'],
+                'timeout' => 2,
+                'connectTimeout' => 1,
+                'maxBytes' => 4096,
+                'userAgent' => '365CMS-Promos/' . CMS_PROMOS_VERSION,
+            ]);
+            if (empty($response['success'])) {
+                $this->log_error('Click export webhook failed: ' . (string) ($response['error'] ?? ('HTTP ' . (int) ($response['status'] ?? 0))));
+            }
+        } catch (\Throwable $e) {
+            $this->log_error('Click export webhook failed: ' . $e->getMessage());
+        }
     }
 
     private function current_public_lang(): string
@@ -614,6 +600,7 @@ final class CMS_Promos_Public_Controller
             'promo_generic' => ['de' => 'Promo', 'en' => 'Promo'],
             'not_found_title' => ['de' => '404 - Promo nicht gefunden', 'en' => '404 - Promo not found'],
             'continue_cta' => ['de' => 'Weiter zur Promo', 'en' => 'Continue to promo'],
+            'back_to_archive' => ['de' => 'Zur Promo-Übersicht', 'en' => 'Back to all promos'],
         ];
 
         return $labels[$key][$lang] ?? $labels[$key]['de'] ?? '';
