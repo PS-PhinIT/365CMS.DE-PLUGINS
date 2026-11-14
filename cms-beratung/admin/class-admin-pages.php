@@ -1373,7 +1373,7 @@ final class CMS_Beratung_Admin_Pages
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             if ($finfo !== false) {
                 $mime = finfo_file($finfo, $tmpName);
-                finfo_close($finfo);
+                unset($finfo); // finfo_close() ist seit PHP 8.5 veraltet; die Ausgabe würde die JSON-Antwort des Uploads zerstören.
                 return is_string($mime) && str_starts_with(strtolower($mime), 'image/');
             }
         }
