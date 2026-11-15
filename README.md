@@ -1,6 +1,7 @@
 # 365CMS – Plugin-Repository
 
-Offizielle Plugins für **365CMS 4.0.0** von 365 Network. Jedes Plugin liegt in einem eigenen Ordner und lässt sich einzeln installieren, aktivieren und aktualisieren. Der Katalog [`index.json`](index.json) listet alle Plugins für den Core-Updater.
+Offizielle Plugins für **365CMS 4.0.0**
+Jedes Plugin liegt in einem eigenen Ordner und lässt sich einzeln installieren, aktivieren und aktualisieren. Der Katalog [`index.json`](index.json) listet alle Plugins für den Core-Updater.
 
 | | |
 |---|---|
