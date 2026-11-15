@@ -24,7 +24,7 @@
 .beratung-root-builder__section.is-collapsed>.beratung-builder__section-head{border-bottom:0!important;margin-bottom:calc(clamp(1rem,2vw,1.5rem) * -1)!important}
 
 .beratung-general-settings .beratung-editor-section__body{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:.75rem 1rem!important;padding:clamp(.85rem,1.5vw,1.1rem)!important}
-.beratung-general-settings .beratung-field{margin-bottom:0!important;gap:.28rem!important;font-size:.9rem!important}
+.beratung-general-settings .beratung-field{margin-bottom:0!important;gap:.28rem!important;font-size:.9rem!important;align-content:start!important}
 .beratung-general-settings .beratung-field input,.beratung-general-settings .beratung-field select,.beratung-general-settings .beratung-field textarea{min-height:38px!important;border-radius:var(--cms-plugin-radius)!important;padding:.5rem .65rem!important;font-size:.92rem!important}
 .beratung-field__hint{display:block;color:var(--cms-plugin-muted)!important;font-size:.78rem!important;font-weight:700!important;line-height:1.35!important}
 .beratung-general-settings .beratung-field:has(textarea),.beratung-general-settings__links{grid-column:1/-1!important}

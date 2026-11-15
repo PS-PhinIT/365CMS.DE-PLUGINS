@@ -784,11 +784,11 @@ final class CMS_Beratung_Admin_Pages
                         $overwriteId = max(0, (int) ($_POST['overwrite_id'] ?? 0));
                         $payload['id'] = ($mode === 'overwrite' && $overwriteId > 0) ? $overwriteId : 0;
                         $payload['status'] = 'draft';
-                        $originalSlug = (string) ($payload['slug'] ?? 'beratung');
+                        $originalSlug = trim((string) ($payload['slug'] ?? ''));
                         $newId = CMS_Beratung_Storage::instance()->save_landingpage($payload);
                         $imported = CMS_Beratung_Storage::instance()->get_landingpage($newId);
                         $newSlug = (string) ($imported['slug'] ?? $originalSlug);
-                        $notice = ($payload['id'] > 0 ? 'Landingpage überschrieben.' : 'Landingpage als neuer Entwurf importiert.') . ' ID: ' . $newId . ($newSlug !== $originalSlug ? ' Slug-Konflikt erkannt, neuer Slug: ' . $newSlug : '');
+                        $notice = ($payload['id'] > 0 ? 'Landingpage überschrieben.' : 'Landingpage als neuer Entwurf importiert.') . ' ID: ' . $newId . ($originalSlug !== '' && $newSlug !== CMS_Beratung_Settings::slug($originalSlug, '') ? ' Slug-Konflikt erkannt, neuer Slug: ' . $newSlug : '');
                     } catch (\Throwable $e) {
                         $error = $e->getMessage();
                     }

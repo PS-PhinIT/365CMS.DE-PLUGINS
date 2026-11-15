@@ -24,10 +24,7 @@ defined('CMS_BERATUNG_DB_VERSION') || define('CMS_BERATUNG_DB_VERSION', '3');
 defined('CMS_BERATUNG_PLUGIN_DIR') || define('CMS_BERATUNG_PLUGIN_DIR', __DIR__ . '/');
 defined('CMS_BERATUNG_PLUGIN_URL') || define('CMS_BERATUNG_PLUGIN_URL', '/plugins/cms-beratung/');
 
-if (class_exists('CMS_Beratung', false)) {
-    return;
-}
-
+if (!class_exists('CMS_Beratung', false)) {
 final class CMS_Beratung
 {
     private static ?self $instance = null;
@@ -172,6 +169,7 @@ final class CMS_Beratung
 
         return $results;
     }
+}
 }
 
 /*

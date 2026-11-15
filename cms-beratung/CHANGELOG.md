@@ -4,6 +4,15 @@
 
 ## 3.0.0 – 2026-11-15
 
+### Behoben (Integrationstest)
+
+- **Plugin startete nicht:** Der Guard `if (class_exists('CMS_Beratung', false)) return;` stand vor einer unbedingten Klassendeklaration; PHP registriert solche Klassen schon beim Kompilieren, der Guard war daher immer wahr und das Plugin lud weder Routen noch Admin-Seiten. Die Klasse steht jetzt in einem `if (!class_exists(...))`-Block.
+- **Slug:** Ein leeres Slug-Feld ergab immer `beratung` (mit Zählersuffix), weil der Sanitizer den Fallback vor der Titel-Ableitung setzte. Der Slug wird jetzt aus öffentlichem bzw. internem Titel abgeleitet; Umlaute werden transliteriert (`ä` → `ae` …).
+- **`plugins.xml`:** Speichern, Statuswechsel und Löschen einer Landingpage verwerfen das gespeicherte Sitemap-Bundle (`SEOService::invalidateSavedSitemaps()`), damit veröffentlichte Seiten sofort in der Sitemap stehen.
+- Import ohne Slug meldete fälschlich „Slug-Konflikt erkannt“.
+- **Inhaltsverzeichnis (öffentlich):** Zwischen 1100 px und ca. 1800 px Breite war die rechte Inhaltsleiste fast vollständig abgeschnitten (bei 1280 px 36 von 280 px sichtbar): Eine ältere Regel mit `.is-toc-expanded` überstimmte die spätere 280-px-Spalte. Die Spalte bekommt jetzt Leistenbreite + Abstand + 16 px Randabstand; der Inhalt schrumpft entsprechend.
+- Editor „Allgemeine Einstellungen“: Eingabefelder neben Feldern mit Hinweistext wurden vertikal gestreckt (`align-content:start`).
+
 ### Kompatibilität
 
 - Voraussetzung 365CMS 4.0.0 und PHP 8.4.1 (`Requires CMS`, `Requires PHP`, `update.json`).

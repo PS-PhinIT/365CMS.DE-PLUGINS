@@ -11,7 +11,7 @@
 | `head` (18/19) | Action | Frontend-CSS bzw. SEO-Head auf Landingpages |
 | `body_end` | Action | `frontend.js` auf Landingpages |
 | `body_class` | Filter | Klasse `cms-beratung-page` |
-| `cms_sitemap_entries` | Filter | veröffentlichte, indexierbare Landingpages |
+| `cms_sitemap_entries` | Filter | veröffentlichte, indexierbare Landingpages; Speichern, Statuswechsel und Löschen verwerfen das gespeicherte Sitemap-Bundle (`SEOService::invalidateSavedSitemaps()`) |
 | `search_results` | Filter | Treffer vom Typ `beratung` |
 
 Registrierungen: `DataRetentionService::registerRule('cms_beratung_submissions')`, `AdminNoticeService::registerCheck('cms_beratung_new_submissions')`.

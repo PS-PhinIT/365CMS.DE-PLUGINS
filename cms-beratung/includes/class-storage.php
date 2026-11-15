@@ -132,6 +132,7 @@ final class CMS_Beratung_Storage
             $values[] = $id;
             $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_landingpages SET {$assignments} WHERE id = ?");
             $stmt->execute($values);
+            $this->invalidate_sitemaps();
             return $id;
         }
 
@@ -142,7 +143,9 @@ final class CMS_Beratung_Storage
             $values[] = $payload[$column] ?? null;
         }
         $stmt->execute($values);
-        return (int) $this->pdo->lastInsertId();
+        $newId = (int) $this->pdo->lastInsertId();
+        $this->invalidate_sitemaps();
+        return $newId;
     }
 
     public function update_status(int $id, string $status): bool
@@ -151,7 +154,9 @@ final class CMS_Beratung_Storage
             return false;
         }
         $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_landingpages SET status = ? WHERE id = ?");
-        return $stmt->execute([$status, $id]);
+        $ok = $stmt->execute([$status, $id]);
+        $this->invalidate_sitemaps();
+        return $ok;
     }
 
     public function duplicate_landingpage(int $id): int
@@ -179,7 +184,21 @@ final class CMS_Beratung_Storage
             return false;
         }
         $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_landingpages WHERE id = ?");
-        return $stmt->execute([$id]);
+        $ok = $stmt->execute([$id]);
+        $this->invalidate_sitemaps();
+        return $ok;
+    }
+
+    /** Gespeichertes Sitemap-Bundle verwerfen, damit plugins.xml Veröffentlichungen sofort zeigt. */
+    private function invalidate_sitemaps(): void
+    {
+        if (!class_exists('CMS\\Services\\SEOService')) {
+            return;
+        }
+        try {
+            \CMS\Services\SEOService::getInstance()->invalidateSavedSitemaps();
+        } catch (\Throwable) {
+        }
     }
 
     /** @return array<int,array<string,mixed>> */

@@ -1798,9 +1798,11 @@ body.cms-beratung-standalone-page .cms-beratung-standalone-header__menu a:focus-
 }
 
 @media (min-width:1100px){
-	.cms-beratung.cms-beratung:has(.cms-beratung__toc-rail){
+	.cms-beratung.cms-beratung:has(.cms-beratung__toc-rail),
+	.cms-beratung.cms-beratung.is-toc-expanded:has(.cms-beratung__toc-rail){
 		display:grid!important;
-		grid-template-columns:minmax(16px,1fr) minmax(0,var(--beratung-width,1160px)) minmax(280px,1fr)!important;
+		/* TOC-Spalte: Rail (280px) + Abstand zum Inhalt + 16px Randabstand; .is-toc-expanded muss hier stehen, sonst gewinnt die 16px-Spalte oben. */
+		grid-template-columns:minmax(16px,1fr) minmax(0,var(--beratung-width,1160px)) minmax(calc(var(--beratung-toc-expanded-width,280px) + 40px),1fr)!important;
 		align-items:start!important;
 	}
 
