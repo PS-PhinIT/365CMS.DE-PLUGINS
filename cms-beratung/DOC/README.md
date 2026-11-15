@@ -2,7 +2,7 @@
 
 > Weitere Dokumente: [DATABASE.md](DATABASE.md) · [HOOKS.md](HOOKS.md) · [API.md](API.md) · [GLOBAL-DESIGN-MODULE.md](GLOBAL-DESIGN-MODULE.md) · [Changelog](../CHANGELOG.md)
 
-> **Plugin:** `cms-beratung` · **Version:** 3.0.0 · **Stand:** 2026-11-15
+> **Plugin:** `cms-beratung` · **Version:** 3.0.1 · **Stand:** 2026-11-15
 > **Voraussetzungen:** 365CMS 4.0.0 (Plugin-Layout-Vertrag), PHP 8.4.1
 
 ## 1. Admin-Oberfläche
@@ -37,7 +37,7 @@ Alle Formulare: CSRF → Aktion → Flash-Meldung → 303-Redirect.
 
 | Route | Beschreibung |
 |---|---|
-| `/beratung/<slug>`, `/de/…`, `/en/…` (GET/POST) | Veröffentlichte Landingpage mit Theme-Header/-Footer; POST verarbeitet das Kontaktformular (Honeypot, Token) |
+| `/beratung/<slug>`, `/de/…`, `/en/…` (GET/POST) | Veröffentlichte Landingpage mit Theme-Header/-Footer; POST verarbeitet das Kontaktformular (Honeypot, Token, max. 5 Anfragen je 10 Minuten pro Sitzung und IP, Core-Antispam) |
 | `/beratung/<standalone-slug>` | Standalone-Variante ohne Theme-Header/-Footer (Einstellung im Hero) |
 | `/beratung-vorschau/<id>` | Vorschau auch von Entwürfen, nur für Administratoren, `noindex`/`no-store`, Formular deaktiviert |
 
@@ -51,6 +51,8 @@ Die Routen sind parametrisiert; der Slug wird mit einer Abfrage aufgelöst. Asse
 | Seitensuche | `search_results`: Titel, Meta-Beschreibung, Fokus-Keyword und Bereichsinhalte; `_type = beratung` |
 | Datenaufbewahrung | Regel `cms_beratung_submissions` – löscht Anfragen nach `retention_days`, wenn `auto_delete_submissions_enabled` aktiv ist |
 | Systemhinweise | `cms_beratung_new_submissions` – neue Formular-Anfragen |
+| DSGVO | `dsgvo_export_data` schreibt die Anfragen der Person als JSON in die private Ablage (`PrivateStorageService`, `cms-beratung/privacy-exports`; Download und Löschen unter Formular-Anfragen, automatische Entfernung nach 30 Tagen); `dsgvo_delete_data` löscht die Anfragen der Person; `cms_member_export_data` ergänzt die Selbstauskunft. Zuordnung über die vom Core gelieferte E-Mail-Adresse |
+| Spamschutz | Honeypot, Ratenbegrenzung über `Security::checkRateLimit()`/`checkDbRateLimit()`, `AntispamService::evaluate()` (wenn im Core aktiv); IP über `Security::getClientIp()` |
 | E-Mail | `cms_mail()` (Core-MailService) für Empfänger- und Absenderkopie |
 | SEO | Meta, Open Graph, Twitter Card, Canonical, Robots und JSON-LD (FAQ, Service, Breadcrumb) im `head` |
 | Experten | optional `CMS_365NET_Experts_And_Companie_Database` (Bereich „Zusammenarbeit“), nur wenn die Klasse vorhanden ist |

@@ -1,0 +1,29 @@
+{
+  "name": "365CMS | Events & Speaker",
+  "slug": "cms-365neteventsandspeaker",
+  "version": "4.0.0",
+  "description": "Modulares Event- und Speaker-Verzeichnis für 365CMS mit Seed-Daten, Admin-CRUD und öffentlichen Seiten /events und /speakers.",
+  "author": "365 Network",
+  "author_uri": "https://365network.de",
+  "homepage": "https://365network.de/cms-365neteventsandspeaker",
+  "requires_cms": "4.0.0",
+  "min_cms_version": "4.0.0",
+  "requires_php": "8.4.1",
+  "min_php": "8.4.1",
+  "tested": "4.0.0",
+  "last_updated": "2026-11-14",
+  "admin_menu_title": "365CMS | Events & Speaker",
+  "admin_url": "/admin/plugins/365netevents",
+  "admin_pages": {
+    "365netevents": "/admin/plugins/365netevents/365netevents",
+    "365netevents-events": "/admin/plugins/365netevents/365netevents-events",
+    "365netevents-speakers": "/admin/plugins/365netevents/365netevents-speakers",
+    "365netevents-taxonomies": "/admin/plugins/365netevents/365netevents-taxonomies",
+    "365netevents-settings": "/admin/plugins/365netevents/365netevents-settings"
+  },
+  "public_routes": ["/events", "/events/:slug", "/speakers", "/speakers/:slug", "/event-speakers", "/event-speakers/:slug"],
+  "db_version": "4.0.0",
+  "tables": ["365net_events", "365net_event_speakers", "365net_event_speaker_rel", "365net_event_settings"],
+  "integrations": ["cms-365netexpertsandcompanie (optional)"],
+  "license": "proprietary"
+}

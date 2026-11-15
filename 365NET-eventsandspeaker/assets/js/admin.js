@@ -8,6 +8,12 @@
 		return id ? document.getElementById(id) : null;
 	}
 
+	function textSpan(text) {
+		var span = document.createElement('span');
+		span.textContent = text;
+		return span;
+	}
+
 	function isSafeImageUrl(value) {
 		try {
 			var url = new URL(value, window.location.href);
@@ -35,14 +41,12 @@
 			return;
 		}
 
-		preview.innerHTML = '';
 		if (!value) {
-			var empty = document.createElement('span');
-			empty.textContent = 'Keine Vorschau';
-			preview.appendChild(empty);
+			preview.replaceChildren(textSpan('Keine Vorschau'));
 			return;
 		}
 		if (!isSafeImageUrl(value)) {
+			preview.replaceChildren(textSpan('Keine Vorschau'));
 			return;
 		}
 
@@ -51,9 +55,9 @@
 		image.alt = 'Bildvorschau';
 		image.loading = 'lazy';
 		image.addEventListener('error', function () {
-			preview.innerHTML = '<span>Vorschau nicht verfügbar</span>';
+			preview.replaceChildren(textSpan('Vorschau nicht verfügbar'));
 		});
-		preview.appendChild(image);
+		preview.replaceChildren(image);
 	}
 
 	function galleryUrls(input) {
@@ -71,11 +75,9 @@
 			return;
 		}
 
-		preview.innerHTML = '';
+		preview.replaceChildren();
 		if (!urls.length) {
-			var empty = document.createElement('span');
-			empty.textContent = 'Noch keine Galeriebilder ausgewählt.';
-			preview.appendChild(empty);
+			preview.appendChild(textSpan('Noch keine Galeriebilder ausgewählt.'));
 			return;
 		}
 
@@ -170,7 +172,7 @@
 		if (!grid) {
 			return;
 		}
-		grid.innerHTML = '';
+		grid.replaceChildren();
 		if (!items.length) {
 			if (status) {
 				status.textContent = 'Keine Bilder gefunden.';
@@ -413,12 +415,16 @@
 			});
 		});
 
-		document.querySelectorAll('form[data-confirm]').forEach(function (form) {
-			form.addEventListener('submit', function (event) {
-				var message = form.getAttribute('data-confirm') || 'Diese Aktion ausführen?';
-				if (!window.confirm(message)) {
-					event.preventDefault();
+		// Bestätigungen übernimmt das Core-Attribut data-cms-confirm (cms-inline-actions.js).
+		document.querySelectorAll('[data-cms365-check-all]').forEach(function (toggle) {
+			var form = toggle.closest('form');
+			toggle.addEventListener('change', function () {
+				if (!form) {
+					return;
 				}
+				form.querySelectorAll('input[type="checkbox"][name="ids[]"]').forEach(function (box) {
+					box.checked = toggle.checked;
+				});
 			});
 		});
 
@@ -443,16 +449,6 @@
 		});
 
 		document.querySelectorAll('[data-clear-media-input]').forEach(function (button) {
-			button.addEventListener('click', function () {
-				var input = byId(button.getAttribute('data-target-input') || '');
-				if (input) {
-					input.value = '';
-					input.dispatchEvent(new Event('input', { bubbles: true }));
-				}
-			});
-		});
-
-		document.querySelectorAll('[data-clear-gallery-input]').forEach(function (button) {
 			button.addEventListener('click', function () {
 				var input = byId(button.getAttribute('data-target-input') || '');
 				if (input) {

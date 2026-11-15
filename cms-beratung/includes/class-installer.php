@@ -43,6 +43,9 @@ final class CMS_Beratung_Installer
         }
         $stmt = $db->prepare("DELETE FROM {$prefix}settings WHERE option_name = ?");
         $stmt->execute(['beratung_db_version']);
+        if (class_exists('CMS_Beratung_Privacy')) {
+            CMS_Beratung_Privacy::delete_all_exports();
+        }
     }
 
     public static function stored_version(): string

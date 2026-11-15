@@ -13,6 +13,11 @@ if (!defined('ABSPATH')) {
 
 final class CMS_Beratung_Forms
 {
+    /** Höchstens 5 Anfragen je 10 Minuten (Sitzung bzw. IP). */
+    private const RATE_LIMIT_MAX = 5;
+    private const RATE_LIMIT_WINDOW = 600;
+    private const RATE_LIMIT_ACTION = 'beratung_form';
+
     /** @return array<string,string> */
     public static function desired_services(): array
     {
@@ -50,6 +55,10 @@ final class CMS_Beratung_Forms
             return ['success' => true, 'message' => (string) $settings['success_message'], 'errors' => [], 'values' => []];
         }
 
+        if (!self::rate_limit_ok()) {
+            return ['success' => false, 'message' => 'Es wurden zu viele Anfragen in kurzer Zeit gesendet. Bitte versuchen Sie es in einigen Minuten erneut.', 'errors' => ['rate' => 'Ratenbegrenzung.'], 'values' => $values];
+        }
+
         if ($values['sender_name'] === '') {
             $errors['sender_name'] = 'Bitte geben Sie Ihren Namen ein.';
         }
@@ -69,6 +78,13 @@ final class CMS_Beratung_Forms
         if ($errors !== []) {
             return ['success' => false, 'message' => 'Bitte prüfen Sie die markierten Felder.', 'errors' => $errors, 'values' => $values];
         }
+
+        $spam = self::antispam_verdict($values);
+        if ($spam !== null) {
+            return ['success' => false, 'message' => $spam, 'errors' => ['spam' => $spam], 'values' => $values];
+        }
+
+        self::record_rate_limit();
 
         $data = [
             'landingpage_id' => (int) ($page['id'] ?? 0),
@@ -99,6 +115,74 @@ final class CMS_Beratung_Forms
     }
 
     /** @param array<string,mixed> $posted @return array<string,string> */
+    /** Client-IP über den Core (berücksichtigt vertrauenswürdige Proxys), sonst REMOTE_ADDR. */
+    public static function client_ip(): string
+    {
+        if (class_exists('CMS\\Security') && method_exists(\CMS\Security::class, 'getClientIp')) {
+            try {
+                return (string) \CMS\Security::getClientIp();
+            } catch (\Throwable) {
+            }
+        }
+
+        return (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+    }
+
+    /** Höchstens RATE_LIMIT_MAX Anfragen je RATE_LIMIT_WINDOW Sekunden – je Sitzung und je IP (Core-Ratenbegrenzung). */
+    private static function rate_limit_ok(): bool
+    {
+        if (!class_exists('CMS\\Security')) {
+            return true;
+        }
+        try {
+            if (!\CMS\Security::checkRateLimit(self::RATE_LIMIT_ACTION, self::RATE_LIMIT_MAX, self::RATE_LIMIT_WINDOW)) {
+                return false;
+            }
+            $ip = self::client_ip();
+            if (filter_var($ip, FILTER_VALIDATE_IP) && method_exists(\CMS\Security::class, 'checkDbRateLimit')) {
+                return \CMS\Security::checkDbRateLimit($ip, self::RATE_LIMIT_ACTION, self::RATE_LIMIT_MAX, self::RATE_LIMIT_WINDOW);
+            }
+        } catch (\Throwable) {
+            // Die Ratenbegrenzung darf das Formular nicht unbenutzbar machen.
+        }
+
+        return true;
+    }
+
+    private static function record_rate_limit(): void
+    {
+        try {
+            $ip = self::client_ip();
+            if (filter_var($ip, FILTER_VALIDATE_IP) && class_exists('CMS\\Security') && method_exists(\CMS\Security::class, 'recordDbRateLimitAttempt')) {
+                \CMS\Security::recordDbRateLimitAttempt($ip, self::RATE_LIMIT_ACTION);
+            }
+        } catch (\Throwable) {
+        }
+    }
+
+    /** Core-Antispam (Blacklist, Linkanzahl, Mindestzeit …) – greift nur, wenn er im Core aktiviert ist. */
+    private static function antispam_verdict(array $values): ?string
+    {
+        if (!class_exists('CMS\\Services\\AntispamService')) {
+            return null;
+        }
+        try {
+            $result = \CMS\Services\AntispamService::getInstance()->evaluate([
+                'honeypot_value' => '',
+                'content' => (string) ($values['message'] ?? ''),
+                'email' => (string) ($values['sender_email'] ?? ''),
+                'author_name' => (string) ($values['sender_name'] ?? ''),
+                'ip_address' => self::client_ip(),
+                'user_agent' => (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''),
+                'source' => 'cms-beratung',
+            ]);
+
+            return !empty($result['rejected']) ? ((string) ($result['message'] ?? '') ?: 'Die Anfrage wurde aus Sicherheitsgründen blockiert.') : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     private static function posted_values(array $posted): array
     {
         return [

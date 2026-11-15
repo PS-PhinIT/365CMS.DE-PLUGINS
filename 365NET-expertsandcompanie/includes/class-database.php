@@ -19,7 +19,7 @@ final class CMS_365NET_Experts_And_Companie_Database
 {
     private static ?self $instance = null;
 
-    private const SCHEMA_VERSION = '1.5.0';
+    public const SCHEMA_VERSION = '2.0.0';
     private const TABLE_EXPERTS = '365net_excomp_experts';
     private const TABLE_COMPANIES = '365net_excomp_companies';
     private const TABLE_SETTINGS = '365net_excomp_settings';
@@ -29,6 +29,41 @@ final class CMS_365NET_Experts_And_Companie_Database
 
     /** @var array<string, bool> */
     private array $tableExistsCache = [];
+
+    /** @var array<string, string>|null Einstellungen je Anfrage (eine Abfrage) */
+    private ?array $settingsCache = null;
+
+    /** Spalten der Experts-Tabelle (Formular, Detailseite, Export) – explizite Spaltenliste. */
+    private const EXPERT_COLUMNS = [
+        'id', 'seed_key', 'first_name', 'last_name', 'email', 'company', 'position', 'biography', 'biography_json',
+        'photo_url', 'website', 'city', 'location_city', 'country', 'availability', 'experience_years',
+        'hourly_rate', 'daily_rate', 'skills_general', 'skills_tech', 'skills_soft', 'awards', 'certifications',
+        'linked_company_id', 'linked_speaker_id', 'status', 'created_at', 'updated_at',
+    ];
+
+    /** Spalten der Companies-Tabelle (Formular, Detailseite, Export) – explizite Spaltenliste. */
+    private const COMPANY_COLUMNS = [
+        'id', 'seed_key', 'name', 'email', 'phone', 'industry', 'company_size', 'description', 'description_json',
+        'logo_url', 'website', 'city', 'location_city', 'zip', 'country', 'founded_year', 'employee_count',
+        'parent_company_id', 'linked_expert_id', 'linked_speaker_id', 'is_partner', 'is_top_partner', 'is_sponsor',
+        'status', 'created_at', 'updated_at',
+    ];
+
+    /** Einstellungen, die nur intern gepflegt werden (nicht über das Einstellungsformular). */
+    private const INTERNAL_SETTINGS = ['schema_version'];
+
+    /** Einstellungen mit CSS-Längenwert (Design-Variablen der Publicseiten). */
+    public const CSS_LENGTH_SETTINGS = [
+        'layout_content_max_width', 'layout_page_padding_top', 'layout_page_padding_bottom', 'layout_grid_gap',
+        'layout_grid_gap_x', 'layout_grid_gap_y', 'layout_section_gap', 'style_radius_card', 'style_radius_button',
+        'style_radius_surface', 'style_radius_hero',
+    ];
+
+    /** Einstellungen mit CSS-Farbwert (Design-Variablen der Publicseiten). */
+    public const CSS_COLOR_SETTINGS = [
+        'color_bg', 'color_text', 'color_primary', 'color_hero_start', 'color_hero_end', 'color_expert_accent',
+        'color_company_accent', 'color_card_bg', 'color_border',
+    ];
 
     public static function instance(): self
     {
@@ -41,22 +76,56 @@ final class CMS_365NET_Experts_And_Companie_Database
 
     private function __construct() {}
 
+    /**
+     * Tabellen anlegen/anheben, Seeds einspielen, Speaker-Verknüpfungen abgleichen.
+     * Wird nur bei der Aktivierung, bei einem Wechsel der Schema-Version oder über „Seed neu einspielen“ ausgeführt.
+     */
     public function ensureSchema(bool $forceSeed = false): void
     {
+        $this->tableExistsCache = [];
+        $this->tableColumnsCache = [];
         $this->createFallbackTables();
+        $this->tableExistsCache = [];
+        $this->tableColumnsCache = [];
+        $this->ensureIndexes();
         $this->seedDefaults($forceSeed);
         $this->syncExistingSpeakerLinks();
         $this->saveSetting('schema_version', self::SCHEMA_VERSION);
+    }
+
+    /** true, wenn Tabellen fehlen oder die gespeicherte Schema-Version nicht passt (eine gebündelte Abfrage je Anfrage). */
+    public function needsSchemaUpgrade(): bool
+    {
+        return ($this->getSettings()['schema_version'] ?? '') !== self::SCHEMA_VERSION;
     }
 
     /** Für das Admin-Dashboard: Tabellen und Seeds auf dem Stand dieses Plugins? */
     public function isSchemaCurrent(): bool
     {
         try {
-            return ($this->getSettings()['schema_version'] ?? '') === self::SCHEMA_VERSION;
+            return !$this->needsSchemaUpgrade();
         } catch (Throwable) {
             return false;
         }
+    }
+
+    /** Gespeicherte Schema-Version ('' = Tabellen fehlen bzw. noch nie angelegt). */
+    public function storedSchemaVersion(): string
+    {
+        return (string) ($this->getSettings()['schema_version'] ?? '');
+    }
+
+    /** Uninstall: ausschließlich die eigenen Tabellen entfernen. */
+    public function dropTables(): void
+    {
+        $db = CMS\Database::instance();
+        $pdo = $db->getPdo();
+        foreach ([self::TABLE_EXPERTS, self::TABLE_COMPANIES, self::TABLE_SETTINGS] as $table) {
+            $pdo->exec('DROP TABLE IF EXISTS `' . $db->prefix() . $table . '`');
+        }
+        $this->settingsCache = null;
+        $this->tableExistsCache = [];
+        $this->tableColumnsCache = [];
     }
 
     /** @return array{experts:string,companies:string} */
@@ -80,7 +149,40 @@ final class CMS_365NET_Experts_And_Companie_Database
     /** @return array<string, string> */
     public function getSettings(): array
     {
-        $defaults = [
+        if ($this->settingsCache !== null) {
+            return $this->settingsCache;
+        }
+
+        $defaults = self::defaultSettings();
+
+        $db = CMS\Database::instance();
+        try {
+            $stmt = $db->prepare('SELECT setting_key, setting_value FROM ' . $db->prefix() . self::TABLE_SETTINGS);
+            $stmt->execute([]);
+            foreach ($stmt->fetchAll() ?: [] as $row) {
+                if (!is_object($row) || !isset($row->setting_key)) {
+                    continue;
+                }
+
+                $key = (string) ($row->setting_key ?? '');
+                if ($key === '') {
+                    continue;
+                }
+
+                $defaults[$key] = (string) ($row->setting_value ?? '');
+            }
+        } catch (Throwable) {
+            // Tabelle fehlt (noch nicht angelegt): Standardwerte ohne schema_version → Migration läuft.
+            return $defaults;
+        }
+
+        return $this->settingsCache = $defaults;
+    }
+
+    /** @return array<string, string> Standardwerte aller Einstellungen des Formulars */
+    public static function defaultSettings(): array
+    {
+        return [
             'show_nav_link' => '0',
             'nav_label' => 'Experts & Companies',
             'experts_header_text_enabled' => '1',
@@ -147,35 +249,58 @@ final class CMS_365NET_Experts_And_Companie_Database
             'color_card_bg' => '#ffffff',
             'color_border' => '#e2e8f0',
         ];
-
-        $db = CMS\Database::instance();
-        try {
-            $stmt = $db->prepare('SELECT setting_key, setting_value FROM ' . $db->prefix() . self::TABLE_SETTINGS);
-            $stmt->execute([]);
-            foreach ($stmt->fetchAll() ?: [] as $row) {
-                if (!is_object($row) || !isset($row->setting_key)) {
-                    continue;
-                }
-
-                $key = (string) ($row->setting_key ?? '');
-                if ($key === '') {
-                    continue;
-                }
-
-                $defaults[$key] = (string) ($row->setting_value ?? '');
-            }
-        } catch (Throwable) {
-        }
-
-        return $defaults;
     }
 
-    /** @param array<string, mixed> $data */
-    public function saveSettings(array $data): void
+    /**
+     * Einstellungsformular speichern. Nur bekannte Schlüssel; interne Werte (schema_version) bleiben unberührt,
+     * Felder, die das Formular nicht sendet, behalten ihren Wert. CSS-Werte werden geprüft.
+     *
+     * @param array<string, mixed> $data
+     * @return list<string> Beschriftungen ungültiger Design-Werte (wurden nicht übernommen)
+     */
+    public function saveSettings(array $data): array
     {
-        $settings = $this->getSettings();
-        $allowed = array_keys($settings);
-        $booleanKeys = [
+        $current = $this->getSettings();
+        $booleanKeys = self::booleanSettingKeys();
+        $rejected = [];
+
+        foreach (array_keys(self::defaultSettings()) as $key) {
+            if (in_array($key, self::INTERNAL_SETTINGS, true)) {
+                continue;
+            }
+
+            if (in_array($key, $booleanKeys, true)) {
+                $this->saveSetting($key, !empty($data[$key]) ? '1' : '0');
+                continue;
+            }
+
+            if (!array_key_exists($key, $data) || !is_scalar($data[$key])) {
+                continue;
+            }
+
+            $value = $this->cleanTextarea((string) $data[$key], 255);
+            if (in_array($key, self::CSS_LENGTH_SETTINGS, true) || in_array($key, self::CSS_COLOR_SETTINGS, true)) {
+                if ($value !== '' && self::sanitizeCssValue($key, $value) === '') {
+                    $rejected[] = $key;
+                    continue;
+                }
+            } elseif (str_ends_with($key, '_url') && $value !== '' && !self::isAllowedLinkUrl($value)) {
+                $rejected[] = $key;
+                continue;
+            }
+
+            if (($current[$key] ?? null) !== $value) {
+                $this->saveSetting($key, $value);
+            }
+        }
+
+        return $rejected;
+    }
+
+    /** @return list<string> */
+    public static function booleanSettingKeys(): array
+    {
+        return [
             'show_nav_link',
             'experts_header_text_enabled',
             'experts_header_kicker_enabled',
@@ -189,17 +314,47 @@ final class CMS_365NET_Experts_And_Companie_Database
             'companies_search_placeholder_enabled',
             'hub_header_text_enabled',
         ];
+    }
 
-        foreach ($allowed as $key) {
-            $raw = (string) ($data[$key] ?? '');
-
-            if (in_array($key, $booleanKeys, true)) {
-                $this->saveSetting($key, !empty($data[$key]) ? '1' : '0');
-                continue;
-            }
-
-            $this->saveSetting($key, $this->cleanTextarea($raw, 255));
+    /**
+     * CSS-Wert einer Design-Einstellung prüfen: Längen (px, rem, em, %, vw, vh, ch; 0) bzw. Farben (#hex, rgb/rgba,
+     * hsl/hsla). Ungültig → ''. Verhindert CSS-Injektion über die Design-Variablen.
+     */
+    public static function sanitizeCssValue(string $key, string $value): string
+    {
+        $value = trim($value);
+        if ($value === '' || strlen($value) > 64) {
+            return '';
         }
+
+        if (in_array($key, self::CSS_LENGTH_SETTINGS, true)) {
+            return preg_match('/^(?:0|\d{1,4}(?:\.\d{1,3})?(?:px|rem|em|%|vw|vh|ch))$/i', $value) === 1 ? strtolower($value) : '';
+        }
+
+        if (in_array($key, self::CSS_COLOR_SETTINGS, true)) {
+            if (preg_match('/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i', $value) === 1) {
+                return strtolower($value);
+            }
+            if (preg_match('/^(?:rgba?|hsla?)\(\s*[0-9.,%\s\/]+\)$/i', $value) === 1) {
+                return strtolower($value);
+            }
+        }
+
+        return '';
+    }
+
+    /** Header-Button-Ziele: relativer Pfad oder http(s)-URL. */
+    public static function isAllowedLinkUrl(string $url): bool
+    {
+        $url = trim($url);
+        if ($url === '' || preg_match('/[\x00-\x20\x7F<>"]/', $url) === 1) {
+            return false;
+        }
+        if (str_starts_with($url, '/')) {
+            return !str_starts_with($url, '//');
+        }
+
+        return preg_match('#^https?://#i', $url) === 1 && filter_var($url, FILTER_VALIDATE_URL) !== false;
     }
 
     /** @return array<int, object> */
@@ -217,6 +372,63 @@ final class CMS_365NET_Experts_And_Companie_Database
     public function countExpertsPublic(string $search = '', string $city = ''): int
     {
         return $this->countRows('experts', $search, $city, true);
+    }
+
+    /**
+     * Admin-Liste mit Filter (search, status: ''|active|inactive, sort) und Seitenweise.
+     *
+     * @param array{search?:string,status?:string,sort?:string} $filter
+     * @return array<int, object>
+     */
+    public function getExpertsAdminList(array $filter, int $limit, int $offset): array
+    {
+        return $this->getExperts((string) ($filter['search'] ?? ''), '', $limit, $offset, false, (string) ($filter['sort'] ?? 'az'), (string) ($filter['status'] ?? ''));
+    }
+
+    /** @param array{search?:string,status?:string} $filter */
+    public function countExpertsAdmin(array $filter): int
+    {
+        return $this->countRows('experts', (string) ($filter['search'] ?? ''), '', false, (string) ($filter['status'] ?? ''));
+    }
+
+    /** @param array{search?:string,status?:string,sort?:string} $filter @return array<int, object> */
+    public function getCompaniesAdminList(array $filter, int $limit, int $offset): array
+    {
+        return $this->getCompanies((string) ($filter['search'] ?? ''), '', $limit, $offset, false, (string) ($filter['sort'] ?? 'az'), (string) ($filter['status'] ?? ''));
+    }
+
+    /** @param array{search?:string,status?:string} $filter */
+    public function countCompaniesAdmin(array $filter): int
+    {
+        return $this->countRows('companies', (string) ($filter['search'] ?? ''), '', false, (string) ($filter['status'] ?? ''));
+    }
+
+    /**
+     * Anzahl je Status in einer Abfrage.
+     *
+     * @return array{total:int,active:int,inactive:int}
+     */
+    public function countByStatus(string $entity): array
+    {
+        $table = $this->resolveTable($entity);
+        $columns = $this->getExistingColumns($table);
+        if ($columns === []) {
+            return ['total' => 0, 'active' => 0, 'inactive' => 0];
+        }
+
+        $db = CMS\Database::instance();
+        if (!in_array('status', $columns, true)) {
+            $total = $this->countTableRows($table);
+            return ['total' => $total, 'active' => $total, 'inactive' => 0];
+        }
+
+        $stmt = $db->prepare('SELECT COUNT(*) AS total, SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS active FROM ' . $db->prefix() . $table);
+        $stmt->execute(['active']);
+        $row = $stmt->fetch();
+        $total = max(0, (int) ($row->total ?? 0));
+        $active = max(0, (int) ($row->active ?? 0));
+
+        return ['total' => $total, 'active' => $active, 'inactive' => max(0, $total - $active)];
     }
 
     /** @return array<int, object> */
@@ -243,8 +455,12 @@ final class CMS_365NET_Experts_And_Companie_Database
         }
 
         $table = $this->resolveTable('experts');
+        $columns = $this->getExistingColumns($table);
+        if ($columns === []) {
+            return null;
+        }
         $db = CMS\Database::instance();
-        $stmt = $db->prepare('SELECT * FROM ' . $db->prefix() . $table . ' WHERE id = ? LIMIT 1');
+        $stmt = $db->prepare('SELECT ' . $this->buildSelect($columns, self::EXPERT_COLUMNS) . ' FROM ' . $db->prefix() . $table . ' WHERE id = ? LIMIT 1');
         $stmt->execute([$id]);
         $row = $stmt->fetch();
 
@@ -258,8 +474,12 @@ final class CMS_365NET_Experts_And_Companie_Database
         }
 
         $table = $this->resolveTable('companies');
+        $columns = $this->getExistingColumns($table);
+        if ($columns === []) {
+            return null;
+        }
         $db = CMS\Database::instance();
-        $stmt = $db->prepare('SELECT * FROM ' . $db->prefix() . $table . ' WHERE id = ? LIMIT 1');
+        $stmt = $db->prepare('SELECT ' . $this->buildSelect($columns, self::COMPANY_COLUMNS) . ' FROM ' . $db->prefix() . $table . ' WHERE id = ? LIMIT 1');
         $stmt->execute([$id]);
         $row = $stmt->fetch();
 
@@ -452,6 +672,7 @@ final class CMS_365NET_Experts_And_Companie_Database
         $payload = [
             'first_name' => $firstName,
             'last_name' => $lastName,
+            'email' => $this->cleanEmail((string) ($data['email'] ?? '')),
             'company' => $this->cleanText((string) ($data['company'] ?? ''), 255),
             'position' => $this->cleanText((string) ($data['position'] ?? ''), 255),
             'biography' => $biography,
@@ -617,6 +838,532 @@ final class CMS_365NET_Experts_And_Companie_Database
         return $savedId;
     }
 
+    /* ---------------------------------------------------------------------
+     * Batch-Abfragen für die Archive (statt N+1-Abfragen je Karte)
+     * ------------------------------------------------------------------- */
+
+    /**
+     * @param array<int, int> $ids
+     * @return array<int, object> id → Company (Kurzfassung für Karten)
+     */
+    public function getCompaniesByIds(array $ids): array
+    {
+        return $this->fetchByIds(self::TABLE_COMPANIES, $ids, ['id', 'name', 'logo_url', 'website', 'industry', 'location_city', 'city', 'is_partner', 'is_top_partner', 'is_sponsor', 'linked_speaker_id', 'status']);
+    }
+
+    /**
+     * @param array<int, int> $ids
+     * @return array<int, object> id → Expert (Kurzfassung für Karten)
+     */
+    public function getExpertsByIds(array $ids): array
+    {
+        return $this->fetchByIds(self::TABLE_EXPERTS, $ids, ['id', 'first_name', 'last_name', 'position', 'company', 'photo_url', 'linked_company_id', 'linked_speaker_id', 'status']);
+    }
+
+    /**
+     * @param array<int, int> $ids
+     * @return array<int, object> id → Speaker
+     */
+    public function getSpeakersByIds(array $ids): array
+    {
+        if (!$this->tableExists('365net_event_speakers')) {
+            return [];
+        }
+
+        return $this->fetchByIds('365net_event_speakers', $ids, ['id', 'display_name', 'slug', 'topic', 'linked_expert_id', 'linked_company_id', 'status']);
+    }
+
+    /**
+     * Erster Speaker je verknüpftem Expert (wie getSpeakerByLinkedExpert()).
+     *
+     * @param array<int, int> $expertIds
+     * @return array<int, object> expertId → Speaker
+     */
+    public function getSpeakersByLinkedExpertIds(array $expertIds): array
+    {
+        $expertIds = $this->positiveIds($expertIds);
+        if ($expertIds === [] || !$this->tableExists('365net_event_speakers')) {
+            return [];
+        }
+        $columns = $this->getExistingColumns('365net_event_speakers');
+        if (!in_array('linked_expert_id', $columns, true)) {
+            return [];
+        }
+
+        $db = CMS\Database::instance();
+        $select = $this->buildSelect($columns, ['id', 'display_name', 'slug', 'topic', 'linked_expert_id', 'linked_company_id', 'status']);
+        $stmt = $db->prepare('SELECT ' . $select . ' FROM ' . $db->prefix() . '365net_event_speakers WHERE linked_expert_id IN (' . $this->placeholders($expertIds) . ') ORDER BY id ASC');
+        $stmt->execute($expertIds);
+        $map = [];
+        foreach ($stmt->fetchAll() ?: [] as $row) {
+            $key = (int) ($row->linked_expert_id ?? 0);
+            if ($key > 0 && !isset($map[$key])) {
+                $map[$key] = $row;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Aktive Experts je Company (wie getExpertsByLinkedCompany(), neueste zuerst).
+     *
+     * @param array<int, int> $companyIds
+     * @return array<int, array<int, object>> companyId → Experts
+     */
+    public function getExpertsByLinkedCompanyIds(array $companyIds, int $perCompany = 3): array
+    {
+        $companyIds = $this->positiveIds($companyIds);
+        $columns = $this->getExistingColumns(self::TABLE_EXPERTS);
+        if ($companyIds === [] || !in_array('linked_company_id', $columns, true)) {
+            return [];
+        }
+
+        $params = $companyIds;
+        $whereStatus = '';
+        if (in_array('status', $columns, true)) {
+            $whereStatus = ' AND status = ?';
+            $params[] = 'active';
+        }
+        $order = in_array('updated_at', $columns, true) ? 'updated_at DESC, id DESC' : 'id DESC';
+        $db = CMS\Database::instance();
+        $select = $this->buildSelect($columns, ['id', 'first_name', 'last_name', 'position', 'company', 'linked_company_id', 'status']);
+        $stmt = $db->prepare('SELECT ' . $select . ' FROM ' . $db->prefix() . self::TABLE_EXPERTS . ' WHERE linked_company_id IN (' . $this->placeholders($companyIds) . ')' . $whereStatus . ' ORDER BY ' . $order);
+        $stmt->execute($params);
+
+        return $this->groupLimited($stmt->fetchAll() ?: [], 'linked_company_id', max(1, min(20, $perCompany)));
+    }
+
+    /**
+     * Veröffentlichte Speaker je Company (wie getSpeakersByLinkedCompany(), alphabetisch).
+     *
+     * @param array<int, int> $companyIds
+     * @return array<int, array<int, object>> companyId → Speaker
+     */
+    public function getSpeakersByLinkedCompanyIds(array $companyIds, int $perCompany = 3): array
+    {
+        $companyIds = $this->positiveIds($companyIds);
+        if ($companyIds === [] || !$this->tableExists('365net_event_speakers')) {
+            return [];
+        }
+        $columns = $this->getExistingColumns('365net_event_speakers');
+        if (!in_array('linked_company_id', $columns, true)) {
+            return [];
+        }
+
+        $params = $companyIds;
+        $whereStatus = '';
+        if (in_array('status', $columns, true)) {
+            $whereStatus = ' AND status = ?';
+            $params[] = 'published';
+        }
+        $db = CMS\Database::instance();
+        $select = $this->buildSelect($columns, ['id', 'display_name', 'slug', 'topic', 'linked_expert_id', 'linked_company_id', 'status']);
+        $stmt = $db->prepare('SELECT ' . $select . ' FROM ' . $db->prefix() . '365net_event_speakers WHERE linked_company_id IN (' . $this->placeholders($companyIds) . ')' . $whereStatus . ' ORDER BY display_name ASC');
+        $stmt->execute($params);
+
+        return $this->groupLimited($stmt->fetchAll() ?: [], 'linked_company_id', max(1, min(20, $perCompany)));
+    }
+
+    /**
+     * @param array<int, mixed> $ids
+     * @param list<string> $wanted
+     * @return array<int, object>
+     */
+    private function fetchByIds(string $table, array $ids, array $wanted): array
+    {
+        $ids = $this->positiveIds($ids);
+        if ($ids === []) {
+            return [];
+        }
+        $columns = $this->getExistingColumns($table);
+        if ($columns === []) {
+            return [];
+        }
+
+        $db = CMS\Database::instance();
+        $stmt = $db->prepare('SELECT ' . $this->buildSelect($columns, $wanted) . ' FROM ' . $db->prefix() . $table . ' WHERE id IN (' . $this->placeholders($ids) . ')');
+        $stmt->execute($ids);
+        $map = [];
+        foreach ($stmt->fetchAll() ?: [] as $row) {
+            if (!isset($row->location_city) && isset($row->city)) {
+                $row->location_city = (string) $row->city;
+            }
+            $map[(int) ($row->id ?? 0)] = $row;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<int, object> $rows
+     * @return array<int, array<int, object>>
+     */
+    private function groupLimited(array $rows, string $key, int $limit): array
+    {
+        $grouped = [];
+        foreach ($rows as $row) {
+            $group = (int) ($row->{$key} ?? 0);
+            if ($group <= 0 || count($grouped[$group] ?? []) >= $limit) {
+                continue;
+            }
+            $grouped[$group][] = $row;
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * @param array<int, mixed> $ids
+     * @return list<int>
+     */
+    private function positiveIds(array $ids): array
+    {
+        $clean = [];
+        foreach ($ids as $id) {
+            $id = (int) $id;
+            if ($id > 0) {
+                $clean[$id] = $id;
+            }
+        }
+
+        return array_values(array_slice($clean, 0, 1000));
+    }
+
+    /** @param array<int, mixed> $values */
+    private function placeholders(array $values): string
+    {
+        return implode(', ', array_fill(0, max(1, count($values)), '?'));
+    }
+
+    /* ---------------------------------------------------------------------
+     * Löschen und Sammelaktionen (Admin)
+     * ------------------------------------------------------------------- */
+
+    /**
+     * Experts löschen und Verweise (Companies, Speaker) lösen.
+     *
+     * @param array<int, mixed> $ids
+     */
+    public function deleteExperts(array $ids): int
+    {
+        $ids = $this->positiveIds($ids);
+        if ($ids === []) {
+            return 0;
+        }
+
+        $db = CMS\Database::instance();
+        $in = $this->placeholders($ids);
+        try {
+            if (in_array('linked_expert_id', $this->getExistingColumns(self::TABLE_COMPANIES), true)) {
+                $db->prepare('UPDATE ' . $db->prefix() . self::TABLE_COMPANIES . ' SET linked_expert_id = NULL WHERE linked_expert_id IN (' . $in . ')')->execute($ids);
+            }
+            if ($this->tableExists('365net_event_speakers') && in_array('linked_expert_id', $this->getExistingColumns('365net_event_speakers'), true)) {
+                $db->prepare('UPDATE ' . $db->prefix() . '365net_event_speakers SET linked_expert_id = NULL WHERE linked_expert_id IN (' . $in . ')')->execute($ids);
+            }
+        } catch (Throwable $e) {
+            error_log('CMS 365NET Experts & Companies [deleteExperts links]: ' . $e->getMessage());
+        }
+
+        $stmt = $db->prepare('DELETE FROM ' . $db->prefix() . self::TABLE_EXPERTS . ' WHERE id IN (' . $in . ')');
+        $stmt->execute($ids);
+
+        return max(0, (int) $stmt->rowCount());
+    }
+
+    /**
+     * Companies löschen und Verweise (Experts, Mutterfirma, Speaker) lösen.
+     *
+     * @param array<int, mixed> $ids
+     */
+    public function deleteCompanies(array $ids): int
+    {
+        $ids = $this->positiveIds($ids);
+        if ($ids === []) {
+            return 0;
+        }
+
+        $db = CMS\Database::instance();
+        $in = $this->placeholders($ids);
+        try {
+            if (in_array('linked_company_id', $this->getExistingColumns(self::TABLE_EXPERTS), true)) {
+                $db->prepare('UPDATE ' . $db->prefix() . self::TABLE_EXPERTS . ' SET linked_company_id = NULL WHERE linked_company_id IN (' . $in . ')')->execute($ids);
+            }
+            if (in_array('parent_company_id', $this->getExistingColumns(self::TABLE_COMPANIES), true)) {
+                $db->prepare('UPDATE ' . $db->prefix() . self::TABLE_COMPANIES . ' SET parent_company_id = NULL WHERE parent_company_id IN (' . $in . ')')->execute($ids);
+            }
+            if ($this->tableExists('365net_event_speakers') && in_array('linked_company_id', $this->getExistingColumns('365net_event_speakers'), true)) {
+                $db->prepare('UPDATE ' . $db->prefix() . '365net_event_speakers SET linked_company_id = NULL WHERE linked_company_id IN (' . $in . ')')->execute($ids);
+            }
+        } catch (Throwable $e) {
+            error_log('CMS 365NET Experts & Companies [deleteCompanies links]: ' . $e->getMessage());
+        }
+
+        $stmt = $db->prepare('DELETE FROM ' . $db->prefix() . self::TABLE_COMPANIES . ' WHERE id IN (' . $in . ')');
+        $stmt->execute($ids);
+
+        return max(0, (int) $stmt->rowCount());
+    }
+
+    /**
+     * Status mehrerer Einträge setzen (active/inactive).
+     *
+     * @param array<int, mixed> $ids
+     */
+    public function setStatus(string $entity, array $ids, string $status): int
+    {
+        $ids = $this->positiveIds($ids);
+        $table = $this->resolveTable($entity);
+        if ($ids === [] || !in_array($status, ['active', 'inactive'], true) || !in_array('status', $this->getExistingColumns($table), true)) {
+            return 0;
+        }
+
+        $db = CMS\Database::instance();
+        $stmt = $db->prepare('UPDATE ' . $db->prefix() . $table . ' SET status = ? WHERE id IN (' . $this->placeholders($ids) . ')');
+        $stmt->execute([$status, ...$ids]);
+
+        return max(0, (int) $stmt->rowCount());
+    }
+
+    /* ---------------------------------------------------------------------
+     * CSV-Export/-Import
+     * ------------------------------------------------------------------- */
+
+    /**
+     * Zeilen für den CSV-Export (alle Spalten außer Editor-JSON), in Blöcken.
+     *
+     * @param array{search?:string,status?:string} $filter
+     * @return array<int, object>
+     */
+    public function getExportRows(string $entity, array $filter, int $limit, int $offset): array
+    {
+        $table = $this->resolveTable($entity);
+        $columns = $this->getExistingColumns($table);
+        if ($columns === []) {
+            return [];
+        }
+
+        $wanted = array_values(array_diff($entity === 'experts' ? self::EXPERT_COLUMNS : self::COMPANY_COLUMNS, ['seed_key', 'biography_json', 'description_json']));
+        $where = ['1=1'];
+        $params = [];
+        $status = (string) ($filter['status'] ?? '');
+        if (in_array($status, ['active', 'inactive'], true) && in_array('status', $columns, true)) {
+            $where[] = 'status = ?';
+            $params[] = $status;
+        }
+        $search = trim((string) ($filter['search'] ?? ''));
+        if ($search !== '') {
+            $fields = $entity === 'experts' ? ['first_name', 'last_name', 'company', 'position', 'skills_general', 'skills_tech'] : ['name', 'industry', 'description'];
+            $parts = [];
+            foreach ($fields as $field) {
+                if (in_array($field, $columns, true)) {
+                    $parts[] = $field . ' LIKE ?';
+                    $params[] = '%' . $this->escapeLike($search) . '%';
+                }
+            }
+            if ($parts !== []) {
+                $where[] = '(' . implode(' OR ', $parts) . ')';
+            }
+        }
+
+        $db = CMS\Database::instance();
+        $limit = max(1, min(1000, $limit));
+        $offset = max(0, $offset);
+        $stmt = $db->prepare('SELECT ' . $this->buildSelect($columns, $wanted) . ' FROM ' . $db->prefix() . $table . ' WHERE ' . implode(' AND ', $where) . ' ORDER BY id ASC LIMIT ' . $limit . ' OFFSET ' . $offset);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll() ?: [];
+    }
+
+    /** IDs, die es bereits gibt (Import: aktualisieren statt anlegen). @param array<int, mixed> $ids @return array<int, true> */
+    public function existingIds(string $entity, array $ids): array
+    {
+        $map = [];
+        foreach ($this->fetchByIds($this->resolveTable($entity), $ids, ['id']) as $id => $_row) {
+            $map[(int) $id] = true;
+        }
+
+        return $map;
+    }
+
+    /* ---------------------------------------------------------------------
+     * Suche, Sitemap, DSGVO
+     * ------------------------------------------------------------------- */
+
+    /**
+     * Öffentliche Treffer (status = active), die ALLE Wörter enthalten.
+     *
+     * @param list<string> $words
+     * @return array<int, object>
+     */
+    public function searchPublic(string $entity, array $words, int $limit): array
+    {
+        $table = $this->resolveTable($entity);
+        $columns = $this->getExistingColumns($table);
+        if ($columns === [] || $words === []) {
+            return [];
+        }
+
+        $fields = $entity === 'experts'
+            ? ['first_name', 'last_name', 'company', 'position', 'skills_general', 'skills_tech', 'biography']
+            : ['name', 'industry', 'description', 'location_city'];
+        $fields = array_values(array_intersect($fields, $columns));
+        if ($fields === []) {
+            return [];
+        }
+
+        $where = [];
+        $params = [];
+        if (in_array('status', $columns, true)) {
+            $where[] = 'status = ?';
+            $params[] = 'active';
+        }
+        foreach ($words as $word) {
+            $parts = [];
+            foreach ($fields as $field) {
+                $parts[] = $field . ' LIKE ?';
+                $params[] = '%' . $this->escapeLike($word) . '%';
+            }
+            $where[] = '(' . implode(' OR ', $parts) . ')';
+        }
+
+        $select = $entity === 'experts'
+            ? ['id', 'first_name', 'last_name', 'company', 'position', 'biography', 'updated_at']
+            : ['id', 'name', 'industry', 'description', 'location_city', 'updated_at'];
+        $db = CMS\Database::instance();
+        $limit = max(1, min(50, $limit));
+        $order = in_array('updated_at', $columns, true) ? 'updated_at DESC' : 'id DESC';
+        $stmt = $db->prepare('SELECT ' . $this->buildSelect($columns, $select) . ' FROM ' . $db->prefix() . $table . ' WHERE ' . implode(' AND ', $where) . ' ORDER BY ' . $order . ' LIMIT ' . $limit);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll() ?: [];
+    }
+
+    /**
+     * Öffentliche Detailseiten für die Sitemap.
+     *
+     * @return array<int, object> id, updated_at
+     */
+    public function getSitemapRows(string $entity, int $limit = 5000): array
+    {
+        $table = $this->resolveTable($entity);
+        $columns = $this->getExistingColumns($table);
+        if ($columns === []) {
+            return [];
+        }
+
+        $db = CMS\Database::instance();
+        $where = in_array('status', $columns, true) ? ' WHERE status = ?' : '';
+        $limit = max(1, min(10000, $limit));
+        $stmt = $db->prepare('SELECT ' . $this->buildSelect($columns, ['id', 'updated_at']) . ' FROM ' . $db->prefix() . $table . $where . ' ORDER BY id ASC LIMIT ' . $limit);
+        $stmt->execute($where !== '' ? ['active'] : []);
+
+        return $stmt->fetchAll() ?: [];
+    }
+
+    /**
+     * DSGVO-Auskunft: Einträge mit dieser E-Mail-Adresse (Experts: eigenes Profil, Companies: Kontaktadresse).
+     *
+     * @return array{experts:list<array<string,mixed>>,companies:list<array<string,mixed>>}
+     */
+    public function collectPersonalData(string $email): array
+    {
+        $email = strtolower(trim($email));
+        $result = ['experts' => [], 'companies' => []];
+        if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return $result;
+        }
+
+        $db = CMS\Database::instance();
+        foreach (['experts' => self::EXPERT_COLUMNS, 'companies' => self::COMPANY_COLUMNS] as $entity => $wanted) {
+            $table = $this->resolveTable($entity);
+            $columns = $this->getExistingColumns($table);
+            if (!in_array('email', $columns, true)) {
+                continue;
+            }
+            $select = $this->buildSelect($columns, array_values(array_diff($wanted, ['biography_json', 'description_json', 'seed_key'])));
+            $stmt = $db->prepare('SELECT ' . $select . ' FROM ' . $db->prefix() . $table . ' WHERE LOWER(email) = ? LIMIT 100');
+            $stmt->execute([$email]);
+            foreach ($stmt->fetchAll() ?: [] as $row) {
+                $result[$entity][] = (array) $row;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * DSGVO-Löschung: Expert-Profile mit dieser Adresse löschen; bei Companies nur die Kontaktdaten (E-Mail, Telefon)
+     * entfernen – das Unternehmen selbst ist kein personenbezogenes Datum.
+     *
+     * @return array{experts:int,companies:int}
+     */
+    public function deletePersonalData(string $email): array
+    {
+        $email = strtolower(trim($email));
+        $result = ['experts' => 0, 'companies' => 0];
+        if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return $result;
+        }
+
+        $db = CMS\Database::instance();
+        if (in_array('email', $this->getExistingColumns(self::TABLE_EXPERTS), true)) {
+            $stmt = $db->prepare('SELECT id FROM ' . $db->prefix() . self::TABLE_EXPERTS . ' WHERE LOWER(email) = ? LIMIT 100');
+            $stmt->execute([$email]);
+            $ids = array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: []);
+            $result['experts'] = $this->deleteExperts($ids);
+        }
+
+        $companyColumns = $this->getExistingColumns(self::TABLE_COMPANIES);
+        if (in_array('email', $companyColumns, true)) {
+            $set = in_array('phone', $companyColumns, true) ? 'email = NULL, phone = NULL' : 'email = NULL';
+            $stmt = $db->prepare('UPDATE ' . $db->prefix() . self::TABLE_COMPANIES . ' SET ' . $set . ' WHERE LOWER(email) = ?');
+            $stmt->execute([$email]);
+            $result['companies'] = max(0, (int) $stmt->rowCount());
+        }
+
+        return $result;
+    }
+
+    private function escapeLike(string $value): string
+    {
+        return addcslashes($value, '\\%_');
+    }
+
+    /** Indizes für Filter/Sortierung/Verknüpfungen idempotent ergänzen (nur bei Schema-Wechsel). */
+    private function ensureIndexes(): void
+    {
+        $this->ensureIndex(self::TABLE_EXPERTS, 'idx_updated', 'updated_at');
+        $this->ensureIndex(self::TABLE_EXPERTS, 'idx_email', 'email');
+        $this->ensureIndex(self::TABLE_EXPERTS, 'idx_status_updated', 'status, updated_at');
+        $this->ensureIndex(self::TABLE_COMPANIES, 'idx_updated', 'updated_at');
+        $this->ensureIndex(self::TABLE_COMPANIES, 'idx_email', 'email');
+        $this->ensureIndex(self::TABLE_COMPANIES, 'idx_status_updated', 'status, updated_at');
+    }
+
+    private function ensureIndex(string $table, string $index, string $columnsSql): void
+    {
+        $columns = $this->getExistingColumns($table);
+        foreach (array_map('trim', explode(',', $columnsSql)) as $column) {
+            if (!in_array($column, $columns, true)) {
+                return;
+            }
+        }
+
+        try {
+            $db = CMS\Database::instance();
+            // information_schema statt SHOW INDEX … WHERE ? (native Platzhalter in SHOW scheitern unter MariaDB).
+            $stmt = $db->prepare('SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1');
+            $stmt->execute([$db->prefix() . $table, $index]);
+            if ($stmt->fetch()) {
+                return;
+            }
+            $db->getPdo()->exec('ALTER TABLE `' . $db->prefix() . $table . '` ADD INDEX ' . $index . ' (' . $columnsSql . ')');
+        } catch (Throwable $e) {
+            error_log('CMS 365NET Experts & Companies [ensureIndex ' . $index . ']: ' . $e->getMessage());
+        }
+    }
+
     private function createFallbackTables(): void
     {
         $db = CMS\Database::instance();
@@ -628,6 +1375,7 @@ final class CMS_365NET_Experts_And_Companie_Database
             seed_key VARCHAR(80) DEFAULT NULL,
             first_name VARCHAR(120) NOT NULL,
             last_name VARCHAR(120) NOT NULL,
+            email VARCHAR(180) DEFAULT NULL,
             company VARCHAR(255) DEFAULT NULL,
             position VARCHAR(255) DEFAULT NULL,
             biography TEXT DEFAULT NULL,
@@ -703,6 +1451,7 @@ final class CMS_365NET_Experts_And_Companie_Database
         $this->ensureColumn(self::TABLE_EXPERTS, 'linked_speaker_id', 'linked_speaker_id INT UNSIGNED DEFAULT NULL');
         $this->ensureColumn(self::TABLE_EXPERTS, 'biography_json', 'biography_json LONGTEXT DEFAULT NULL');
         $this->ensureColumn(self::TABLE_EXPERTS, 'photo_url', 'photo_url VARCHAR(600) DEFAULT NULL');
+        $this->ensureColumn(self::TABLE_EXPERTS, 'email', 'email VARCHAR(180) DEFAULT NULL AFTER last_name');
         $this->ensureColumn(self::TABLE_COMPANIES, 'linked_expert_id', 'linked_expert_id INT UNSIGNED DEFAULT NULL');
         $this->ensureColumn(self::TABLE_COMPANIES, 'linked_speaker_id', 'linked_speaker_id INT UNSIGNED DEFAULT NULL');
         $this->ensureColumn(self::TABLE_COMPANIES, 'parent_company_id', 'parent_company_id INT UNSIGNED DEFAULT NULL');
@@ -755,6 +1504,7 @@ final class CMS_365NET_Experts_And_Companie_Database
             $payload = [
                 'first_name' => $firstName,
                 'last_name' => $lastName,
+                'email' => $this->cleanEmail((string) ($row['email'] ?? '')),
                 'company' => $this->cleanText((string) ($row['company'] ?? ''), 255),
                 'position' => $this->cleanText((string) ($row['position'] ?? ''), 255),
                 'biography' => $this->buildLongExpertBiography($row),
@@ -846,7 +1596,7 @@ final class CMS_365NET_Experts_And_Companie_Database
     }
 
     /** @return array<int, object> */
-    private function getExperts(string $search, string $city, int $limit, int $offset, bool $onlyActive, string $sort = 'az'): array
+    private function getExperts(string $search, string $city, int $limit, int $offset, bool $onlyActive, string $sort = 'az', string $status = ''): array
     {
         $table = $this->resolveTable('experts');
         $columns = $this->getExistingColumns($table);
@@ -884,6 +1634,9 @@ final class CMS_365NET_Experts_And_Companie_Database
         if ($onlyActive && in_array('status', $columns, true)) {
             $where[] = 'status = ?';
             $params[] = 'active';
+        } elseif (in_array($status, ['active', 'inactive'], true) && in_array('status', $columns, true)) {
+            $where[] = 'status = ?';
+            $params[] = $status;
         }
 
         if ($search !== '') {
@@ -975,7 +1728,7 @@ final class CMS_365NET_Experts_And_Companie_Database
     }
 
     /** @return array<int, object> */
-    private function getCompanies(string $search, string $city, int $limit, int $offset, bool $onlyActive, string $sort = 'az'): array
+    private function getCompanies(string $search, string $city, int $limit, int $offset, bool $onlyActive, string $sort = 'az', string $status = ''): array
     {
         $table = $this->resolveTable('companies');
         $columns = $this->getExistingColumns($table);
@@ -1015,6 +1768,9 @@ final class CMS_365NET_Experts_And_Companie_Database
         if ($onlyActive && in_array('status', $columns, true)) {
             $where[] = 'status = ?';
             $params[] = 'active';
+        } elseif (in_array($status, ['active', 'inactive'], true) && in_array('status', $columns, true)) {
+            $where[] = 'status = ?';
+            $params[] = $status;
         }
 
         if ($search !== '') {
@@ -1113,7 +1869,7 @@ final class CMS_365NET_Experts_And_Companie_Database
         return $rows;
     }
 
-    private function countRows(string $entity, string $search, string $city, bool $onlyActive): int
+    private function countRows(string $entity, string $search, string $city, bool $onlyActive, string $status = ''): int
     {
         $table = $this->resolveTable($entity);
         $columns = $this->getExistingColumns($table);
@@ -1127,6 +1883,9 @@ final class CMS_365NET_Experts_And_Companie_Database
         if ($onlyActive && in_array('status', $columns, true)) {
             $where[] = 'status = ?';
             $params[] = 'active';
+        } elseif (in_array($status, ['active', 'inactive'], true) && in_array('status', $columns, true)) {
+            $where[] = 'status = ?';
+            $params[] = $status;
         }
 
         if ($search !== '') {
@@ -1238,7 +1997,7 @@ final class CMS_365NET_Experts_And_Companie_Database
             $fields[] = 'id';
         }
 
-        return $fields !== [] ? implode(', ', $fields) : '*';
+        return $fields !== [] ? implode(', ', $fields) : 'id';
     }
 
     /** @param array<string, mixed> $payload @param array<int, string> $columns @return array<string, mixed> */
@@ -1299,6 +2058,7 @@ final class CMS_365NET_Experts_And_Companie_Database
 
     private function saveSetting(string $key, string $value): void
     {
+        $this->settingsCache = null;
         $db = CMS\Database::instance();
         $stmt = $db->prepare('INSERT INTO ' . $db->prefix() . self::TABLE_SETTINGS . ' (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)');
         $stmt->execute([$this->cleanText($key, 120), $value]);

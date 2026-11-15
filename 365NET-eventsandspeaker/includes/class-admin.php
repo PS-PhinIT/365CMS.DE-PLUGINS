@@ -1,6 +1,11 @@
 <?php
 /**
- * Admin-UI für 365NET Events & Speaker.
+ * Admin-UI für 365NET Events & Speaker (Layout-Vertrag 365CMS 4.0.0).
+ *
+ * Alle Unterseiten laufen über den Core-AdminRouter (/admin/plugins/365netevents/…). Die einheitliche
+ * Navigation (Kopfzeile mit KPI-Karten, Plugin-Menü links, Inhalt rechts) setzt der gemeinsame Helfer
+ * PhinIT_Plugin_Admin_Nav; die Callbacks hier geben nur den Inhalt der rechten Spalte aus. Formulare
+ * posten auf die eigene Unterseite, Schreibaktionen prüfen Admin-Recht und CSRF und leiten mit 303 weiter.
  *
  * @package CMS_365NETEvents
  */
@@ -13,8 +18,16 @@ if (!defined('ABSPATH')) {
 
 final class CMS_365NET_Events_Admin
 {
+    public const MENU_SLUG = '365netevents';
+    public const PAGE_EVENTS = '365netevents-events';
+    public const PAGE_SPEAKERS = '365netevents-speakers';
+    public const PAGE_TAXONOMIES = '365netevents-taxonomies';
+    public const PAGE_SETTINGS = '365netevents-settings';
+    public const TITLE = '365CMS | Events & Speaker';
+    private const PER_PAGE = 25;
+
     private static ?self $instance = null;
-    private static bool $fallbackAssetsPrinted = false;
+    private static bool $assetsPrinted = false;
 
     public static function instance(): self
     {
@@ -27,44 +40,34 @@ final class CMS_365NET_Events_Admin
 
     private function __construct()
     {
-        $this->loadSharedAdminContract();
-        if (class_exists('CMS\\Hooks')) {
-            CMS\Hooks::addAction('cms_admin_menu', [$this, 'registerAdminMenu'], 10);
-            // Einheitliches Plugin-Layout (365CMS 4.0.0): Kopfzeile mit KPI-Karten, links das Plugin-Menü,
-            // rechts der Inhalt; die Übersicht liefert adminDashboard().
-            if (is_file(__DIR__ . '/phinit-admin-nav.php')) {
-                require_once __DIR__ . '/phinit-admin-nav.php';
-                \PhinIT_Plugin_Admin_Nav::adopt('365netevents', [
-                    'icon' => 'ti ti-calendar-event',
-                    'title' => 'PHINIT | Events & Speaker',
-                    'version' => defined('CMS_365NET_EVENTS_VERSION') ? (string) CMS_365NET_EVENTS_VERSION : '',
-                    'description' => 'Events, Messen und Speaker für die öffentlichen Seiten /events und /speakers pflegen.',
-                    'stats' => [self::class, 'adminStats'],
-                    'dashboard' => [self::class, 'adminDashboard'],
-                    'badges' => [self::class, 'adminBadges'],
-                    'icons' => [
-                        '365netevents-events' => 'ti ti-calendar-event',
-                        '365netevents-speakers' => 'ti ti-microphone',
-                        '365netevents-taxonomies' => 'ti ti-tags',
-                        '365netevents-settings' => 'ti ti-settings',
-                    ],
-                    'descriptions' => self::sectionDescriptions(),
-                ]);
-            }
-            CMS\Hooks::addFilter('admin_menu_items', [$this, 'addMenuItem'], 10);
-        }
-    }
-
-    private function loadSharedAdminContract(): void
-    {
-        $contractFile = dirname(__DIR__, 2) . '/shared/admin/plugin-admin-contract.php';
-        if (is_file($contractFile)) {
-            require_once $contractFile;
+        if (!class_exists('CMS\\Hooks')) {
+            return;
         }
 
-        $menuFile = ABSPATH . 'admin/partials/admin-menu.php';
-        if (is_file($menuFile) && !function_exists('renderAdminLayoutStart')) {
-            require_once $menuFile;
+        CMS\Hooks::addAction('cms_admin_menu', [$this, 'registerAdminMenu'], 10);
+
+        // Einheitliches Plugin-Layout (365CMS 4.0.0): Kopfzeile mit KPI-Karten, links das Plugin-Menü,
+        // rechts der Inhalt; die Übersicht liefert adminDashboard().
+        if (is_file(__DIR__ . '/phinit-admin-nav.php')) {
+            require_once __DIR__ . '/phinit-admin-nav.php';
+            \PhinIT_Plugin_Admin_Nav::adopt(self::MENU_SLUG, [
+                'icon' => 'ti ti-calendar-event',
+                'menu_title' => self::TITLE,
+                'title' => self::TITLE,
+                'version' => defined('CMS_365NET_EVENTS_VERSION') ? (string) CMS_365NET_EVENTS_VERSION : '',
+                'status' => [self::class, 'adminStatus'],
+                'description' => 'Events, Messen und Speaker für die öffentlichen Seiten /events und /speakers pflegen.',
+                'stats' => [self::class, 'adminStats'],
+                'dashboard' => [self::class, 'adminDashboard'],
+                'badges' => [self::class, 'adminBadges'],
+                'icons' => [
+                    self::PAGE_EVENTS => 'ti ti-calendar-event',
+                    self::PAGE_SPEAKERS => 'ti ti-microphone',
+                    self::PAGE_TAXONOMIES => 'ti ti-tags',
+                    self::PAGE_SETTINGS => 'ti ti-settings',
+                ],
+                'descriptions' => self::sectionDescriptions(),
+            ]);
         }
     }
 
@@ -74,70 +77,822 @@ final class CMS_365NET_Events_Admin
             return;
         }
 
-        add_menu_page('365 | Events & Speaker', 'PHINIT | Events & Speaker', 'manage_options', '365netevents', [self::class, 'bridgeDashboard'], '📅', 45);
+        add_menu_page(self::TITLE, self::TITLE, 'manage_options', self::MENU_SLUG, [self::class, 'pageDashboard'], 'ti ti-calendar-event', 45);
         if (function_exists('add_submenu_page')) {
-            // Erster Bereich = Übersicht (/admin/365netevents/dashboard); die Event-Liste bleibt unter /admin/365netevents.
-            add_submenu_page('365netevents', 'Übersicht', 'Übersicht', 'manage_options', '365netevents', [self::class, 'bridgeDashboard']);
-            add_submenu_page('365netevents', 'Events', 'Events', 'manage_options', '365netevents-events', [self::class, 'bridgeEvents']);
-            add_submenu_page('365netevents', 'Speaker', 'Speaker', 'manage_options', '365netevents-speakers', [self::class, 'bridgeSpeakers']);
-            add_submenu_page('365netevents', 'Kategorien & Tags', 'Kategorien & Tags', 'manage_options', '365netevents-taxonomies', [self::class, 'bridgeTaxonomies']);
-            add_submenu_page('365netevents', 'Einstellungen', 'Einstellungen', 'manage_options', '365netevents-settings', [self::class, 'bridgeSettings']);
+            add_submenu_page(self::MENU_SLUG, 'Übersicht', 'Übersicht', 'manage_options', self::MENU_SLUG, [self::class, 'pageDashboard']);
+            add_submenu_page(self::MENU_SLUG, 'Events', 'Events', 'manage_options', self::PAGE_EVENTS, [self::class, 'pageEvents']);
+            add_submenu_page(self::MENU_SLUG, 'Speaker', 'Speaker', 'manage_options', self::PAGE_SPEAKERS, [self::class, 'pageSpeakers']);
+            add_submenu_page(self::MENU_SLUG, 'Kategorien & Tags', 'Kategorien & Tags', 'manage_options', self::PAGE_TAXONOMIES, [self::class, 'pageTaxonomies']);
+            add_submenu_page(self::MENU_SLUG, 'Einstellungen', 'Einstellungen', 'manage_options', self::PAGE_SETTINGS, [self::class, 'pageSettings']);
         }
     }
 
-    public static function bridgeDashboard(): void
+    /**
+     * Adresse einer Admin-Unterseite (mit Helfer: /admin/plugins/365netevents/365netevents?view=…).
+     *
+     * @param array<string, scalar> $query
+     */
+    public static function url(string $page = self::MENU_SLUG, array $query = []): string
     {
-        CMS\Router::instance()->redirect('/admin/365netevents/dashboard');
+        if (class_exists('PhinIT_Plugin_Admin_Nav', false)) {
+            return \PhinIT_Plugin_Admin_Nav::url(self::MENU_SLUG, $page, $query);
+        }
+
+        $path = '/admin/plugins/' . self::MENU_SLUG . ($page !== '' && $page !== self::MENU_SLUG ? '/' . $page : '');
+
+        return $query !== [] ? $path . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986) : $path;
     }
 
-    public static function bridgeEvents(): void
+    // ---------------------------------------------------------------------------------------------
+    // Seiten-Callbacks (AdminRouter)
+    // ---------------------------------------------------------------------------------------------
+
+    public static function pageDashboard(): void
     {
-        CMS\Router::instance()->redirect('/admin/365netevents');
+        $admin = self::instance();
+        if (!$admin->guard()) {
+            return;
+        }
+
+        $upcoming = [];
+        try {
+            $upcoming = CMS_365NET_Events_Database::instance()->getEvents(['date_mode' => 'future', 'from' => date('Y-m-d'), 'limit' => 5]);
+        } catch (\Throwable $e) {
+            CMS_365NET_Events::instance()->log('admin.dashboard', $e);
+        }
+
+        $admin->renderPage(self::MENU_SLUG, function () use ($admin, $upcoming): void {
+            $admin->flash();
+            echo class_exists('PhinIT_Plugin_Admin_Nav', false)
+                ? \PhinIT_Plugin_Admin_Nav::dashboard(self::MENU_SLUG)
+                : \cms_plugin_dashboard(self::adminDashboard());
+            $admin->view('dashboard', ['upcomingEvents' => $upcoming]);
+        });
     }
 
-    public static function bridgeSpeakers(): void
+    public static function pageEvents(): void
     {
-        CMS\Router::instance()->redirect('/admin/365netevents/speakers');
+        $admin = self::instance();
+        if (!$admin->guard()) {
+            return;
+        }
+        if ($admin->isPost()) {
+            $admin->handleEventsPost();
+            return;
+        }
+
+        $db = CMS_365NET_Events_Database::instance();
+        $action = $admin->query('action');
+
+        if ($action === 'export') {
+            $admin->exportCsv('events', $admin->eventFilters());
+            return;
+        }
+
+        if ($action === 'new' || $action === 'edit') {
+            $event = null;
+            if ($action === 'edit') {
+                $event = $db->getEvent((int) ($_GET['id'] ?? 0));
+                if ($event === null) {
+                    $admin->redirect(self::PAGE_EVENTS, ['error' => 'not_found']);
+                }
+            }
+            $context = [
+                'event' => $event,
+                'allSpeakers' => $db->getSpeakers(['limit' => 300]),
+                'assignedSpeakers' => $event !== null ? $db->getSpeakersForEvent((int) $event->id) : [],
+                'companies' => $db->getAvailableCompanies(300),
+                'experts' => $db->getAvailableExperts(300),
+                'taxonomies' => $db->getTaxonomyOptions(),
+                'excompActive' => $db->isExcompActive(),
+            ];
+            $admin->renderPage(self::PAGE_EVENTS, function () use ($admin, $context): void {
+                $admin->view('event-form', $context);
+                $admin->renderMediaPickerModal();
+            });
+            return;
+        }
+
+        $filters = $admin->eventFilters();
+        $page = $admin->pageNumber();
+        $total = $db->countEvents($filters['args']);
+        $pages = max(1, (int) ceil($total / self::PER_PAGE));
+        $page = min($page, $pages);
+        $events = $db->getEvents($filters['args'] + [
+            'limit' => self::PER_PAGE,
+            'offset' => ($page - 1) * self::PER_PAGE,
+            'order' => $filters['time'] === 'past' ? 'date_desc' : '',
+        ]);
+
+        $admin->renderPage(self::PAGE_EVENTS, function () use ($admin, $events, $filters, $total, $page, $pages): void {
+            $admin->view('events-list', [
+                'events' => $events,
+                'filters' => $filters,
+                'total' => $total,
+                'page' => $page,
+                'pages' => $pages,
+            ]);
+        });
     }
 
-    public static function bridgeSettings(): void
+    public static function pageSpeakers(): void
     {
-        CMS\Router::instance()->redirect('/admin/365netevents/settings');
+        $admin = self::instance();
+        if (!$admin->guard()) {
+            return;
+        }
+        if ($admin->isPost()) {
+            $admin->handleSpeakersPost();
+            return;
+        }
+
+        $db = CMS_365NET_Events_Database::instance();
+        $action = $admin->query('action');
+
+        if ($action === 'export') {
+            $admin->exportCsv('speakers', $admin->speakerFilters());
+            return;
+        }
+
+        if ($action === 'new' || $action === 'edit') {
+            $speaker = null;
+            if ($action === 'edit') {
+                $speaker = $db->getSpeaker((int) ($_GET['id'] ?? 0));
+                if ($speaker === null) {
+                    $admin->redirect(self::PAGE_SPEAKERS, ['error' => 'not_found']);
+                }
+            }
+            $context = [
+                'speaker' => $speaker,
+                'companies' => $db->getAvailableCompanies(300),
+                'experts' => $db->getAvailableExperts(300),
+                'taxonomies' => $db->getTaxonomyOptions(),
+                'excompActive' => $db->isExcompActive(),
+            ];
+            $admin->renderPage(self::PAGE_SPEAKERS, function () use ($admin, $context): void {
+                $admin->view('speaker-form', $context);
+                $admin->renderMediaPickerModal();
+            });
+            return;
+        }
+
+        $filters = $admin->speakerFilters();
+        $page = $admin->pageNumber();
+        $total = $db->countSpeakers($filters['args']);
+        $pages = max(1, (int) ceil($total / self::PER_PAGE));
+        $page = min($page, $pages);
+        $speakers = $db->getSpeakers($filters['args'] + [
+            'order' => $filters['sort'],
+            'limit' => self::PER_PAGE,
+            'offset' => ($page - 1) * self::PER_PAGE,
+        ]);
+
+        $admin->renderPage(self::PAGE_SPEAKERS, function () use ($admin, $speakers, $filters, $total, $page, $pages): void {
+            $admin->view('speakers-list', [
+                'speakers' => $speakers,
+                'filters' => $filters,
+                'total' => $total,
+                'page' => $page,
+                'pages' => $pages,
+            ]);
+        });
     }
 
-    public static function bridgeTaxonomies(): void
+    public static function pageTaxonomies(): void
     {
-        CMS\Router::instance()->redirect('/admin/365netevents/taxonomies');
+        $admin = self::instance();
+        if (!$admin->guard()) {
+            return;
+        }
+        $db = CMS_365NET_Events_Database::instance();
+
+        if ($admin->isPost()) {
+            if (!$admin->verifyCsrf('365net_taxonomies_form')) {
+                $admin->redirect(self::PAGE_TAXONOMIES, ['error' => 'csrf']);
+            }
+            try {
+                $db->saveTaxonomyOptions($_POST);
+                $admin->redirect(self::PAGE_TAXONOMIES, ['saved' => 1]);
+            } catch (\Throwable $e) {
+                CMS_365NET_Events::instance()->log('adminTaxonomiesSave', $e);
+                $admin->redirect(self::PAGE_TAXONOMIES, ['error' => 'save']);
+            }
+            return;
+        }
+
+        $settings = $db->getSettings();
+        $admin->renderPage(self::PAGE_TAXONOMIES, function () use ($admin, $settings): void {
+            $admin->view('taxonomies', ['settings' => $settings]);
+        });
     }
 
-    public function addMenuItem(array $items): array
+    public static function pageSettings(): void
     {
-        $path = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
-        $items[] = [
-            'type' => 'item',
-            'slug' => '365netevents',
-            'label' => 'PHINIT | Events & Speaker',
-            'icon' => '📅',
-            'url' => '/admin/365netevents/dashboard',
-            'active' => str_starts_with($path, '/admin/365netevents'),
+        $admin = self::instance();
+        if (!$admin->guard()) {
+            return;
+        }
+        if ($admin->isPost()) {
+            $admin->handleSettingsPost();
+            return;
+        }
+
+        $db = CMS_365NET_Events_Database::instance();
+        $context = [
+            'settings' => $db->getSettings(),
+            'google' => $db->googleCredentialStatus(),
+            'googleConfigured' => $db->isGoogleSearchConfigured(),
         ];
-
-        return $items;
+        $admin->renderPage(self::PAGE_SETTINGS, function () use ($admin, $context): void {
+            $admin->view('settings', $context);
+        });
     }
 
-    /** @return array<string, string> Kurzbeschreibungen der Bereiche (Dashboard-Kacheln) */
-    private static function sectionDescriptions(): array
+    // ---------------------------------------------------------------------------------------------
+    // Schreibaktionen
+    // ---------------------------------------------------------------------------------------------
+
+    private function handleEventsPost(): void
     {
-        return [
-            '365netevents-events' => 'Anstehende und vergangene Events suchen, bearbeiten und Verknüpfungen aktualisieren.',
-            '365netevents-speakers' => 'Speaker-Profile pflegen und mit Experts & Companies verknüpfen.',
-            '365netevents-taxonomies' => 'Dropdown-Werte für Kategorien, Arten, Klassen und Tags pflegen.',
-            '365netevents-settings' => 'Texte, Layout und Farben der öffentlichen Eventseiten sowie Backfill-Werkzeuge.',
-        ];
+        $db = CMS_365NET_Events_Database::instance();
+        $operation = $this->postOperation();
+
+        if ($operation === 'save') {
+            $id = (int) ($_POST['id'] ?? 0);
+            $back = $id > 0 ? ['action' => 'edit', 'id' => $id] : ['action' => 'new'];
+            if (!$this->verifyCsrf('365net_event_form')) {
+                $this->redirect(self::PAGE_EVENTS, $back + ['error' => 'csrf']);
+            }
+            try {
+                $savedId = $db->saveEvent($_POST);
+                if ($savedId === false) {
+                    $this->redirect(self::PAGE_EVENTS, $back + ['error' => 'required_title']);
+                }
+                try {
+                    $db->saveEventSpeakers((int) $savedId, (array) ($_POST['speaker_ids'] ?? []));
+                    $this->redirect(self::PAGE_EVENTS, ['action' => 'edit', 'id' => (int) $savedId, 'saved' => 1]);
+                } catch (\Throwable $relationError) {
+                    CMS_365NET_Events::instance()->log('adminEventSaveRelations', $relationError);
+                    $this->redirect(self::PAGE_EVENTS, ['action' => 'edit', 'id' => (int) $savedId, 'saved' => 1, 'warning' => 'relations']);
+                }
+            } catch (\Throwable $e) {
+                CMS_365NET_Events::instance()->log('adminEventSave', $e);
+                $this->redirect(self::PAGE_EVENTS, $back + ['error' => 'save']);
+            }
+            return;
+        }
+
+        if (!$this->verifyCsrf('365net_admin')) {
+            $this->redirect(self::PAGE_EVENTS, ['error' => 'csrf']);
+        }
+
+        try {
+            if ($operation === 'link_sync') {
+                $db->purgeNonPersonSpeakers();
+                $db->autoLinkExistingRecords();
+                $this->redirect(self::PAGE_EVENTS, ['synced' => 1]);
+            }
+
+            $rowDelete = (int) ($_POST['row_delete'] ?? 0);
+            if ($operation === 'delete' || $rowDelete > 0) {
+                $id = $rowDelete > 0 ? $rowDelete : (int) ($_POST['id'] ?? $_GET['id'] ?? 0);
+                $deleted = $id > 0 && $db->deleteEvent($id) ? 1 : 0;
+                $this->redirect(self::PAGE_EVENTS, ['deleted' => $deleted]);
+            }
+
+            if ($operation === 'bulk') {
+                $this->redirect(self::PAGE_EVENTS, $this->applyBulk('events'));
+            }
+        } catch (\Throwable $e) {
+            CMS_365NET_Events::instance()->log('adminEventsPost', $e);
+            $this->redirect(self::PAGE_EVENTS, ['error' => 'save']);
+        }
+
+        $this->redirect(self::PAGE_EVENTS, ['error' => 'unknown_action']);
+    }
+
+    private function handleSpeakersPost(): void
+    {
+        $db = CMS_365NET_Events_Database::instance();
+        $operation = $this->postOperation();
+
+        if ($operation === 'save') {
+            $id = (int) ($_POST['id'] ?? 0);
+            $back = $id > 0 ? ['action' => 'edit', 'id' => $id] : ['action' => 'new'];
+            if (!$this->verifyCsrf('365net_speaker_form')) {
+                $this->redirect(self::PAGE_SPEAKERS, $back + ['error' => 'csrf']);
+            }
+            try {
+                $savedId = $db->saveSpeaker($_POST);
+                if ($savedId === false) {
+                    $this->redirect(self::PAGE_SPEAKERS, $back + ['error' => 'required_name']);
+                }
+                $this->redirect(self::PAGE_SPEAKERS, ['action' => 'edit', 'id' => (int) $savedId, 'saved' => 1]);
+            } catch (\Throwable $e) {
+                CMS_365NET_Events::instance()->log('adminSpeakerSave', $e);
+                $this->redirect(self::PAGE_SPEAKERS, $back + ['error' => 'save']);
+            }
+            return;
+        }
+
+        if (!$this->verifyCsrf('365net_admin')) {
+            $this->redirect(self::PAGE_SPEAKERS, ['error' => 'csrf']);
+        }
+
+        try {
+            $rowDelete = (int) ($_POST['row_delete'] ?? 0);
+            if ($operation === 'delete' || $rowDelete > 0) {
+                $id = $rowDelete > 0 ? $rowDelete : (int) ($_POST['id'] ?? $_GET['id'] ?? 0);
+                $deleted = $id > 0 && $db->deleteSpeaker($id) ? 1 : 0;
+                $this->redirect(self::PAGE_SPEAKERS, ['deleted' => $deleted]);
+            }
+
+            if ($operation === 'bulk') {
+                $this->redirect(self::PAGE_SPEAKERS, $this->applyBulk('speakers'));
+            }
+        } catch (\Throwable $e) {
+            CMS_365NET_Events::instance()->log('adminSpeakersPost', $e);
+            $this->redirect(self::PAGE_SPEAKERS, ['error' => 'save']);
+        }
+
+        $this->redirect(self::PAGE_SPEAKERS, ['error' => 'unknown_action']);
+    }
+
+    private function handleSettingsPost(): void
+    {
+        $db = CMS_365NET_Events_Database::instance();
+        $operation = $this->postOperation();
+
+        try {
+            if ($operation === 'backfill_descriptions') {
+                if (!$this->verifyCsrf('365net_settings_backfill')) {
+                    $this->redirect(self::PAGE_SETTINGS, ['error' => 'csrf']);
+                }
+                $updated = $db->backfillSeedEventDescriptionsFromSeed();
+                $this->redirect(self::PAGE_SETTINGS, ['backfilled' => 1, 'updated' => max(0, $updated)]);
+            }
+
+            if ($operation === 'backfill_speakers') {
+                if (!$this->verifyCsrf('365net_settings_speaker_backfill')) {
+                    $this->redirect(self::PAGE_SETTINGS, ['error' => 'csrf']);
+                }
+                if (function_exists('set_time_limit')) {
+                    @set_time_limit(300);
+                }
+                $result = $db->backfillSpeakerProfilesFromGoogle();
+                $query = [
+                    'speaker_backfilled' => 1,
+                    'speaker_updated' => max(0, (int) ($result['updated'] ?? 0)),
+                    'speaker_skipped' => max(0, (int) ($result['skipped'] ?? 0)),
+                    'speaker_failed' => max(0, (int) ($result['failed'] ?? 0)),
+                    'speaker_more' => !empty($result['more']) ? 1 : 0,
+                ];
+                if (!(bool) ($result['configured'] ?? false)) {
+                    $query['speaker_config'] = 0;
+                }
+                $this->redirect(self::PAGE_SETTINGS, $query);
+            }
+
+            if ($operation === 'save') {
+                if (!$this->verifyCsrf('365net_settings_form')) {
+                    $this->redirect(self::PAGE_SETTINGS, ['error' => 'csrf']);
+                }
+                $db->saveSettings($_POST);
+                $googleOk = $db->saveGoogleCredentials(
+                    (string) ($_POST['google_api_key'] ?? ''),
+                    (string) ($_POST['google_cse_id'] ?? ''),
+                    !empty($_POST['google_api_key_clear'])
+                );
+                $this->redirect(self::PAGE_SETTINGS, $googleOk ? ['saved' => 1] : ['saved' => 1, 'warning' => 'google_key']);
+            }
+        } catch (\Throwable $e) {
+            CMS_365NET_Events::instance()->log('adminSettingsPost', $e);
+            $this->redirect(self::PAGE_SETTINGS, ['error' => 'save']);
+        }
+
+        $this->redirect(self::PAGE_SETTINGS, ['error' => 'unknown_action']);
     }
 
     /**
-     * Kennzahlen für Seitenkopf und Dashboard (PhinIT-Admin-Layout). Nur COUNT-Abfragen; ohne Datenbank leer.
+     * Sammelaktion der Listen (Status setzen oder löschen).
+     *
+     * @param 'events'|'speakers' $type
+     * @return array<string, int|string>
+     */
+    private function applyBulk(string $type): array
+    {
+        $ids = array_map('intval', (array) ($_POST['ids'] ?? []));
+        $bulk = (string) ($_POST['bulk_action'] ?? '');
+        if ($ids === [] || !in_array($bulk, ['publish', 'draft', 'delete'], true)) {
+            return ['error' => 'bulk_empty'];
+        }
+
+        $db = CMS_365NET_Events_Database::instance();
+        if ($bulk === 'delete') {
+            return ['deleted' => $db->bulkDelete($type, $ids)];
+        }
+
+        return ['bulk_updated' => $db->bulkSetStatus($type, $ids, $bulk === 'publish' ? 'published' : 'draft')];
+    }
+
+    /**
+     * CSV-Download (UTF-8 mit BOM, Semikolon, Schutz vor Formel-Injection). GET mit persistentem Token.
+     *
+     * @param 'events'|'speakers' $type
+     * @param array{args: array<string, mixed>} $filters
+     */
+    private function exportCsv(string $type, array $filters): void
+    {
+        $page = $type === 'speakers' ? self::PAGE_SPEAKERS : self::PAGE_EVENTS;
+        if (!CMS\Security::instance()->verifyPersistentToken((string) ($_GET['token'] ?? ''), '365net_export')) {
+            $this->redirect($page, ['error' => 'csrf']);
+        }
+
+        try {
+            [$header, $rows] = CMS_365NET_Events_Database::instance()->exportRows($type, $filters['args']);
+        } catch (\Throwable $e) {
+            CMS_365NET_Events::instance()->log('adminExport', $e);
+            $this->redirect($page, ['error' => 'export']);
+        }
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        $filename = 'events-and-speaker-' . $type . '-' . date('Y-m-d') . '.csv';
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-store, max-age=0');
+        header('X-Content-Type-Options: nosniff');
+
+        $out = fopen('php://output', 'wb');
+        if ($out === false) {
+            exit;
+        }
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, $header, ';', '"', '');
+        foreach ($rows as $row) {
+            fputcsv($out, array_map([self::class, 'csvCell'], $row), ';', '"', '');
+        }
+        fclose($out);
+        exit;
+    }
+
+    /** Zellen mit = + - @ Tab oder CR am Anfang werden mit ' entschärft (Formel-Injection). */
+    public static function csvCell(string $value): string
+    {
+        return $value !== '' && strpbrk($value[0], "=+-@\t\r") !== false ? "'" . $value : $value;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Filter, Anfrage, Weiterleitung
+    // ---------------------------------------------------------------------------------------------
+
+    /** @return array{q: string, status: string, time: string, args: array<string, mixed>} */
+    private function eventFilters(): array
+    {
+        $q = $this->cleanQuery((string) ($_GET['q'] ?? ''));
+        $status = in_array($this->query('status'), ['published', 'draft'], true) ? $this->query('status') : '';
+        $time = $this->query('time');
+        if ($time === '' && (string) ($_GET['past'] ?? '') === '1') {
+            $time = 'past';
+        }
+        $time = in_array($time, ['upcoming', 'past', 'all', 'undated'], true) ? $time : 'upcoming';
+
+        $args = ['search' => $q, 'status' => $status];
+        if ($time === 'upcoming') {
+            $args += ['date_mode' => 'future', 'from' => date('Y-m-d')];
+        } elseif ($time === 'past') {
+            $args += ['date_mode' => 'past', 'before' => date('Y-m-d')];
+        } elseif ($time === 'undated') {
+            $args += ['date_mode' => 'undated'];
+        }
+
+        return ['q' => $q, 'status' => $status, 'time' => $time, 'args' => $args];
+    }
+
+    /** @return array{q: string, status: string, sort: string, args: array<string, mixed>} */
+    private function speakerFilters(): array
+    {
+        $q = $this->cleanQuery((string) ($_GET['q'] ?? ''));
+        $status = in_array($this->query('status'), ['published', 'draft'], true) ? $this->query('status') : '';
+        $sort = in_array($this->query('sort'), ['az', 'za', 'date_old_new', 'date_new_old'], true) ? $this->query('sort') : 'az';
+
+        return ['q' => $q, 'status' => $status, 'sort' => $sort, 'args' => ['search' => $q, 'status' => $status]];
+    }
+
+    private function guard(): bool
+    {
+        if (class_exists('CMS\\Auth') && CMS\Auth::instance()->isAdmin()) {
+            return true;
+        }
+
+        echo '<div class="alert alert-danger" role="alert">Für diesen Bereich fehlt die Berechtigung.</div>';
+
+        return false;
+    }
+
+    private function isPost(): bool
+    {
+        return strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST';
+    }
+
+    /** Aktion eines Formulars: verstecktes Feld cms365_action, für alte Adressen (307) der Parameter do. */
+    private function postOperation(): string
+    {
+        $operation = (string) ($_POST['cms365_action'] ?? $_GET['do'] ?? '');
+
+        return preg_match('/^[a-z_]{1,40}$/', $operation) === 1 ? $operation : '';
+    }
+
+    private function query(string $key): string
+    {
+        $value = $_GET[$key] ?? '';
+
+        return is_string($value) ? strtolower(trim(substr($value, 0, 40))) : '';
+    }
+
+    private function pageNumber(): int
+    {
+        $raw = $_GET['p'] ?? 1;
+
+        return is_scalar($raw) ? max(1, min(9999, (int) $raw)) : 1;
+    }
+
+    private function cleanQuery(string $value): string
+    {
+        $value = trim(strip_tags($value));
+
+        return function_exists('mb_substr') ? (string) mb_substr($value, 0, 120, 'UTF-8') : substr($value, 0, 120);
+    }
+
+    private function verifyCsrf(string $action): bool
+    {
+        return CMS\Security::instance()->verifyToken((string) ($_POST['csrf_token'] ?? ''), $action);
+    }
+
+    /** @param array<string, scalar> $query */
+    private function redirect(string $page, array $query = []): never
+    {
+        $target = self::url($page, $query);
+        if (method_exists('CMS\\Security', 'safeLocalPath')) {
+            $target = CMS\Security::safeLocalPath($target, '/admin/plugins/' . self::MENU_SLUG);
+        }
+
+        header('Location: ' . rtrim((string) SITE_URL, '/') . $target, true, 303);
+        exit;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Layout
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Gibt den Inhalt einer Unterseite aus. Mit dem Helfer setzt dieser Kopfzeile und Plugin-Menü;
+     * ohne ihn (nur ältere Installationen) wird das Layout hier über das Core-Partial geöffnet.
+     */
+    private function renderPage(string $page, callable $body): void
+    {
+        $this->printAssets();
+
+        $ownLayout = !class_exists('PhinIT_Plugin_Admin_Nav', false);
+        if ($ownLayout) {
+            $this->loadWorkspace();
+            echo \cms_plugin_workspace_open([
+                'plugin' => self::MENU_SLUG,
+                'title' => self::TITLE,
+                'icon' => 'ti ti-calendar-event',
+                'version' => defined('CMS_365NET_EVENTS_VERSION') ? (string) CMS_365NET_EVENTS_VERSION : '',
+                'status' => self::adminStatus(),
+                'description' => 'Events, Messen und Speaker für die öffentlichen Seiten /events und /speakers pflegen.',
+                'stats' => self::adminStats(),
+                'nav' => $this->fallbackNav($page),
+                'nav_explicit' => true,
+            ]);
+        }
+
+        $body();
+
+        if ($ownLayout) {
+            echo \cms_plugin_workspace_close();
+        }
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function fallbackNav(string $active): array
+    {
+        $badges = self::adminBadges();
+        $items = [
+            [self::MENU_SLUG, 'Übersicht', 'ti ti-layout-dashboard'],
+            [self::PAGE_EVENTS, 'Events', 'ti ti-calendar-event'],
+            [self::PAGE_SPEAKERS, 'Speaker', 'ti ti-microphone'],
+            [self::PAGE_TAXONOMIES, 'Kategorien & Tags', 'ti ti-tags'],
+            [self::PAGE_SETTINGS, 'Einstellungen', 'ti ti-settings'],
+        ];
+        $nav = [];
+        foreach ($items as [$slug, $label, $icon]) {
+            $nav[] = [
+                'slug' => $slug,
+                'label' => $label,
+                'icon' => $icon,
+                'url' => self::url($slug),
+                'active' => $slug === $active,
+                'badge' => $badges[$slug]['value'] ?? null,
+                'badge_tone' => (string) ($badges[$slug]['tone'] ?? ''),
+            ];
+        }
+
+        return $nav;
+    }
+
+    private function loadWorkspace(): void
+    {
+        if (!function_exists('cms_plugin_workspace_open')) {
+            $core = ABSPATH . 'admin/partials/plugin-workspace.php';
+            if (is_file($core)) {
+                require_once $core;
+            }
+        }
+        if (!function_exists('cms_plugin_workspace_open')) {
+            require_once __DIR__ . '/plugin-workspace.php';
+            $css = CMS_365NET_EVENTS_PLUGIN_DIR . 'assets/css/phinit-admin-nav.css';
+            if (is_file($css)) {
+                echo '<link rel="stylesheet" href="' . $this->e(CMS_365NET_EVENTS_PLUGIN_URL . 'assets/css/phinit-admin-nav.css?v=' . CMS_365NET_EVENTS_VERSION) . '">';
+            }
+        }
+    }
+
+    /** Plugin-CSS/-JS nur auf den eigenen Admin-Seiten (der Router verschiebt das Stylesheet in den head). */
+    private function printAssets(): void
+    {
+        if (self::$assetsPrinted) {
+            return;
+        }
+        self::$assetsPrinted = true;
+
+        $css = CMS_365NET_EVENTS_PLUGIN_DIR . 'assets/css/admin.css';
+        if (is_file($css)) {
+            echo '<link rel="stylesheet" href="' . $this->e(CMS_365NET_EVENTS_PLUGIN_URL . 'assets/css/admin.css?v=' . CMS_365NET_EVENTS_VERSION . '-' . (int) filemtime($css)) . '">' . "\n";
+        }
+
+        $js = CMS_365NET_EVENTS_PLUGIN_DIR . 'assets/js/admin.js';
+        if (is_file($js)) {
+            $nonce = class_exists('CMS\\Security') && method_exists('CMS\\Security', 'nonceAttr') ? ' ' . CMS\Security::instance()->nonceAttr() : '';
+            echo '<script src="' . $this->e(CMS_365NET_EVENTS_PLUGIN_URL . 'assets/js/admin.js?v=' . CMS_365NET_EVENTS_VERSION . '-' . (int) filemtime($js)) . '" defer' . $nonce . '></script>' . "\n";
+        }
+    }
+
+    /** @param array<string, mixed> $vars */
+    private function view(string $name, array $vars = []): void
+    {
+        $name = preg_replace('/[^a-z0-9-]/', '', $name) ?? '';
+        $file = CMS_365NET_EVENTS_PLUGIN_DIR . 'admin/views/' . $name . '.php';
+        if ($name === '' || !is_file($file)) {
+            echo '<div class="alert alert-danger" role="alert">Ansicht nicht gefunden.</div>';
+            return;
+        }
+
+        extract($vars, EXTR_SKIP);
+        include $file;
+    }
+
+    /** Kopf einer Unterseite: Titel, Einzeiler und Aktionen (Layout-Vertrag: Header → Toolbar → Inhalt). */
+    private function pageHeader(string $title, string $description, string $actions = ''): void
+    {
+        echo '<div class="admin-page-header"><div><h2>' . $this->e($title) . '</h2><p>' . $this->e($description) . '</p></div>'
+            . ($actions !== '' ? '<div class="header-actions">' . $actions . '</div>' : '') . '</div>';
+    }
+
+    private function button(string $label, string $url, string $icon, string $class = 'btn-secondary', bool $external = false): string
+    {
+        return '<a class="btn ' . $this->e($class) . '" href="' . $this->e($url) . '"' . ($external ? ' target="_blank" rel="noopener noreferrer"' : '') . '>'
+            . '<i class="ti ' . $this->e($icon) . '" aria-hidden="true"></i> ' . $this->e($label) . '</a>';
+    }
+
+    /** GET-Formular auf eine Unterseite: Pfad als action, Query (z. B. view=…) als versteckte Felder. */
+    private function getFormOpen(string $page, string $class = 'cms365-toolbar'): string
+    {
+        $url = self::url($page);
+        $path = (string) (parse_url($url, PHP_URL_PATH) ?? $url);
+        parse_str((string) (parse_url($url, PHP_URL_QUERY) ?? ''), $query);
+        $html = '<form method="get" action="' . $this->e($path) . '" class="' . $this->e($class) . '" role="search">';
+        foreach ($query as $key => $value) {
+            if (is_scalar($value)) {
+                $html .= '<input type="hidden" name="' . $this->e((string) $key) . '" value="' . $this->e((string) $value) . '">';
+            }
+        }
+
+        return $html;
+    }
+
+    /** @param array<string, scalar> $query */
+    private function pagination(string $page, int $current, int $pages, array $query): string
+    {
+        if ($pages <= 1) {
+            return '';
+        }
+
+        $html = '<nav class="cms365-pagination" aria-label="Seiten"><span class="cms365-pagination__info">Seite ' . $current . ' von ' . $pages . '</span>';
+        if ($current > 1) {
+            $html .= '<a class="btn btn-sm btn-secondary" href="' . $this->e(self::url($page, $query + ['p' => $current - 1])) . '"><i class="ti ti-chevron-left" aria-hidden="true"></i> Zurück</a>';
+        }
+        if ($current < $pages) {
+            $html .= '<a class="btn btn-sm btn-secondary" href="' . $this->e(self::url($page, $query + ['p' => $current + 1])) . '">Weiter <i class="ti ti-chevron-right" aria-hidden="true"></i></a>';
+        }
+
+        return $html . '</nav>';
+    }
+
+    private function flash(): void
+    {
+        $alert = function (string $tone, string $text): void {
+            echo '<div class="alert alert-' . $this->e($tone) . '" role="' . ($tone === 'danger' ? 'alert' : 'status') . '">' . $this->e($text) . '</div>';
+        };
+
+        if (isset($_GET['saved'])) {
+            $alert('success', 'Gespeichert.');
+        }
+        if (isset($_GET['backfilled'])) {
+            $alert('success', 'Beschreibungen eingespielt. Aktualisierte Events: ' . max(0, (int) ($_GET['updated'] ?? 0)) . '.');
+        }
+        if (isset($_GET['speaker_backfilled'])) {
+            if ((string) ($_GET['speaker_config'] ?? '') === '0') {
+                $alert('warning', 'Speaker-Backfill nicht ausgeführt: Google API-Key und Suchmaschinen-ID fehlen (Einstellungen oder Umgebungsvariablen).');
+            } else {
+                $alert('success', sprintf(
+                    'Speaker-Backfill ausgeführt. Aktualisiert: %d, übersprungen: %d, Fehler: %d.%s',
+                    max(0, (int) ($_GET['speaker_updated'] ?? 0)),
+                    max(0, (int) ($_GET['speaker_skipped'] ?? 0)),
+                    max(0, (int) ($_GET['speaker_failed'] ?? 0)),
+                    (string) ($_GET['speaker_more'] ?? '') === '1' ? ' Weitere Speaker stehen an – Backfill erneut starten.' : ''
+                ));
+            }
+        }
+        if (isset($_GET['deleted'])) {
+            $count = max(0, (int) $_GET['deleted']);
+            $count > 0 ? $alert('success', 'Gelöscht: ' . $count . '.') : $alert('warning', 'Es wurde nichts gelöscht.');
+        }
+        if (isset($_GET['bulk_updated'])) {
+            $alert('success', 'Status geändert: ' . max(0, (int) $_GET['bulk_updated']) . ' Einträge.');
+        }
+        if (isset($_GET['synced'])) {
+            $alert('success', 'Verknüpfungen zu Firmen und Experten wurden aktualisiert.');
+        }
+        $warning = (string) ($_GET['warning'] ?? '');
+        if ($warning === 'relations') {
+            $alert('warning', 'Event gespeichert, aber die Speaker-Zuordnung konnte nicht aktualisiert werden. Details stehen im Protokoll.');
+        } elseif ($warning === 'google_key') {
+            $alert('warning', 'Der Google API-Key wurde nicht gespeichert: ungültiges Format oder keine Verschlüsselung verfügbar (CMS_ENCRYPTION_KEY).');
+        }
+        $error = (string) ($_GET['error'] ?? '');
+        if ($error !== '') {
+            $messages = [
+                'save' => 'Speichern fehlgeschlagen. Bitte Pflichtfelder und das Protokoll prüfen.',
+                'required_title' => 'Speichern fehlgeschlagen: Der Titel ist erforderlich.',
+                'required_name' => 'Speichern fehlgeschlagen: Vor- und Nachname (echte Person) oder ein Anzeigename sind erforderlich.',
+                'csrf' => 'Sicherheitsprüfung fehlgeschlagen. Bitte die Seite neu laden und erneut absenden.',
+                'not_found' => 'Der Datensatz wurde nicht gefunden.',
+                'bulk_empty' => 'Bitte Einträge markieren und eine Sammelaktion wählen.',
+                'export' => 'Der Export ist fehlgeschlagen.',
+            ];
+            $alert('danger', $messages[$error] ?? 'Die Aktion konnte nicht ausgeführt werden.');
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Kopfzeile, Übersicht, Badges (Optionen des Helfers)
+    // ---------------------------------------------------------------------------------------------
+
+    /** @return array<string, string> Kurzbeschreibungen der Bereiche */
+    private static function sectionDescriptions(): array
+    {
+        return [
+            self::PAGE_EVENTS => 'Anstehende und vergangene Events suchen, bearbeiten und Verknüpfungen aktualisieren.',
+            self::PAGE_SPEAKERS => 'Speaker-Profile pflegen und mit Experts & Companies verknüpfen.',
+            self::PAGE_TAXONOMIES => 'Dropdown-Werte für Kategorien, Arten, Klassen und Tags pflegen.',
+            self::PAGE_SETTINGS => 'Texte, Layout und Farben der öffentlichen Eventseiten sowie Backfill-Werkzeuge.',
+        ];
+    }
+
+    /** @return array{label: string, tone: string} */
+    public static function adminStatus(): array
+    {
+        if (!class_exists('CMS\\Database') || !class_exists('CMS_365NET_Events_Database', false)) {
+            return ['label' => 'Datenbank fehlt', 'tone' => 'danger'];
+        }
+        try {
+            if (!CMS_365NET_Events_Database::instance()->isSchemaCurrent()) {
+                return ['label' => 'Aktualisierung ausstehend', 'tone' => 'warning'];
+            }
+        } catch (\Throwable) {
+            return ['label' => 'Datenbankfehler', 'tone' => 'danger'];
+        }
+
+        return ['label' => 'Aktiv', 'tone' => 'success'];
+    }
+
+    /**
+     * Kennzahlen für die Kopfzeile. Nur COUNT-Abfragen; ohne Datenbank leer.
      *
      * @return list<array<string, mixed>>
      */
@@ -150,15 +905,15 @@ final class CMS_365NET_Events_Admin
         $stats = [];
         try {
             $db = CMS_365NET_Events_Database::instance();
-            $upcoming = $db->countEvents(['date_mode' => 'future', 'from' => date('Y-m-d')]);
+            $upcoming = $db->countEvents(['status' => 'published', 'date_mode' => 'future', 'from' => date('Y-m-d')]);
             $total = $db->countEvents();
-            $speakers = $db->countSpeakers();
+            $speakers = $db->countSpeakers(['status' => 'published']);
             $drafts = $db->countEvents(['status' => 'draft']);
 
-            $stats[] = ['label' => 'Kommende Events', 'value' => $upcoming, 'icon' => 'ti ti-calendar-event', 'tone' => $upcoming > 0 ? 'success' : 'muted', 'url' => '/admin/365netevents'];
-            $stats[] = ['label' => 'Events gesamt', 'value' => $total, 'icon' => 'ti ti-calendar', 'url' => '/admin/365netevents?past=1', 'hint' => 'Anstehende und vergangene Events'];
-            $stats[] = ['label' => 'Speaker', 'value' => $speakers, 'icon' => 'ti ti-microphone', 'tone' => 'info', 'url' => '/admin/365netevents/speakers'];
-            $stats[] = ['label' => 'Entwürfe', 'value' => $drafts, 'icon' => 'ti ti-pencil', 'tone' => $drafts > 0 ? 'warning' : 'muted', 'hint' => 'Events mit Status „draft“ (nicht öffentlich)'];
+            $stats[] = ['label' => 'Kommende Events', 'value' => $upcoming, 'icon' => 'ti ti-calendar-event', 'tone' => $upcoming > 0 ? 'success' : 'muted', 'url' => self::url(self::PAGE_EVENTS), 'hint' => 'Veröffentlicht, ab heute'];
+            $stats[] = ['label' => 'Events gesamt', 'value' => $total, 'icon' => 'ti ti-calendar', 'url' => self::url(self::PAGE_EVENTS, ['time' => 'all']), 'hint' => 'Anstehende und vergangene Events'];
+            $stats[] = ['label' => 'Speaker', 'value' => $speakers, 'icon' => 'ti ti-microphone', 'tone' => 'info', 'url' => self::url(self::PAGE_SPEAKERS, ['status' => 'published']), 'hint' => 'Öffentliche Speaker-Profile'];
+            $stats[] = ['label' => 'Entwürfe', 'value' => $drafts, 'icon' => 'ti ti-pencil', 'tone' => $drafts > 0 ? 'warning' : 'muted', 'url' => self::url(self::PAGE_EVENTS, ['time' => 'all', 'status' => 'draft']), 'hint' => 'Events mit Status Entwurf (nicht öffentlich)'];
         } catch (\Throwable $e) {
             error_log('CMS 365NET Events [adminStats]: ' . $e->getMessage());
         }
@@ -167,16 +922,16 @@ final class CMS_365NET_Events_Admin
     }
 
     /**
-     * Übersicht (Layout-Vertrag 365CMS 4.0.0): Schnellaktionen, Status-/System-Check und zuletzt bearbeitete Events.
+     * Übersicht: Schnellaktionen, Status-/System-Check und zuletzt bearbeitete Events.
      *
      * @return array<string, mixed>
      */
     public static function adminDashboard(): array
     {
         $actions = [
-            ['label' => 'Neues Event', 'url' => '/admin/365netevents/new', 'icon' => 'ti ti-plus', 'primary' => true, 'description' => 'Event, Messe oder Webinar anlegen und Speaker zuordnen.'],
-            ['label' => 'Neuer Speaker', 'url' => '/admin/365netevents/speakers/new', 'icon' => 'ti ti-microphone', 'description' => 'Speaker-Profil anlegen und mit Experts & Companies verknüpfen.'],
-            ['label' => 'Vergangene Events', 'url' => '/admin/365netevents?past=1', 'icon' => 'ti ti-history', 'description' => 'Zurückliegende Events nachpflegen oder archivieren.'],
+            ['label' => 'Neues Event', 'url' => self::url(self::PAGE_EVENTS, ['action' => 'new']), 'icon' => 'ti ti-plus', 'primary' => true, 'description' => 'Event, Messe oder Webinar anlegen und Speaker zuordnen.'],
+            ['label' => 'Neuer Speaker', 'url' => self::url(self::PAGE_SPEAKERS, ['action' => 'new']), 'icon' => 'ti ti-microphone', 'description' => 'Speaker-Profil anlegen und mit Experts & Companies verknüpfen.'],
+            ['label' => 'Vergangene Events', 'url' => self::url(self::PAGE_EVENTS, ['time' => 'past']), 'icon' => 'ti ti-history', 'description' => 'Zurückliegende Events nachpflegen oder archivieren.'],
             ['label' => 'Öffentliche Eventseite', 'url' => '/events', 'icon' => 'ti ti-world', 'external' => true, 'description' => 'Die Eventübersicht so prüfen, wie Besucher sie sehen.'],
         ];
 
@@ -191,18 +946,21 @@ final class CMS_365NET_Events_Admin
         $checks = [];
         $items = [];
         try {
+            $checks[] = $db->tablesPresent()
+                ? ['label' => 'Datenbanktabellen', 'status' => 'ok', 'value' => '4 Tabellen vorhanden']
+                : ['label' => 'Datenbanktabellen', 'status' => 'error', 'value' => 'fehlen', 'hint' => 'Plugin deaktivieren und erneut aktivieren, um die Tabellen anzulegen.'];
             $checks[] = $db->isSchemaCurrent()
-                ? ['label' => 'Datenbanktabellen', 'status' => 'ok', 'value' => '4 Tabellen aktuell']
-                : ['label' => 'Datenbanktabellen', 'status' => 'warning', 'value' => 'Aktualisierung ausstehend', 'hint' => 'Wird beim nächsten Seitenaufruf bzw. bei der Plugin-Aktivierung angelegt und angehoben.'];
+                ? ['label' => 'Schema-Version', 'status' => 'ok', 'value' => 'aktuell']
+                : ['label' => 'Schema-Version', 'status' => 'warning', 'value' => 'Aktualisierung ausstehend', 'hint' => 'Wird beim nächsten Seitenaufruf bzw. bei der Plugin-Aktivierung angehoben.'];
 
             $upcoming = $db->countEvents(['status' => 'published', 'date_mode' => 'future', 'from' => date('Y-m-d')]);
             $checks[] = $upcoming > 0
                 ? ['label' => 'Öffentliche Eventseite', 'status' => 'ok', 'value' => $upcoming . ' kommende Events', 'url' => '/events']
-                : ['label' => 'Öffentliche Eventseite', 'status' => 'warning', 'value' => 'keine kommenden Events', 'hint' => '/events zeigt derzeit nur den Leerzustand.', 'url' => '/admin/365netevents/new'];
+                : ['label' => 'Öffentliche Eventseite', 'status' => 'warning', 'value' => 'keine kommenden Events', 'hint' => '/events zeigt derzeit nur den Leerzustand.', 'url' => self::url(self::PAGE_EVENTS, ['action' => 'new'])];
 
             $drafts = $db->countEvents(['status' => 'draft']);
             $checks[] = $drafts > 0
-                ? ['label' => 'Entwürfe', 'status' => 'info', 'value' => $drafts . ' nicht veröffentlicht', 'url' => '/admin/365netevents']
+                ? ['label' => 'Entwürfe', 'status' => 'info', 'value' => $drafts . ' nicht veröffentlicht', 'url' => self::url(self::PAGE_EVENTS, ['time' => 'all', 'status' => 'draft'])]
                 : ['label' => 'Entwürfe', 'status' => 'ok', 'value' => 'keine offenen Entwürfe'];
 
             $speakers = $db->countSpeakers(['status' => 'published']);
@@ -212,14 +970,14 @@ final class CMS_365NET_Events_Admin
             $checks[] = ['label' => 'Datenbank', 'status' => 'error', 'value' => 'Abfrage fehlgeschlagen', 'hint' => 'Details stehen im Fehlerprotokoll.'];
         }
 
-        $checks[] = defined('CMS_365NET_EXCOMP_VERSION')
+        $checks[] = $db->isExcompActive()
             ? ['label' => 'Experts & Companies', 'status' => 'ok', 'value' => 'Verknüpfung verfügbar']
             : ['label' => 'Experts & Companies', 'status' => 'muted', 'value' => 'Plugin nicht aktiv', 'hint' => 'Firmen und Experten lassen sich dann nicht verknüpfen.'];
 
         try {
             $checks[] = $db->isGoogleSearchConfigured()
-                ? ['label' => 'Google-Suche (Speaker-Backfill)', 'status' => 'ok', 'value' => 'konfiguriert']
-                : ['label' => 'Google-Suche (Speaker-Backfill)', 'status' => 'muted', 'value' => 'nicht konfiguriert', 'hint' => 'Optional; API-Key und Suchmaschinen-ID kommen aus Umgebungsvariablen (siehe README).'];
+                ? ['label' => 'Google-Suche (Speaker-Backfill)', 'status' => 'ok', 'value' => 'konfiguriert', 'url' => self::url(self::PAGE_SETTINGS)]
+                : ['label' => 'Google-Suche (Speaker-Backfill)', 'status' => 'muted', 'value' => 'nicht konfiguriert', 'hint' => 'Optional; API-Key und Suchmaschinen-ID in den Einstellungen oder als Umgebungsvariablen.', 'url' => self::url(self::PAGE_SETTINGS)];
 
             foreach ($db->getEvents(['order' => 'updated_desc', 'limit' => 6]) as $event) {
                 $updated = strtotime((string) ($event->updated_at ?? ''));
@@ -227,7 +985,7 @@ final class CMS_365NET_Events_Admin
                 $published = (string) ($event->status ?? '') === 'published';
                 $items[] = [
                     'title' => (string) ($event->title ?? ''),
-                    'url' => '/admin/365netevents/edit/' . (int) ($event->id ?? 0),
+                    'url' => self::url(self::PAGE_EVENTS, ['action' => 'edit', 'id' => (int) ($event->id ?? 0)]),
                     'meta' => ($updated !== false ? 'geändert ' . date('d.m.Y, H:i', $updated) : 'geändert') . ($date !== '' ? ' · Termin ' . $date : ''),
                     'badge' => $published ? 'Veröffentlicht' : 'Entwurf',
                     'tone' => $published ? 'success' : 'warning',
@@ -238,20 +996,21 @@ final class CMS_365NET_Events_Admin
         }
 
         return [
+            'intro' => 'Events, Messen und Speaker pflegen; die öffentlichen Seiten /events und /speakers zeigen nur veröffentlichte Einträge.',
             'actions' => $actions,
             'checks' => $checks,
             'activity' => [
                 'heading' => 'Zuletzt bearbeitete Events',
                 'items' => $items,
                 'empty' => 'Noch keine Events vorhanden.',
-                'more_url' => '/admin/365netevents',
+                'more_url' => self::url(self::PAGE_EVENTS, ['time' => 'all']),
                 'more_label' => 'Alle Events',
             ],
         ];
     }
 
     /**
-     * Zähler-Badges im Plugin-Menü (Option „badges“): Entwürfe bei „Events“.
+     * Zähler-Badges im Plugin-Menü: Entwürfe bei „Events“.
      *
      * @return array<string, mixed>
      */
@@ -262,557 +1021,30 @@ final class CMS_365NET_Events_Admin
         }
         try {
             $drafts = CMS_365NET_Events_Database::instance()->countEvents(['status' => 'draft']);
-        } catch (\Throwable $e) {
+        } catch (\Throwable) {
             return [];
         }
 
-        return $drafts > 0 ? ['365netevents-events' => ['value' => $drafts, 'tone' => 'warning']] : [];
+        return $drafts > 0 ? [self::PAGE_EVENTS => ['value' => $drafts, 'tone' => 'warning']] : [];
     }
 
-    /** @param array<int, object> $upcomingEvents */
-    public function renderDashboard(array $upcomingEvents): void
+    // ---------------------------------------------------------------------------------------------
+    // Formular-Bausteine (in den Views genutzt)
+    // ---------------------------------------------------------------------------------------------
+
+    private function csrfField(string $action): string
     {
-        $this->start('365NET Events Dashboard', '365netevents');
-        $site = rtrim((string) SITE_URL, '/');
-        $layout = class_exists('PhinIT_Plugin_Admin_Nav', false) && method_exists('PhinIT_Plugin_Admin_Nav', 'handlesTabs');
-        if (!$layout): ?>
-        <div class="cms365-admin-header">
-            <div><h2>Events &amp; Speaker</h2><p>Überblick über Events, Speaker und die öffentlichen Eventseiten.</p></div>
-            <div class="cms365-admin-actions"><a class="btn btn-secondary" href="<?= htmlspecialchars($site . '/events', ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer">Öffentlich</a><a class="btn btn-secondary" href="<?= htmlspecialchars($site . '/admin/365netevents/speakers/new', ENT_QUOTES, 'UTF-8') ?>">Neuer Speaker</a><a class="btn btn-primary" href="<?= htmlspecialchars($site . '/admin/365netevents/new', ENT_QUOTES, 'UTF-8') ?>">Neues Event</a></div>
-        </div>
-        <?php endif; ?>
-        <?php $this->flash(); ?>
-        <?php
-        if ($layout) {
-            // Kopfzeile mit KPI-Karten und Plugin-Menü setzt der Helfer; hier nur die Übersicht.
-            echo \PhinIT_Plugin_Admin_Nav::dashboard('365netevents');
-        }
-        ?>
-        <div class="admin-card cms365-admin-card">
-            <h3>Nächste Events</h3>
-            <?php if ($upcomingEvents === []): ?>
-                <p class="description">Keine anstehenden Events vorhanden.</p>
-            <?php else: ?>
-                <div class="cms365-table-wrap"><table class="users-table cms365-table"><thead><tr><th>Event</th><th>Datum</th><th>Ort</th><th>Status</th><th>Aktionen</th></tr></thead><tbody>
-                <?php foreach ($upcomingEvents as $event): ?>
-                    <tr>
-                        <td><strong><?= $this->e($event->title ?? '') ?></strong></td>
-                        <td><?= $this->e($event->date_label ?? '') ?><?= ($event->end_date_label ?? '') !== '' ? ' – ' . $this->e($event->end_date_label) : '' ?></td>
-                        <td><?= $this->e($event->location ?? '') ?></td>
-                        <td><span class="status-badge <?= ($event->status ?? '') === 'published' ? 'active' : 'inactive' ?>"><?= $this->e($event->status ?? '') ?></span></td>
-                        <td><a class="btn btn-sm btn-secondary" href="<?= htmlspecialchars($site . '/admin/365netevents/edit/' . (int) ($event->id ?? 0), ENT_QUOTES, 'UTF-8') ?>">Bearbeiten</a></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody></table></div>
-                <p><a class="btn btn-secondary" href="<?= htmlspecialchars($site . '/admin/365netevents', ENT_QUOTES, 'UTF-8') ?>">Alle anstehenden Events</a></p>
-            <?php endif; ?>
-        </div>
-        <?php
-        $this->end();
-    }
-
-    /** @param array<int, object> $events */
-    public function renderEventsList(array $events, bool $showPast = false): void
-    {
-        $this->start('365NET Events', '365netevents');
-        $csrf = CMS\Security::instance()->generateToken('365net_admin');
-        $q = htmlspecialchars((string) ($_GET['q'] ?? ''), ENT_QUOTES, 'UTF-8');
-        $baseAdminUrl = rtrim((string) SITE_URL, '/') . '/admin/365netevents';
-        $toggleUrl = $showPast ? $baseAdminUrl : ($baseAdminUrl . '?past=1');
-        $toggleLabel = $showPast ? 'Anstehende anzeigen' : 'Vergangene einblenden';
-        $listLabel = $showPast ? 'Vergangene Eventliste' : 'Anstehende Eventliste';
-        $listHint = $showPast
-            ? 'Es werden nur zurückliegende Events angezeigt (absteigend nach Datum).'
-            : 'Es werden nur anstehende Events angezeigt (aufsteigend nach Datum).';
-        $resetUrl = $baseAdminUrl . ($showPast ? '?past=1' : '');
-        ?>
-        <div class="cms365-admin-header">
-            <div><h2>📅 365NET Events</h2><p>Verwalte Events, Messen und verknüpfte Speaker.</p></div>
-            <div class="cms365-admin-actions"><form method="POST" action="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/link-sync', ENT_QUOTES, 'UTF-8') ?>"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>"><button class="btn btn-secondary" type="submit">🔗 Verknüpfungen aktualisieren</button></form><a class="btn btn-secondary" href="<?= htmlspecialchars($toggleUrl, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($toggleLabel, ENT_QUOTES, 'UTF-8') ?></a><a class="btn btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/events', ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer">Öffentlich</a><a class="btn btn-primary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/new', ENT_QUOTES, 'UTF-8') ?>">Neues Event</a></div>
-        </div>
-        <?php $this->flash(); ?>
-        <div class="admin-card cms365-admin-card">
-            <form method="GET" class="cms365-filter-form">
-                <?php if ($showPast): ?><input type="hidden" name="past" value="1"><?php endif; ?>
-                <input type="text" name="q" value="<?= $q ?>" placeholder="Titel, Ort, Veranstalter oder Kategorie suchen …" class="form-control">
-                <button class="btn btn-primary" type="submit">Suchen</button>
-                <?php if ($q !== ''): ?><a class="btn btn-secondary" href="<?= htmlspecialchars($resetUrl, ENT_QUOTES, 'UTF-8') ?>">Reset</a><?php endif; ?>
-            </form>
-        </div>
-        <div class="admin-card cms365-admin-card">
-            <h3><?= htmlspecialchars($listLabel, ENT_QUOTES, 'UTF-8') ?> (<?= count($events) ?>)</h3>
-            <p class="description"><?= htmlspecialchars($listHint, ENT_QUOTES, 'UTF-8') ?></p>
-            <div class="cms365-table-wrap"><table class="users-table cms365-table"><thead><tr><th>Event</th><th>Datum</th><th>Ort</th><th>Speaker</th><th>Status</th><th>Aktionen</th></tr></thead><tbody>
-            <?php foreach ($events as $event): ?>
-                <tr>
-                    <td><strong><?= $this->e($event->title ?? '') ?></strong><br><small><?= $this->e($event->organizer ?? '') ?></small></td>
-                    <td><?= $this->e($event->date_label ?? '') ?><?= ($event->end_date_label ?? '') !== '' ? ' – ' . $this->e($event->end_date_label) : '' ?></td>
-                    <td><?= $this->e($event->location ?? '') ?></td>
-                    <td><?= (int) ($event->speaker_count ?? 0) ?></td>
-                    <td><span class="status-badge <?= ($event->status ?? '') === 'published' ? 'active' : 'inactive' ?>"><?= $this->e($event->status ?? '') ?></span></td>
-                    <td class="cms365-row-actions">
-                        <a class="btn btn-sm btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/edit/' . (int) $event->id, ENT_QUOTES, 'UTF-8') ?>">✏️</a>
-                        <a class="btn btn-sm btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/events/' . rawurlencode((string) $event->slug), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer">👁️</a>
-                        <form method="POST" action="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/delete/' . (int) $event->id, ENT_QUOTES, 'UTF-8') ?>" data-confirm="Dieses Event löschen?">
-                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-                            <button class="btn btn-sm btn-danger" type="submit">🗑️</button>
-                        </form>
-                    </td>
-                </tr>
-            <?php endforeach; ?>
-            </tbody></table></div>
-        </div>
-        <?php
-        $this->end();
-    }
-
-    /** @param array<int, object> $allSpeakers @param array<int, object> $assignedSpeakers @param array<int, object> $companies @param array<int, object> $experts @param array<string, array<int, string>> $taxonomies */
-    public function renderEventForm(?object $event, array $allSpeakers, array $assignedSpeakers = [], array $companies = [], array $experts = [], array $taxonomies = []): void
-    {
-        $isEdit = $event !== null;
-        $this->start($isEdit ? 'Event bearbeiten' : 'Event erstellen', '365netevents');
-        $csrf = CMS\Security::instance()->generateToken('365net_event_form');
-        $assignedIds = array_map(static fn(object $speaker): int => (int) $speaker->id, $assignedSpeakers);
-        ?>
-        <div class="cms365-admin-header"><div><h2><?= $isEdit ? '✏️ Event bearbeiten' : '➕ Neues Event' ?></h2><p><?= $isEdit ? 'ID #' . (int) $event->id : 'Manuellen Event-Datensatz anlegen.' ?></p></div><div><a class="btn btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents', ENT_QUOTES, 'UTF-8') ?>">← Zurück</a></div></div>
-        <?php $this->flash(); ?>
-        <form method="POST" action="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/save', ENT_QUOTES, 'UTF-8') ?>" class="cms365-form cms365-form--excomp" novalidate>
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-            <?php if ($isEdit): ?><input type="hidden" name="id" value="<?= (int) $event->id ?>"><input type="hidden" name="unique_id" value="<?= $this->e($event->unique_id ?? '') ?>"><?php endif; ?>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>1. Basisdaten & Veröffentlichung</h3><p class="description">Pflichtdaten, Slug, Status und redaktionelle Hervorhebung.</p><div class="cms365-form-grid">
-                <?= $this->field('title', 'Titel *', $event->title ?? '', true) ?>
-                <?= $this->field('slug', 'Slug', $event->slug ?? '') ?>
-                <?= $this->field('excerpt', 'Kurzbeschreibung / Teaser', $event->excerpt ?? '') ?>
-                <?= $this->field('source_column', 'Spalte1 / Zusatzquelle', $event->source_column ?? '') ?>
-                <label class="form-group"><span>Status</span><select name="status" class="form-control"><option value="published" <?= ($event->status ?? 'published') === 'published' ? 'selected' : '' ?>>published</option><option value="draft" <?= ($event->status ?? '') === 'draft' ? 'selected' : '' ?>>draft</option></select></label>
-                <?= $this->checkbox('featured', 'Als Highlight anzeigen', !empty($event->featured)) ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>2. Beschreibung (EditorJS)</h3><p class="description">Strukturierter Block-Inhalt mit Medien, Tabellen, Checklisten und Linkkarten.</p><?= $this->editor('description_json', (string) ($event->description_json ?? ''), (string) ($event->description ?? ''), 'Event-Beschreibung') ?></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>3. Bild & Medien</h3><div class="cms365-form-grid">
-                <?= $this->imageField('image_url', 'Event Bild / Hero URL', $event->image_url ?? '', 'image_alt', $event->image_alt ?? '') ?>
-                <?= $this->field('image_bg_color', 'Bild-Hintergrund (rechter Header, HEX oder RGB)', $event->image_bg_color ?? '#eef2f7') ?>
-                <?= $this->mediaUrlField('og_image_url', 'Social Sharing Bild', $event->og_image_url ?? '') ?>
-            </div><p class="description">Optional: Farbe hinter dem Event-Bild im rechten 33%-Headerbereich (wird nur auf der Detailseite genutzt).</p><?= $this->galleryField('gallery_json', 'Galerie (mehrere Bilder aus der Mediathek oder je Zeile ein Bild)', $event->gallery_json ?? '') ?></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>4. Datum, Zeit & Zeitzone</h3><div class="cms365-form-grid">
-                <?= $this->field('start_date', 'Startdatum', $event->start_date ?? '', false, 'date') ?>
-                <?= $this->field('end_date', 'Enddatum', $event->end_date ?? '', false, 'date') ?>
-                <?= $this->field('start_time', 'Startzeit', $event->start_time ?? '', false, 'time') ?>
-                <?= $this->field('end_time', 'Endzeit', $event->end_time ?? '', false, 'time') ?>
-                <?= $this->field('date_label', 'Datumslabel original', $event->date_label ?? '') ?>
-                <?= $this->field('end_date_label', 'Bis-Label original', $event->end_date_label ?? '') ?>
-                <?= $this->field('timezone', 'Zeitzone', $event->timezone ?? 'Europe/Berlin') ?>
-                <?= $this->field('early_bird_until', 'Early-Bird bis', $event->early_bird_until ?? '', false, 'date') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>5. Ort, Online & Hybrid</h3><div class="cms365-form-grid">
-                <?= $this->field('location', 'Ort', $event->location ?? '') ?>
-                <?= $this->field('venue_name', 'Venue / Locationname', $event->venue_name ?? '') ?>
-                <?= $this->field('street', 'Straße', $event->street ?? '') ?>
-                <?= $this->field('postal_code', 'PLZ', $event->postal_code ?? '') ?>
-                <?= $this->field('country', 'Land', $event->country ?? 'Deutschland') ?>
-                <?= $this->select('attendance_mode', 'Durchführung', (string) ($event->attendance_mode ?? ''), ['' => 'Bitte wählen', 'Vor Ort' => 'Vor Ort', 'Online' => 'Online', 'Hybrid' => 'Hybrid']) ?>
-                <?= $this->field('online_url', 'Online-/Stream-Link', $event->online_url ?? '', false, 'url') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>6. Veranstalter & Kontakt</h3><div class="cms365-form-grid">
-                <?= $this->field('organizer', 'Veranstalter', $event->organizer ?? '') ?>
-                <?= $this->field('contact_name', 'Kontaktperson', $event->contact_name ?? '') ?>
-                <?= $this->field('contact_email', 'Kontakt E-Mail', $event->contact_email ?? '', false, 'email') ?>
-                <?= $this->field('contact_phone', 'Kontakt Telefon', $event->contact_phone ?? '') ?>
-                <?= $this->field('website', 'Website', $event->website ?? '', false, 'url') ?>
-            </div><label class="form-group"><span>Sponsoren / Partner</span><textarea name="sponsors" class="form-control" rows="3"><?= $this->e($event->sponsors ?? '') ?></textarea></label></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>6b. 365CMS-Verknüpfung</h3><p class="description">Optional manuell setzen. Ohne Auswahl versucht das Plugin automatisch, Veranstalter/Kontakt/Website mit bestehenden Firmen oder Experten zu matchen.</p><div class="cms365-form-grid">
-                <?= $this->select('linked_company_id', 'Vorhandene Firma verknüpfen', (string) ($event->linked_company_id ?? ''), $this->companyOptions($companies)) ?>
-                <?= $this->select('linked_expert_id', 'Vorhandenen Expert verknüpfen', (string) ($event->linked_expert_id ?? ''), $this->expertOptions($experts)) ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section cms365-section--taxonomy-target"><h3>7. Kategorien, Tags & Zielgruppe</h3><p class="description">Alle Metadaten kompakt nebeneinander. Mehrfachauswahl ist bei Kategorien, Tags, Zielgruppe und Sprache möglich.</p><div class="cms365-form-grid cms365-form-grid--taxonomy-target">
-                <?= $this->select('category', 'Hauptkategorie', (string) ($event->category ?? ''), $this->optionMap($taxonomies['event_categories'] ?? [])) ?>
-                <?= $this->multiSelect('categories', 'Weitere Kategorien', (string) ($event->categories ?? ''), $taxonomies['event_categories'] ?? []) ?>
-                <?= $this->multiSelect('tags', 'Tags / Schlagwörter', (string) ($event->tags ?? ''), $taxonomies['event_tags'] ?? [], 8) ?>
-                <?= $this->multiSelect('target_audience', 'Zielgruppe', (string) ($event->target_audience ?? ''), $this->targetAudienceOptions(), 8) ?>
-                <?= $this->select('event_format', 'Format', (string) ($event->event_format ?? $event->event_type ?? ''), $this->optionMap($taxonomies['event_types'] ?? [])) ?>
-                <?= $this->select('difficulty_level', 'Level', (string) ($event->difficulty_level ?? ''), ['' => 'Bitte wählen', 'Einsteiger' => 'Einsteiger', 'Fortgeschritten' => 'Fortgeschritten', 'Expert' => 'Expert', 'Business' => 'Business', 'Technisch' => 'Technisch']) ?>
-                <?= $this->multiSelect('language', 'Sprache', (string) ($event->language ?? 'Deutsch'), $this->languageOptions(), 6) ?>
-                <?= $this->field('event_type', 'Event Art (Legacy)', $event->event_type ?? '') ?>
-            </div><label class="form-group cms365-form-group--full"><span>Barrierefreiheit / Hinweise</span><textarea name="accessibility" class="form-control" rows="3"><?= $this->e($event->accessibility ?? '') ?></textarea></label></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>8. Preise, Tickets & Registrierung</h3><div class="cms365-form-grid">
-                <?= $this->select('price_class', 'Preisklasse', (string) ($event->price_class ?? ''), $this->optionMap($taxonomies['event_price_classes'] ?? [])) ?>
-                <?= $this->field('price', 'Preislabel', $event->price ?? '') ?>
-                <?= $this->field('price_min', 'Preis min.', $event->price_min ?? '', false, 'number') ?>
-                <?= $this->field('price_max', 'Preis max.', $event->price_max ?? '', false, 'number') ?>
-                <?= $this->field('currency', 'Währung', $event->currency ?? 'EUR') ?>
-                <?= $this->field('capacity', 'Kapazität', $event->capacity ?? '', false, 'number') ?>
-                <?= $this->field('registration_url', 'Registrierung', $event->registration_url ?? '', false, 'url') ?>
-                <?= $this->field('ticket_url', 'Ticket-Link', $event->ticket_url ?? '', false, 'url') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>9. Speaker-Zuordnung</h3><p class="description">Mehrfachauswahl möglich. Neue Speaker können separat angelegt und anschließend hier verknüpft werden.</p><select name="speaker_ids[]" class="form-control cms365-multiselect" multiple size="12">
-                <?php foreach ($allSpeakers as $speaker): ?><option value="<?= (int) $speaker->id ?>" <?= in_array((int) $speaker->id, $assignedIds, true) ? 'selected' : '' ?>><?= $this->e($speaker->display_name ?? '') ?><?= ($speaker->topic ?? '') ? ' – ' . $this->e($speaker->topic) : '' ?></option><?php endforeach; ?>
-            </select></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>10. SEO & Social</h3><div class="cms365-form-grid">
-                <?= $this->field('seo_title', 'SEO-Titel', $event->seo_title ?? '') ?>
-                <?= $this->field('seo_description', 'SEO-Beschreibung', $event->seo_description ?? '') ?>
-            </div></div>
-            <div class="admin-card cms365-actions-card"><button type="submit" class="btn btn-primary">💾 Speichern</button><a class="btn btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents', ENT_QUOTES, 'UTF-8') ?>">Abbrechen</a></div>
-        </form>
-        <?php
-        $this->end();
-    }
-
-    /** @param array<int, object> $speakers */
-    public function renderSpeakersList(array $speakers, string $search = '', string $sort = 'az'): void
-    {
-        $this->start('365NET Speaker', '365netevents');
-        $csrf = CMS\Security::instance()->generateToken('365net_admin');
-        $search = trim($search);
-        $sort = in_array($sort, ['az', 'za', 'date_old_new', 'date_new_old'], true) ? $sort : 'az';
-        $q = htmlspecialchars($search, ENT_QUOTES, 'UTF-8');
-        $sortOptions = [
-            'az' => 'A–Z',
-            'za' => 'Z–A',
-            'date_old_new' => 'Datum alt→neu',
-            'date_new_old' => 'Datum neu→alt',
-        ];
-        $baseUrl = rtrim((string) SITE_URL, '/') . '/admin/365netevents/speakers';
-        $buildSortUrl = static function (string $targetSort) use ($baseUrl, $search): string {
-            $query = ['sort' => $targetSort];
-            if ($search !== '') {
-                $query['q'] = $search;
-            }
-
-            return $baseUrl . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
-        };
-        ?>
-        <div class="cms365-admin-header"><div><h2>🎤 Event-Speaker</h2><p>Speaker, Organisationen und Sammel-Speaker aus den Seed-Daten verwalten.</p></div><div class="cms365-admin-actions"><a class="btn btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/speakers', ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer">Öffentlich</a><a class="btn btn-primary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/speakers/new', ENT_QUOTES, 'UTF-8') ?>">Neuer Speaker</a></div></div>
-        <?php $this->flash(); ?>
-        <div class="admin-card cms365-admin-card"><form method="GET" class="cms365-filter-form"><input type="hidden" name="sort" value="<?= htmlspecialchars($sort, ENT_QUOTES, 'UTF-8') ?>"><input type="text" name="q" value="<?= $q ?>" placeholder="Speaker, Thema oder Tag suchen …" class="form-control"><button class="btn btn-primary" type="submit">Suchen</button><?php if ($search !== ''): ?><a class="btn btn-secondary" href="<?= htmlspecialchars($buildSortUrl($sort), ENT_QUOTES, 'UTF-8') ?>">Reset</a><?php endif; ?></form></div>
-        <div class="cms365-admin-actions cms365-admin-sort-actions"><?php foreach ($sortOptions as $sortKey => $sortLabel): ?><a class="btn <?= $sortKey === $sort ? 'btn-primary' : 'btn-secondary' ?>" href="<?= htmlspecialchars($buildSortUrl($sortKey), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($sortLabel, ENT_QUOTES, 'UTF-8') ?></a><?php endforeach; ?></div>
-        <div class="admin-card cms365-admin-card"><h3>Speakerliste (<?= count($speakers) ?>)</h3><div class="cms365-table-wrap"><table class="users-table cms365-table"><thead><tr><th>Speaker</th><th>Thema</th><th>Events</th><th>Status</th><th>Aktionen</th></tr></thead><tbody>
-        <?php foreach ($speakers as $speaker): ?><tr><td><strong><?= $this->e($speaker->display_name ?? '') ?></strong><br><small><?= $this->e($speaker->award ?? '') ?></small></td><td><?= $this->e($speaker->topic ?? '') ?></td><td><?= (int) ($speaker->event_count ?? 0) ?></td><td><span class="status-badge <?= ($speaker->status ?? '') === 'published' ? 'active' : 'inactive' ?>"><?= $this->e($speaker->status ?? '') ?></span></td><td class="cms365-row-actions"><a class="btn btn-sm btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/speakers/edit/' . (int) $speaker->id, ENT_QUOTES, 'UTF-8') ?>">✏️</a><a class="btn btn-sm btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/speakers/' . rawurlencode((string) $speaker->slug), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer">👁️</a><form method="POST" action="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/speakers/delete/' . (int) $speaker->id, ENT_QUOTES, 'UTF-8') ?>" data-confirm="Diesen Speaker löschen?"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>"><button class="btn btn-sm btn-danger" type="submit">🗑️</button></form></td></tr><?php endforeach; ?>
-        </tbody></table></div></div>
-        <?php $this->end();
-    }
-
-    /** @param array<string, string> $settings */
-    public function renderSettingsForm(array $settings): void
-    {
-        $this->start('365NET Events Einstellungen', '365netevents');
-        $csrf = CMS\Security::instance()->generateToken('365net_settings_form');
-        $backfillCsrf = CMS\Security::instance()->generateToken('365net_settings_backfill');
-        ?>
-        <div class="cms365-admin-header"><div><h2>⚙️ Event-Einstellungen</h2><p>Texte, Layout, Farben, Rundungen und Abstände der öffentlichen Eventseiten steuern.</p></div><div class="cms365-admin-actions"><a class="btn btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/events', ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer">Öffentlich prüfen</a></div></div>
-        <?php $this->flash(); ?>
-        <form method="POST" action="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/settings/save', ENT_QUOTES, 'UTF-8') ?>" class="cms365-form" novalidate>
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-            <div class="admin-card cms365-admin-card cms365-section"><h3>1. Navigation & Archivtexte</h3><div class="cms365-form-grid">
-                <?= $this->checkbox('show_nav_link', 'Im Hauptmenü anzeigen', ($settings['show_nav_link'] ?? '0') === '1') ?>
-                <?= $this->checkbox('events_header_text_enabled', 'Event-Headertexte anzeigen', ($settings['events_header_text_enabled'] ?? '1') === '1') ?>
-                <?= $this->checkbox('events_header_kicker_enabled', 'Event Kicker anzeigen', ($settings['events_header_kicker_enabled'] ?? '1') === '1') ?>
-                <?= $this->checkbox('events_header_title_enabled', 'Event Titel anzeigen', ($settings['events_header_title_enabled'] ?? '1') === '1') ?>
-                <?= $this->checkbox('events_header_description_enabled', 'Event Beschreibung anzeigen', ($settings['events_header_description_enabled'] ?? '1') === '1') ?>
-                <?= $this->checkbox('events_search_placeholder_enabled', 'Event Such-Placeholder anzeigen', ($settings['events_search_placeholder_enabled'] ?? '1') === '1') ?>
-                <?= $this->field('nav_label', 'Navigationslabel', $settings['nav_label'] ?? 'Events') ?>
-                <?= $this->field('archive_kicker', 'Event-Archiv Kicker', $settings['archive_kicker'] ?? '') ?>
-                <?= $this->field('archive_title', 'Event-Archiv Titel', $settings['archive_title'] ?? '') ?>
-                <?= $this->field('archive_description', 'Event-Archiv Beschreibung', $settings['archive_description'] ?? '') ?>
-                <?= $this->field('archive_current_month_label', 'Label zukünftige Events', $settings['archive_current_month_label'] ?? '') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>2. Event-Header-Buttons (unten rechts)</h3><div class="cms365-form-grid">
-                <?= $this->field('events_header_btn_1_text', 'Button 1 Text', $settings['events_header_btn_1_text'] ?? '') ?>
-                <?= $this->field('events_header_btn_1_url', 'Button 1 URL', $settings['events_header_btn_1_url'] ?? '') ?>
-                <?= $this->field('events_header_btn_2_text', 'Button 2 Text', $settings['events_header_btn_2_text'] ?? '') ?>
-                <?= $this->field('events_header_btn_2_url', 'Button 2 URL', $settings['events_header_btn_2_url'] ?? '') ?>
-                <?= $this->field('events_header_btn_3_text', 'Button 3 Text', $settings['events_header_btn_3_text'] ?? '') ?>
-                <?= $this->field('events_header_btn_3_url', 'Button 3 URL', $settings['events_header_btn_3_url'] ?? '') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>3. Suche, Buttons & Leerzustände</h3><div class="cms365-form-grid">
-                <?= $this->field('archive_search_placeholder', 'Suchfeld Placeholder', $settings['archive_search_placeholder'] ?? '') ?>
-                <?= $this->field('archive_search_button', 'Suchbutton', $settings['archive_search_button'] ?? '') ?>
-                <?= $this->field('archive_reset_label', 'Reset-Text', $settings['archive_reset_label'] ?? '') ?>
-                <?= $this->field('archive_past_button', 'Button vergangene Events', $settings['archive_past_button'] ?? '') ?>
-                <?= $this->field('archive_current_button', 'Button zukünftige Events', $settings['archive_current_button'] ?? '') ?>
-                <?= $this->field('archive_empty_current', 'Leertext zukünftige Events', $settings['archive_empty_current'] ?? '') ?>
-                <?= $this->field('archive_empty_past', 'Leertext vergangene Events', $settings['archive_empty_past'] ?? '') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>4. Speaker- und Detailtexte</h3><div class="cms365-form-grid">
-                <?= $this->checkbox('speakers_header_text_enabled', 'Speaker-Headertexte anzeigen', ($settings['speakers_header_text_enabled'] ?? '1') === '1') ?>
-                <?= $this->checkbox('speakers_header_kicker_enabled', 'Speaker Kicker anzeigen', ($settings['speakers_header_kicker_enabled'] ?? '1') === '1') ?>
-                <?= $this->checkbox('speakers_header_title_enabled', 'Speaker Titel anzeigen', ($settings['speakers_header_title_enabled'] ?? '1') === '1') ?>
-                <?= $this->checkbox('speakers_header_description_enabled', 'Speaker Beschreibung anzeigen', ($settings['speakers_header_description_enabled'] ?? '1') === '1') ?>
-                <?= $this->checkbox('speakers_search_placeholder_enabled', 'Speaker Such-Placeholder anzeigen', ($settings['speakers_search_placeholder_enabled'] ?? '1') === '1') ?>
-                <?= $this->field('speaker_archive_kicker', 'Speaker Kicker', $settings['speaker_archive_kicker'] ?? '') ?>
-                <?= $this->field('speaker_archive_title', 'Speaker Titel', $settings['speaker_archive_title'] ?? '') ?>
-                <?= $this->field('speaker_archive_description', 'Speaker Beschreibung', $settings['speaker_archive_description'] ?? '') ?>
-                <?= $this->field('speakers_header_btn_1_text', 'Speaker Button 1 Text', $settings['speakers_header_btn_1_text'] ?? '') ?>
-                <?= $this->field('speakers_header_btn_1_url', 'Speaker Button 1 URL', $settings['speakers_header_btn_1_url'] ?? '') ?>
-                <?= $this->field('speakers_header_btn_2_text', 'Speaker Button 2 Text', $settings['speakers_header_btn_2_text'] ?? '') ?>
-                <?= $this->field('speakers_header_btn_2_url', 'Speaker Button 2 URL', $settings['speakers_header_btn_2_url'] ?? '') ?>
-                <?= $this->field('speakers_header_btn_3_text', 'Speaker Button 3 Text', $settings['speakers_header_btn_3_text'] ?? '') ?>
-                <?= $this->field('speakers_header_btn_3_url', 'Speaker Button 3 URL', $settings['speakers_header_btn_3_url'] ?? '') ?>
-                <?= $this->field('speaker_search_placeholder', 'Speaker Suche Placeholder', $settings['speaker_search_placeholder'] ?? '') ?>
-                <?= $this->field('detail_back_events_label', 'Breadcrumb Events', $settings['detail_back_events_label'] ?? '') ?>
-                <?= $this->field('detail_speakers_heading', 'Detail Überschrift Speaker', $settings['detail_speakers_heading'] ?? '') ?>
-                <?= $this->field('detail_no_speakers_text', 'Detail Leertext Speaker', $settings['detail_no_speakers_text'] ?? '') ?>
-                <?= $this->field('detail_register_label', 'Registrierungsbutton', $settings['detail_register_label'] ?? '') ?>
-                <?= $this->field('detail_website_label', 'Websitebutton', $settings['detail_website_label'] ?? '') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>5. Layout, Farben & Abstände</h3><p class="description">Der öffentliche Bereich hat keinen eigenen Seitenhintergrund; diese Werte steuern nur Karten, Buttons, Rundungen und Innenabstände.</p><div class="cms365-form-grid">
-                <?= $this->field('layout_primary_color', 'Primärfarbe', $settings['layout_primary_color'] ?? '#1d4ed8', false, 'color') ?>
-                <?= $this->field('layout_accent_color', 'Akzentfarbe', $settings['layout_accent_color'] ?? '#f59e0b', false, 'color') ?>
-                <?= $this->field('layout_event_card_top_border_color', 'Event-Card oberer Rand', $settings['layout_event_card_top_border_color'] ?? ($settings['layout_accent_color'] ?? '#f59e0b'), false, 'color') ?>
-                <?= $this->field('layout_speaker_card_top_border_color', 'Speaker-Card oberer Rand', $settings['layout_speaker_card_top_border_color'] ?? '#8b5cf6', false, 'color') ?>
-                <?= $this->field('layout_text_color', 'Textfarbe', $settings['layout_text_color'] ?? '#0f172a', false, 'color') ?>
-                <?= $this->field('layout_card_background', 'Kartenhintergrund', $settings['layout_card_background'] ?? '#ffffff', false, 'color') ?>
-                <?= $this->field('layout_card_border', 'Kartenrahmen', $settings['layout_card_border'] ?? '#e2e8f0', false, 'color') ?>
-                <?= $this->field('layout_radius', 'Hero-/Box-Rundung px', $settings['layout_radius'] ?? '24', false, 'number') ?>
-                <?= $this->field('layout_card_radius', 'Karten-Rundung px', $settings['layout_card_radius'] ?? '20', false, 'number') ?>
-                <?= $this->field('layout_gap', 'Grid-Abstand horizontal (Karten nebeneinander) px', $settings['layout_gap'] ?? '18', false, 'number') ?>
-                <?= $this->field('layout_gap_y', 'Grid-Abstand vertikal (Karten untereinander) px', $settings['layout_gap_y'] ?? ($settings['layout_gap'] ?? '18'), false, 'number') ?>
-                <?= $this->field('layout_top_spacing', 'Abstand zum Header px', $settings['layout_top_spacing'] ?? '32', false, 'number') ?>
-                <?= $this->field('layout_bottom_spacing', 'Abstand zum Footer px', $settings['layout_bottom_spacing'] ?? '56', false, 'number') ?>
-                <?= $this->field('layout_container_width', 'Containerbreite px', $settings['layout_container_width'] ?? '1160', false, 'number') ?>
-            </div></div>
-            <div class="admin-card cms365-actions-card"><button type="submit" class="btn btn-primary">💾 Einstellungen speichern</button><a class="btn btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents', ENT_QUOTES, 'UTF-8') ?>">Abbrechen</a></div>
-        </form>
-        <form method="POST" action="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/settings/backfill-descriptions', ENT_QUOTES, 'UTF-8') ?>" class="cms365-form" novalidate>
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($backfillCsrf, ENT_QUOTES, 'UTF-8') ?>">
-            <div class="admin-card cms365-admin-card cms365-section">
-                <h3>6. Seed-Beschreibungen auf bestehende Events anwenden</h3>
-                <p class="description">Übernimmt die statischen Beschreibungen aus der Seed-Map anhand <code>NR/source_nr</code> in vorhandene Events (inkl. Excerpt und SEO-Beschreibung).</p>
-                <button type="submit" class="btn btn-secondary">🧠 Beschreibungen jetzt einspielen</button>
-            </div>
-        </form>
-        <?php
-        $this->end();
-    }
-
-    /** @param array<string, string> $settings */
-    public function renderTaxonomiesForm(array $settings): void
-    {
-        $this->start('365NET Kategorien & Tags', '365netevents');
-        $csrf = CMS\Security::instance()->generateToken('365net_taxonomies_form');
-        ?>
-        <div class="cms365-admin-header"><div><h2>🏷️ Kategorien, Arten, Klassen & Tags</h2><p>Pflege die Dropdown-Werte für Event- und Speaker-Editoren. Ein Eintrag pro Zeile; Duplikate werden beim Speichern entfernt.</p></div><div class="cms365-admin-actions"></div></div>
-        <?php $this->flash(); ?>
-        <form method="POST" action="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/taxonomies/save', ENT_QUOTES, 'UTF-8') ?>" class="cms365-form" novalidate>
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-            <div class="admin-card cms365-admin-card cms365-section"><h3>Events</h3><div class="cms365-form-grid">
-                <?= $this->textareaSetting('taxonomy_event_categories', 'Event-Kategorien / Hauptkategorie', $settings['taxonomy_event_categories'] ?? '') ?>
-                <?= $this->textareaSetting('taxonomy_event_types', 'Event-Arten / Formate', $settings['taxonomy_event_types'] ?? '') ?>
-                <?= $this->textareaSetting('taxonomy_event_price_classes', 'Event-Preisklassen', $settings['taxonomy_event_price_classes'] ?? '') ?>
-                <?= $this->textareaSetting('taxonomy_event_tags', 'Event-Tags', $settings['taxonomy_event_tags'] ?? '') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>Speaker</h3><div class="cms365-form-grid">
-                <?= $this->textareaSetting('taxonomy_speaker_categories', 'Speaker-Kategorien / Themen', $settings['taxonomy_speaker_categories'] ?? '') ?>
-                <?= $this->textareaSetting('taxonomy_speaker_types', 'Speaker-Typen', $settings['taxonomy_speaker_types'] ?? '') ?>
-                <?= $this->textareaSetting('taxonomy_speaker_price_classes', 'Speaker-Preisklassen', $settings['taxonomy_speaker_price_classes'] ?? '') ?>
-                <?= $this->textareaSetting('taxonomy_speaker_tags', 'Speaker-Tags', $settings['taxonomy_speaker_tags'] ?? '') ?>
-            </div></div>
-            <div class="admin-card cms365-actions-card"><button type="submit" class="btn btn-primary">💾 Listen speichern</button><a class="btn btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents', ENT_QUOTES, 'UTF-8') ?>">Abbrechen</a></div>
-        </form>
-        <?php
-        $this->end();
-    }
-
-    /** @param array<int, object> $companies @param array<int, object> $experts @param array<string, array<int, string>> $taxonomies */
-    public function renderSpeakerForm(?object $speaker = null, array $companies = [], array $experts = [], array $taxonomies = []): void
-    {
-        $isEdit = $speaker !== null;
-        $this->start($isEdit ? 'Speaker bearbeiten' : 'Speaker erstellen', '365netevents');
-        $csrf = CMS\Security::instance()->generateToken('365net_speaker_form');
-        ?>
-        <div class="cms365-admin-header"><div><h2><?= $isEdit ? '✏️ Speaker bearbeiten' : '➕ Neuer Speaker' ?></h2><p><?= $isEdit ? 'ID #' . (int) $speaker->id : 'Nur echte Personen als Speaker anlegen. Firmen werden über das Companies-Plugin verknüpft.' ?></p></div><div><a class="btn btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/speakers', ENT_QUOTES, 'UTF-8') ?>">← Zurück</a></div></div>
-        <?php $this->flash(); ?>
-        <form method="POST" action="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/speakers/save', ENT_QUOTES, 'UTF-8') ?>" class="cms365-form cms365-form--excomp" novalidate>
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-            <?php if ($isEdit): ?><input type="hidden" name="id" value="<?= (int) $speaker->id ?>"><input type="hidden" name="unique_id" value="<?= $this->e($speaker->unique_id ?? '') ?>"><?php endif; ?>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>1. Profil & Veröffentlichung</h3><div class="cms365-form-grid">
-                <?= $this->field('first_name', 'Vorname', $speaker->first_name ?? '') ?>
-                <?= $this->field('last_name', 'Nachname', $speaker->last_name ?? '') ?>
-                <?= $this->field('display_name', 'Anzeigename (optional, alternativ zu Vorname + Nachname)', $speaker->display_name ?? '') ?>
-                <?= $this->field('slug', 'Slug', $speaker->slug ?? '') ?>
-                <?= $this->field('location', 'Standort', $speaker->location ?? '') ?>
-                <?= $this->select('speaker_type', 'Speaker-Typ', (string) ($speaker->speaker_type ?? ''), $this->optionMap($taxonomies['speaker_types'] ?? [])) ?>
-                <?= $this->checkbox('featured', 'Als Highlight anzeigen', !empty($speaker->featured)) ?>
-                <label class="form-group"><span>Status</span><select name="status" class="form-control"><option value="published" <?= ($speaker->status ?? 'published') === 'published' ? 'selected' : '' ?>>published</option><option value="draft" <?= ($speaker->status ?? '') === 'draft' ? 'selected' : '' ?>>draft</option></select></label>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>2. Bio (EditorJS)</h3><?= $this->editor('bio_json', (string) ($speaker->bio_json ?? ''), (string) ($speaker->bio ?? ''), 'Speaker-Bio') ?></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>3. Bild & Kontakt</h3><div class="cms365-form-grid">
-                <?= $this->imageField('avatar_url', 'Profilbild URL', $speaker->avatar_url ?? '', 'avatar_alt', $speaker->avatar_alt ?? '') ?>
-                <?= $this->imageField('theme_image_url', 'Speaker Themenbild URL (Header rechts)', $speaker->theme_image_url ?? '', 'theme_image_alt', $speaker->theme_image_alt ?? '') ?>
-                <?= $this->field('email', 'E-Mail', $speaker->email ?? '', false, 'email') ?>
-                <?= $this->field('phone', 'Telefon', $speaker->phone ?? '') ?>
-                <?= $this->field('website', 'Website', $speaker->website ?? '', false, 'url') ?>
-            </div><p class="description">Pfad-Vorgaben: Profilbild bevorzugt unter <code>/uploads/speaker/…</code>, Themenbild bevorzugt unter <code>/uploads/speakerthemen/…</code>.</p></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>3b. 365CMS-Verknüpfung</h3><p class="description">Optional vorhandenen Expert-/Firmen-Datensatz auswählen. Firmeninformationen bleiben im Companies-Plugin; am Speaker wird nur die Verknüpfung gespeichert.</p><div class="cms365-form-grid">
-                <?= $this->select('linked_expert_id', 'Vorhandenen Expert verknüpfen', (string) ($speaker->linked_expert_id ?? ''), $this->expertOptions($experts)) ?>
-                <?= $this->select('linked_company_id', 'Vorhandene Firma verknüpfen', (string) ($speaker->linked_company_id ?? ''), $this->companyOptions($companies)) ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>4. Themen, Kategorien & Tags</h3><div class="cms365-form-grid">
-                <?= $this->select('topic', 'Thema/Kategorie', (string) ($speaker->topic ?? ''), $this->optionMap($taxonomies['speaker_categories'] ?? [])) ?>
-                <?= $this->field('award', 'MVP/Auszeichnung', $speaker->award ?? '') ?>
-                <?= $this->multiSelect('categories', 'Kategorien', (string) ($speaker->categories ?? ''), $taxonomies['speaker_categories'] ?? []) ?>
-                <?= $this->multiSelect('tags', 'Tags', (string) ($speaker->tags ?? ''), $taxonomies['speaker_tags'] ?? [], 8) ?>
-                <?= $this->field('specializations', 'Spezialisierungen', $speaker->specializations ?? '') ?>
-                <?= $this->field('languages', 'Sprachen', $speaker->languages ?? 'Deutsch, Englisch') ?>
-                <?= $this->field('speaking_formats', 'Formate', $speaker->speaking_formats ?? 'Keynote, Session, Workshop') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>5. Preisklasse & Verfügbarkeit</h3><div class="cms365-form-grid">
-                <?= $this->select('price_class', 'Preisklasse', (string) ($speaker->price_class ?? ''), $this->optionMap($taxonomies['speaker_price_classes'] ?? [])) ?>
-                <?= $this->field('fee_min', 'Honorar min.', $speaker->fee_min ?? '', false, 'number') ?>
-                <?= $this->field('fee_max', 'Honorar max.', $speaker->fee_max ?? '', false, 'number') ?>
-                <?= $this->field('currency', 'Währung', $speaker->currency ?? 'EUR') ?>
-                <?= $this->field('availability', 'Verfügbarkeit', $speaker->availability ?? '') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>6. Social Links</h3><div class="cms365-form-grid">
-                <?= $this->field('linkedin_url', 'LinkedIn', $speaker->linkedin_url ?? '', false, 'url') ?>
-                <?= $this->field('x_url', 'X / Twitter', $speaker->x_url ?? '', false, 'url') ?>
-                <?= $this->field('youtube_url', 'YouTube', $speaker->youtube_url ?? '', false, 'url') ?>
-                <?= $this->field('github_url', 'GitHub', $speaker->github_url ?? '', false, 'url') ?>
-            </div></div>
-            <div class="admin-card cms365-admin-card cms365-section"><h3>7. SEO & Social</h3><div class="cms365-form-grid">
-                <?= $this->field('seo_title', 'SEO-Titel', $speaker->seo_title ?? '') ?>
-                <?= $this->field('seo_description', 'SEO-Beschreibung', $speaker->seo_description ?? '') ?>
-                <?= $this->mediaUrlField('og_image_url', 'Social Sharing Bild', $speaker->og_image_url ?? '') ?>
-            </div></div>
-            <div class="admin-card cms365-actions-card"><button type="submit" class="btn btn-primary">💾 Speichern</button><a class="btn btn-secondary" href="<?= htmlspecialchars(rtrim((string) SITE_URL, '/') . '/admin/365netevents/speakers', ENT_QUOTES, 'UTF-8') ?>">Abbrechen</a></div>
-        </form>
-        <?php $this->end();
-    }
-
-    private function start(string $title, string $activePage): void
-    {
-        // Einheitliche PhinIT-Admin-Navigation (Reiter und Design wie die übrigen PhinIT-Plugins).
-        if (class_exists('PhinIT_Plugin_Admin_Nav', false)) {
-            // Erster Menüpunkt = Übersicht; aktiv ist der längste passende Pfad (/admin/365netevents/new → Events).
-            $descriptions = self::sectionDescriptions();
-            $badges = self::adminBadges();
-            \PhinIT_Plugin_Admin_Nav::begin([
-                ['label' => 'Übersicht', 'url' => '/admin/365netevents/dashboard', 'icon' => 'ti ti-layout-dashboard'],
-                ['label' => 'Events', 'url' => '/admin/365netevents', 'icon' => 'ti ti-calendar-event', 'description' => $descriptions['365netevents-events'], 'badge' => $badges['365netevents-events']['value'] ?? null, 'badge_tone' => 'warning'],
-                ['label' => 'Speaker', 'url' => '/admin/365netevents/speakers', 'icon' => 'ti ti-microphone', 'description' => $descriptions['365netevents-speakers']],
-                ['label' => 'Kategorien & Tags', 'url' => '/admin/365netevents/taxonomies', 'icon' => 'ti ti-tags', 'description' => $descriptions['365netevents-taxonomies']],
-                ['label' => 'Einstellungen', 'url' => '/admin/365netevents/settings', 'icon' => 'ti ti-settings', 'description' => $descriptions['365netevents-settings']],
-            ], '365netevents');
-        }
-        $this->startShell($title, $activePage);
-    }
-
-    private function end(): void
-    {
-        $this->endShell();
-        if (class_exists('PhinIT_Plugin_Admin_Nav', false)) {
-            \PhinIT_Plugin_Admin_Nav::end();
-        }
-    }
-
-    private function startShell(string $title, string $activePage): void
-    {
-        $this->printFallbackAssetsIfNeeded();
-
-        if (function_exists('cms_plugin_admin_layout_start')) {
-            cms_plugin_admin_layout_start($title, $activePage);
-            return;
-        }
-        if (function_exists('renderAdminLayoutStart')) {
-            renderAdminLayoutStart($title, $activePage);
-            echo '<div class="cms-plugin-admin-layout"><div class="cms-plugin-admin-layout__content">';
-            return;
-        }
-        $pageTitle = $title;
-        require_once ABSPATH . 'admin/partials/header.php';
-        require_once ABSPATH . 'admin/partials/sidebar.php';
-    }
-
-    private function printFallbackAssetsIfNeeded(): void
-    {
-        if (self::$fallbackAssetsPrinted) {
-            return;
-        }
-
-        if (!defined('CMS_365NET_EVENTS_PLUGIN_DIR') || !defined('CMS_365NET_EVENTS_PLUGIN_URL')) {
-            return;
-        }
-
-        $styles = ['admin.css', 'admin-enhancements.css', 'admin-excomp-forms.css'];
-        foreach ($styles as $file) {
-            $path = CMS_365NET_EVENTS_PLUGIN_DIR . 'assets/css/' . $file;
-            if (!is_file($path)) {
-                continue;
-            }
-
-            $href = CMS_365NET_EVENTS_PLUGIN_URL . 'assets/css/' . $file . '?v=' . (string) filemtime($path);
-            echo '<link rel="stylesheet" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">' . "\n";
-        }
-
-        $scriptPath = CMS_365NET_EVENTS_PLUGIN_DIR . 'assets/js/admin.js';
-        if (is_file($scriptPath)) {
-            $src = CMS_365NET_EVENTS_PLUGIN_URL . 'assets/js/admin.js?v=' . (string) filemtime($scriptPath);
-            echo '<script src="' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . '" defer></script>' . "\n";
-        }
-
-        self::$fallbackAssetsPrinted = true;
-    }
-
-    private function endShell(): void
-    {
-        $this->renderMediaPickerModal();
-        if (function_exists('cms_plugin_admin_layout_end')) {
-            cms_plugin_admin_layout_end();
-            return;
-        }
-        echo '</div></div>';
-        if (function_exists('renderAdminLayoutEnd')) {
-            renderAdminLayoutEnd();
-            return;
-        }
-        require_once ABSPATH . 'admin/partials/footer.php';
-    }
-
-    private function flash(): void
-    {
-        if (isset($_GET['saved'])) {
-            echo '<div class="alert alert-success">✅ Gespeichert.</div>';
-        }
-        if (isset($_GET['backfilled'])) {
-            $updated = max(0, (int) ($_GET['updated'] ?? 0));
-            echo '<div class="alert alert-success">🧠 Beschreibungs-Backfill ausgeführt. Aktualisierte Events: ' . htmlspecialchars((string) $updated, ENT_QUOTES, 'UTF-8') . '.</div>';
-        }
-        if (isset($_GET['speaker_backfilled'])) {
-            if ((string) ($_GET['speaker_config'] ?? '') === '0') {
-                echo '<div class="alert alert-warning">⚠️ Speaker-Backfill wurde nicht ausgeführt: Bitte zuerst GOOGLE API Key und CSE-ID in ENV/.env setzen.</div>';
-            } else {
-                $updated = max(0, (int) ($_GET['speaker_updated'] ?? 0));
-                $skipped = max(0, (int) ($_GET['speaker_skipped'] ?? 0));
-                $failed = max(0, (int) ($_GET['speaker_failed'] ?? 0));
-                echo '<div class="alert alert-success">🌐 Speaker-Backfill ausgeführt. Aktualisiert: ' . htmlspecialchars((string) $updated, ENT_QUOTES, 'UTF-8') . ', übersprungen: ' . htmlspecialchars((string) $skipped, ENT_QUOTES, 'UTF-8') . ', Fehler: ' . htmlspecialchars((string) $failed, ENT_QUOTES, 'UTF-8') . '.</div>';
-            }
-        }
-        if (isset($_GET['deleted'])) {
-            echo '<div class="alert alert-success">🗑️ Gelöscht.</div>';
-        }
-        if (isset($_GET['synced'])) {
-            echo '<div class="alert alert-success">🔗 Verknüpfungen zu Firmen und Experts wurden aktualisiert.</div>';
-        }
-        if (isset($_GET['warning']) && (string) $_GET['warning'] === 'relations') {
-            echo '<div class="alert alert-warning">⚠️ Event wurde gespeichert, aber die Speaker-Zuordnung konnte nicht aktualisiert werden. Details stehen im Plugin-Log.</div>';
-        }
-        if (isset($_GET['error'])) {
-            $error = (string) $_GET['error'];
-            $messages = [
-                'save' => 'Speichern fehlgeschlagen. Bitte Pflichtfelder, Datenbank-Migration und Plugin-Log prüfen.',
-                'required_title' => 'Speichern fehlgeschlagen: Titel bzw. Anzeigename ist erforderlich.',
-                'csrf' => 'Sicherheitsprüfung fehlgeschlagen. Bitte Seite neu laden und erneut speichern.',
-                'not_found' => 'Datensatz wurde nicht gefunden.',
-            ];
-            echo '<div class="alert alert-error">❌ Fehler: ' . htmlspecialchars($messages[$error] ?? $error, ENT_QUOTES, 'UTF-8') . '</div>';
-        }
+        return '<input type="hidden" name="csrf_token" value="' . $this->e(CMS\Security::instance()->generateToken($action)) . '">';
     }
 
     private function field(string $name, string $label, mixed $value, bool $required = false, string $type = 'text'): string
     {
-        $step = $type === 'number' ? ' step="0.01"' : '';
-        return '<label class="form-group"><span>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span><input class="form-control" type="' . htmlspecialchars($type, ENT_QUOTES, 'UTF-8') . '" name="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '" value="' . htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8') . '"' . $step . ($required ? ' required' : '') . '></label>';
+        $step = $type === 'number' ? ' step="0.01" min="0"' : '';
+
+        return '<label class="form-group"><span>' . $this->e($label) . '</span><input class="form-control" type="' . $this->e($type) . '" name="' . $this->e($name) . '" value="' . $this->e((string) $value) . '"' . $step . ($required ? ' required' : '') . '></label>';
     }
 
-    /** @param array<string,string> $options */
+    /** @param array<string, string> $options */
     private function select(string $name, string $label, string $value, array $options): string
     {
         if ($value !== '' && !array_key_exists($value, $options)) {
@@ -822,6 +1054,7 @@ final class CMS_365NET_Events_Admin
         foreach ($options as $optionValue => $optionLabel) {
             $html .= '<option value="' . $this->e($optionValue) . '"' . ($value === (string) $optionValue ? ' selected' : '') . '>' . $this->e($optionLabel) . '</option>';
         }
+
         return $html . '</select></label>';
     }
 
@@ -842,33 +1075,13 @@ final class CMS_365NET_Events_Admin
     /** @return array<int, string> */
     private function targetAudienceOptions(): array
     {
-        return [
-            'IT-Admins',
-            'Entscheider',
-            'Developers',
-            'Architects',
-            'Consultants',
-            'Security Teams',
-            'Endanwender',
-            'Führungskräfte',
-            'Community',
-            'Einsteiger',
-            'Fortgeschrittene',
-        ];
+        return ['IT-Admins', 'Entscheider', 'Developers', 'Architects', 'Consultants', 'Security Teams', 'Endanwender', 'Führungskräfte', 'Community', 'Einsteiger', 'Fortgeschrittene'];
     }
 
     /** @return array<int, string> */
     private function languageOptions(): array
     {
-        return [
-            'Deutsch',
-            'Englisch',
-            'Deutsch/Englisch',
-            'Französisch',
-            'Spanisch',
-            'Italienisch',
-            'Niederländisch',
-        ];
+        return ['Deutsch', 'Englisch', 'Deutsch/Englisch', 'Französisch', 'Spanisch', 'Italienisch', 'Niederländisch'];
     }
 
     /** @param array<int, string> $options */
@@ -889,7 +1102,7 @@ final class CMS_365NET_Events_Admin
             $html .= '<option value="' . $this->e($option) . '"' . (in_array($option, $selected, true) ? ' selected' : '') . '>' . $this->e($option) . '</option>';
         }
 
-        return $html . '</select><small class="description">Mehrfachauswahl mit Strg/Cmd oder Doppelklick.</small></label>';
+        return $html . '</select><small class="form-hint">Mehrfachauswahl mit Strg/Cmd oder Doppelklick.</small></label>';
     }
 
     private function textareaSetting(string $name, string $label, mixed $value): string
@@ -932,7 +1145,33 @@ final class CMS_365NET_Events_Admin
 
     private function checkbox(string $name, string $label, bool $checked): string
     {
-        return '<label class="form-group cms365-checkbox"><span>' . $this->e($label) . '</span><input type="hidden" name="' . $this->e($name) . '" value="0"><input type="checkbox" name="' . $this->e($name) . '" value="1"' . ($checked ? ' checked' : '') . '></label>';
+        return '<label class="form-group cms365-checkbox"><input type="hidden" name="' . $this->e($name) . '" value="0"><input type="checkbox" name="' . $this->e($name) . '" value="1"' . ($checked ? ' checked' : '') . '><span>' . $this->e($label) . '</span></label>';
+    }
+
+    private function statusSelect(string $value): string
+    {
+        return $this->select('status', 'Status', $value === 'draft' ? 'draft' : 'published', ['published' => 'Veröffentlicht', 'draft' => 'Entwurf']);
+    }
+
+    private function statusBadge(string $status): string
+    {
+        $published = $status === 'published';
+
+        return '<span class="status-badge ' . ($published ? 'active' : 'inactive') . '">' . ($published ? 'Veröffentlicht' : 'Entwurf') . '</span>';
+    }
+
+    private function preview(string $previewId, string $inputId, string $url): string
+    {
+        $safe = preg_match('#^(?:https?://|/)#i', $url) === 1 && !str_starts_with($url, '//');
+
+        return '<div id="' . $this->e($previewId) . '" class="cms365-image-preview" data-cms365-image-preview data-input-id="' . $this->e($inputId) . '">'
+            . ($url !== '' && $safe ? '<img src="' . $this->e($url) . '" alt="" loading="lazy">' : '<span>Keine Vorschau</span>') . '</div>';
+    }
+
+    private function mediaButtons(string $inputId, string $previewId, string $title): string
+    {
+        return '<button type="button" class="btn btn-secondary" data-open-media-picker data-target-input="' . $this->e($inputId) . '" data-preview-id="' . $this->e($previewId) . '" data-picker-title="' . $this->e($title) . '"><i class="ti ti-photo" aria-hidden="true"></i> Mediathek</button>'
+            . '<button type="button" class="btn btn-secondary" data-clear-media-input data-target-input="' . $this->e($inputId) . '">Leeren</button>';
     }
 
     private function imageField(string $urlName, string $urlLabel, mixed $urlValue, string $altName, mixed $altValue): string
@@ -940,7 +1179,11 @@ final class CMS_365NET_Events_Admin
         $url = (string) $urlValue;
         $inputId = 'cms365-media-' . preg_replace('/[^a-z0-9_-]+/i', '-', $urlName);
         $previewId = $inputId . '-preview';
-        return '<div class="cms365-image-field"><label class="form-group"><span>' . $this->e($urlLabel) . '</span><div class="cms365-media-row"><input id="' . $this->e($inputId) . '" class="form-control" type="text" name="' . $this->e($urlName) . '" value="' . $this->e($url) . '" placeholder="/uploads/bild.webp oder https://…" data-cms365-image-input data-media-target-input><button type="button" class="btn btn-secondary" data-open-media-picker data-target-input="' . $this->e($inputId) . '" data-preview-id="' . $this->e($previewId) . '" data-picker-title="' . $this->e($urlLabel . ' auswählen') . '">🖼️ Mediathek</button><button type="button" class="btn btn-secondary" data-clear-media-input data-target-input="' . $this->e($inputId) . '" data-preview-id="' . $this->e($previewId) . '">Leeren</button></div></label><div id="' . $this->e($previewId) . '" class="cms365-image-preview" data-cms365-image-preview data-media-preview data-preview-variant="image" data-input-id="' . $this->e($inputId) . '">' . ($url !== '' ? '<img src="' . $this->e($url) . '" alt="" loading="lazy">' : '<span>Keine Vorschau</span>') . '</div><label class="form-group"><span>Alt-Text</span><input class="form-control" type="text" name="' . $this->e($altName) . '" value="' . $this->e((string) $altValue) . '"></label></div>';
+
+        return '<div class="cms365-image-field"><label class="form-group"><span>' . $this->e($urlLabel) . '</span><div class="cms365-media-row"><input id="' . $this->e($inputId) . '" class="form-control" type="text" name="' . $this->e($urlName) . '" value="' . $this->e($url) . '" placeholder="/uploads/bild.webp oder https://…" data-cms365-image-input>'
+            . $this->mediaButtons($inputId, $previewId, $urlLabel . ' auswählen') . '</div></label>'
+            . $this->preview($previewId, $inputId, $url)
+            . '<label class="form-group"><span>Alt-Text</span><input class="form-control" type="text" name="' . $this->e($altName) . '" value="' . $this->e((string) $altValue) . '"></label></div>';
     }
 
     private function mediaUrlField(string $name, string $label, mixed $value): string
@@ -949,19 +1192,47 @@ final class CMS_365NET_Events_Admin
         $inputId = 'cms365-media-' . preg_replace('/[^a-z0-9_-]+/i', '-', $name);
         $previewId = $inputId . '-preview';
 
-        return '<label class="form-group cms365-media-field"><span>' . $this->e($label) . '</span><div class="cms365-media-row"><input id="' . $this->e($inputId) . '" class="form-control" type="text" name="' . $this->e($name) . '" value="' . $this->e($url) . '" placeholder="/uploads/bild.webp oder https://…" data-cms365-image-input data-media-target-input><button type="button" class="btn btn-secondary" data-open-media-picker data-target-input="' . $this->e($inputId) . '" data-preview-id="' . $this->e($previewId) . '" data-picker-title="' . $this->e($label . ' auswählen') . '">🖼️ Mediathek</button><button type="button" class="btn btn-secondary" data-clear-media-input data-target-input="' . $this->e($inputId) . '" data-preview-id="' . $this->e($previewId) . '">Leeren</button></div><div id="' . $this->e($previewId) . '" class="cms365-image-preview" data-cms365-image-preview data-media-preview data-preview-variant="image" data-input-id="' . $this->e($inputId) . '">' . ($url !== '' ? '<img src="' . $this->e($url) . '" alt="" loading="lazy">' : '<span>Keine Vorschau</span>') . '</div></label>';
+        return '<div class="form-group cms365-media-field"><label for="' . $this->e($inputId) . '"><span>' . $this->e($label) . '</span></label><div class="cms365-media-row"><input id="' . $this->e($inputId) . '" class="form-control" type="text" name="' . $this->e($name) . '" value="' . $this->e($url) . '" placeholder="/uploads/bild.webp oder https://…" data-cms365-image-input>'
+            . $this->mediaButtons($inputId, $previewId, $label . ' auswählen') . '</div>'
+            . $this->preview($previewId, $inputId, $url) . '</div>';
     }
 
     private function galleryField(string $name, string $label, mixed $value): string
     {
         $inputId = 'cms365-gallery-' . preg_replace('/[^a-z0-9_-]+/i', '-', $name);
-        return '<label class="form-group cms365-gallery-field"><span>' . $this->e($label) . '</span><div class="cms365-media-row cms365-media-row--toolbar"><button type="button" class="btn btn-secondary" data-open-media-picker data-target-input="' . $this->e($inputId) . '" data-gallery-target="1" data-picker-title="Galeriebilder auswählen">🖼️ Bilder aus Mediathek hinzufügen</button><button type="button" class="btn btn-secondary" data-clear-gallery-input data-target-input="' . $this->e($inputId) . '">Galerie leeren</button></div><textarea id="' . $this->e($inputId) . '" name="' . $this->e($name) . '" class="form-control" rows="5" placeholder="/uploads/bild-1.webp&#10;/uploads/bild-2.webp" data-cms365-gallery-input>' . $this->e((string) $value) . '</textarea><small class="description">Ein Klick im Mediathek-Fenster fügt das Bild als neue Zeile hinzu. Mehrere Bilder nacheinander auswählen – fertig ist die Galerie.</small><div class="cms365-gallery-preview" data-cms365-gallery-preview data-input-id="' . $this->e($inputId) . '"></div></label>';
+
+        return '<div class="form-group cms365-gallery-field"><label for="' . $this->e($inputId) . '"><span>' . $this->e($label) . '</span></label><div class="cms365-media-row cms365-media-row--toolbar"><button type="button" class="btn btn-secondary" data-open-media-picker data-target-input="' . $this->e($inputId) . '" data-gallery-target="1" data-picker-title="Galeriebilder auswählen"><i class="ti ti-photo-plus" aria-hidden="true"></i> Bilder aus Mediathek hinzufügen</button><button type="button" class="btn btn-secondary" data-clear-media-input data-target-input="' . $this->e($inputId) . '">Galerie leeren</button></div>'
+            . '<textarea id="' . $this->e($inputId) . '" name="' . $this->e($name) . '" class="form-control" rows="5" placeholder="/uploads/bild-1.webp&#10;/uploads/bild-2.webp" data-cms365-gallery-input>' . $this->e($this->galleryText((string) $value)) . '</textarea>'
+            . '<small class="form-hint">Ein Klick im Mediathek-Fenster fügt das Bild als neue Zeile hinzu.</small><div class="cms365-gallery-preview" data-cms365-gallery-preview data-input-id="' . $this->e($inputId) . '"></div></div>';
+    }
+
+    /** Gespeichertes Galerie-JSON ([{"url":…}]) als eine URL je Zeile anzeigen. */
+    private function galleryText(string $value): string
+    {
+        $decoded = json_decode($value, true);
+        if (!is_array($decoded)) {
+            return $value;
+        }
+        $urls = [];
+        foreach ($decoded as $item) {
+            $url = is_array($item) ? (string) ($item['url'] ?? '') : (string) $item;
+            if ($url !== '') {
+                $urls[] = $url;
+            }
+        }
+
+        return implode("\n", $urls);
     }
 
     private function renderMediaPickerModal(): void
     {
         $token = CMS\Security::instance()->generateToken('editorjs_media');
-        echo '<div class="modal modal-blur fade cms365-media-modal" id="settingsMediaPickerModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" data-media-picker-title>Bild auswählen</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen">×</button></div><div class="modal-body"><div data-media-picker-modal data-api-url="/api/media" data-csrf-token="' . $this->e($token) . '" data-path-prefix="events"><p class="text-secondary small mb-3">Ein Klick übernimmt das Bild in das gewählte Feld; bei Galerien werden Bilder zeilenweise ergänzt.</p><div class="cms365-media-picker-search"><input type="search" class="form-control" placeholder="Mediathek durchsuchen …" data-media-picker-search><span class="description" data-media-picker-status>Lade Medien …</span></div><div class="cms365-media-picker-grid" data-media-picker-grid></div></div></div></div></div></div>';
+        echo '<div class="modal modal-blur fade cms365-media-modal" id="settingsMediaPickerModal" tabindex="-1" aria-hidden="true" aria-labelledby="cms365-media-title"><div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content">'
+            . '<div class="modal-header"><h5 class="modal-title" id="cms365-media-title" data-media-picker-title>Bild auswählen</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button></div>'
+            . '<div class="modal-body"><div data-media-picker-modal data-api-url="/api/media" data-csrf-token="' . $this->e($token) . '" data-path-prefix="events">'
+            . '<p class="text-secondary small mb-3">Ein Klick übernimmt das Bild in das gewählte Feld; bei Galerien werden Bilder zeilenweise ergänzt.</p>'
+            . '<div class="cms365-media-picker-search"><input type="search" class="form-control" placeholder="Mediathek durchsuchen …" aria-label="Mediathek durchsuchen" data-media-picker-search><span class="form-hint" data-media-picker-status>Lade Medien …</span></div>'
+            . '<div class="cms365-media-picker-grid" data-media-picker-grid></div></div></div></div></div></div>';
     }
 
     private function editor(string $name, string $jsonValue, string $fallbackText, string $label): string
@@ -977,16 +1248,17 @@ final class CMS_365NET_Events_Admin
         if ($jsonValue === '' && $fallbackText !== '') {
             $jsonValue = json_encode([
                 'time' => time() * 1000,
-                'blocks' => array_map(static fn(string $part): array => ['type' => 'paragraph', 'data' => ['text' => htmlspecialchars(trim($part), ENT_QUOTES, 'UTF-8')]], array_filter(preg_split('/\n{2,}/', $fallbackText) ?: [])),
+                'blocks' => array_values(array_map(static fn(string $part): array => ['type' => 'paragraph', 'data' => ['text' => htmlspecialchars(trim($part), ENT_QUOTES, 'UTF-8')]], array_filter(preg_split('/\n{2,}/', $fallbackText) ?: []))),
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
         }
 
         if (class_exists('CMS\\Services\\EditorJs\\EditorJsAssetService')) {
             $service = new CMS\Services\EditorJs\EditorJsAssetService();
+
             return $service->render($name, $jsonValue, ['height' => 460, 'context' => '365netevents', 'aria_label' => $label, 'content_width' => 960]);
         }
 
-        return '<textarea class="form-control" name="' . $this->e($name) . '" rows="10">' . $this->e($jsonValue) . '</textarea>';
+        return '<textarea class="form-control" name="' . $this->e($name) . '" rows="10" aria-label="' . $this->e($label) . '">' . $this->e($jsonValue) . '</textarea>';
     }
 
     private function e(mixed $value): string

@@ -3,7 +3,7 @@
  * Plugin Name: CMS Beratung
  * Plugin URI:  https://365network.de/cms-beratung
  * Description: Spezialisierter 365CMS Landingpage Builder für Microsoft 365, Copilot, KI, Security, Compliance und IT Consulting Beratungsleistungen.
- * Version:     3.0.0
+ * Version:     3.0.1
  * Author:      365 Network
  * Author URI:  https://365network.de
  * Requires CMS: 4.0.0
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-defined('CMS_BERATUNG_VERSION') || define('CMS_BERATUNG_VERSION', '3.0.0');
+defined('CMS_BERATUNG_VERSION') || define('CMS_BERATUNG_VERSION', '3.0.1');
 defined('CMS_BERATUNG_DB_VERSION') || define('CMS_BERATUNG_DB_VERSION', '3');
 defined('CMS_BERATUNG_PLUGIN_DIR') || define('CMS_BERATUNG_PLUGIN_DIR', __DIR__ . '/');
 defined('CMS_BERATUNG_PLUGIN_URL') || define('CMS_BERATUNG_PLUGIN_URL', '/plugins/cms-beratung/');
@@ -48,6 +48,7 @@ final class CMS_Beratung
             'includes/class-storage.php',
             'includes/class-renderer.php',
             'includes/class-forms.php',
+            'includes/class-privacy.php',
             'includes/class-seo.php',
             'includes/class-import-export.php',
             'includes/class-frontend.php',
@@ -73,6 +74,7 @@ final class CMS_Beratung
         \CMS\Hooks::addAction('register_routes', [CMS_Beratung_Frontend::class, 'instance'], 10);
         \CMS\Hooks::addFilter('cms_sitemap_entries', [$this, 'sitemap_entries'], 10);
         \CMS\Hooks::addFilter('search_results', [$this, 'search_results'], 10);
+        CMS_Beratung_Privacy::register();
     }
 
     public function init_plugin(): void

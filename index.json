@@ -25,12 +25,12 @@
     },
     {
       "slug": "cms-365neteventsandspeaker",
-      "name": "365 | Events & Speaker",
+      "name": "365CMS | Events & Speaker",
       "manifest": "PLUGINS/365NET-eventsandspeaker/update.json"
     },
     {
-      "slug": "cms-365NETexpertsandcompanie",
-      "name": "365 | Experts & Companies",
+      "slug": "cms-365netexpertsandcompanie",
+      "name": "365CMS | Experts & Companies",
       "manifest": "PLUGINS/365NET-expertsandcompanie/update.json"
     },
     {
