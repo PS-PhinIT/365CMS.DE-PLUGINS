@@ -341,6 +341,7 @@ final class CMS_Booking_Frontend
                 header('Location: ' . $confirmUrl, true, 303);
                 exit;
             } catch (\Throwable $e) {
+                error_log('[cms-booking] Buchung konnte nicht gespeichert werden: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
                 $error = $this->t('error_save_failed', $lang, 'Beim Speichern der Buchung ist ein Fehler aufgetreten.');
             }
         }
@@ -534,12 +535,11 @@ final class CMS_Booking_Frontend
 
     private function get_current_user_id(): ?int
     {
-        if (class_exists('CMS\Auth')) {
-            $auth = \CMS\Auth::instance();
-            if ($auth->isLoggedIn()) {
-                $user = $auth->getUser();
-                return isset($user['id']) ? (int) $user['id'] : null;
-            }
+        // 4.0.0: Auth::getUser() existiert nicht mehr – der angemeldete Benutzer ist ein Objekt (currentUser()).
+        if (class_exists('CMS\\Auth') && \CMS\Auth::isLoggedIn()) {
+            $user = \CMS\Auth::instance()->currentUser();
+            $id = is_object($user) ? (int) ($user->id ?? 0) : 0;
+            return $id > 0 ? $id : null;
         }
         return null;
     }

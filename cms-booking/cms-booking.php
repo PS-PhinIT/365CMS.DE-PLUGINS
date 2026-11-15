@@ -102,6 +102,10 @@ final class CMS_Booking
         // Cron: Terminerinnerungen
         \CMS\Hooks::addAction('cms_cron_hourly',      [$this, 'run_hourly_cron'],                  10);
 
+        // 4.0.0: Der Core-Router prüft öffentliche POSTs global (form_guard). Das Buchungsformular nutzt
+        // sein eigenes Token `booking_submit`, das hier für die Router-Prüfung benannt wird.
+        \CMS\Hooks::addFilter('cms_public_form_persistent_token', [$this, 'public_form_token'], 10);
+
         // Sitemap: öffentliche Anbieter-Buchungsseiten
         \CMS\Hooks::addFilter('cms_sitemap_entries',  [$this, 'sitemap_entries'],                  10);
 
@@ -164,6 +168,23 @@ final class CMS_Booking
                 );
             });
         }
+    }
+
+    /**
+     * Filter `cms_public_form_persistent_token` (\CMS\Router::PUBLIC_FORM_TOKEN_FILTER).
+     *
+     * @return array{action:string,token:string}|null
+     */
+    public function public_form_token(mixed $current, mixed $routingUri = '', mixed $method = 'GET'): ?array
+    {
+        if (is_array($current) || strtoupper((string) $method) !== 'POST') {
+            return is_array($current) ? $current : null;
+        }
+        if (preg_match('#^/booking/[a-z0-9_-]+/[a-z0-9_-]+/?$#i', (string) $routingUri) !== 1) {
+            return null;
+        }
+
+        return ['action' => 'booking_submit', 'token' => (string) ($_POST['csrf_token'] ?? '')];
     }
 
     public function run_hourly_cron(): void

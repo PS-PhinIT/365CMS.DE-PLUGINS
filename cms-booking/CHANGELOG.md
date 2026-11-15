@@ -4,6 +4,10 @@
 
 ### Behoben
 
+- **Buchungsformular (öffentlich):** Der Core-Router verlangt für öffentliche POSTs ein `form_guard`-Einmaltoken; das Formular sendet ein eigenes Token und wurde mit 403 abgewiesen. Das Plugin meldet die Route `/booking/<anbieter>/<leistung>` über den Filter `cms_public_form_persistent_token` mit seinem Token an.
+- **Buchung angemeldeter Mitglieder:** `CMS\Auth::getUser()` existiert in 4.0.0 nicht – das Speichern schlug für eingeloggte Nutzer fehl. Benutzer-ID jetzt über `Auth::isLoggedIn()`/`Auth::instance()->currentUser()`; Fehler beim Speichern werden mit Datei/Zeile protokolliert.
+- **`plugins.xml`:** Nach Änderungen an Anbietern und Leistungen wird das gespeicherte Sitemap-Bundle verworfen (`SEOService::invalidateSavedSitemaps()`).
+- Validierungsfehler im Admin (`InvalidArgumentException`) landen nicht mehr im PHP-Fehlerprotokoll.
 - **E-Mail-Benachrichtigungen:** `CMS_Booking_Notifications` wurde nie instanziiert – Kunden-, Anbieter- und Admin-Mails wurden nicht versendet. Die Klasse wird jetzt bei `cms_init` registriert.
 - **Buchungsabschluss:** Nach dem Speichern rief das Frontend die nicht existierende Methode `send_booking_created()` auf; Kunden sahen „Speichern fehlgeschlagen“, obwohl die Buchung angelegt war.
 - **Member-Bereich:** Die Spalte „Service“ zeigte immer „—“ (falscher Schlüssel `service_name`); Status jetzt mit deutschen Bezeichnungen.

@@ -296,14 +296,31 @@ final class CMS_Booking_Admin_Pages
                 default => [false, 'Unbekannte Aktion.', []],
             };
         } catch (\Throwable $e) {
-            error_log('[cms-booking] admin action ' . $action . ' failed: ' . $e->getMessage());
+            if (!$e instanceof \InvalidArgumentException) {
+                error_log('[cms-booking] admin action ' . $action . ' failed: ' . $e->getMessage());
+            }
             $ok = false;
             $message = $e instanceof \InvalidArgumentException ? $e->getMessage() : 'Die Aktion konnte nicht ausgeführt werden.';
             $query = [];
         }
 
+        if ($ok && in_array($action, ['provider_save', 'provider_status', 'provider_delete', 'provider_sync', 'service_save', 'service_delete'], true)) {
+            self::invalidate_sitemaps();
+        }
         self::flash($ok, $message);
         self::redirect($page, $query);
+    }
+
+    /** Gespeichertes Sitemap-Bundle verwerfen, damit plugins.xml öffentliche Änderungen sofort zeigt. */
+    private static function invalidate_sitemaps(): void
+    {
+        if (!class_exists('CMS\\Services\\SEOService')) {
+            return;
+        }
+        try {
+            \CMS\Services\SEOService::getInstance()->invalidateSavedSitemaps();
+        } catch (\Throwable) {
+        }
     }
 
     /** @return array{0:bool,1:string,2:array<string,scalar>} */

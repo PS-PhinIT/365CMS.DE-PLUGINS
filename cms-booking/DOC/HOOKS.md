@@ -11,7 +11,8 @@
 | `member_dashboard_init` | Action | Member-Bereich `booking` (Capability `member`) |
 | `head`, `body_end` | Action | CSS/Primärfarbe bzw. JS auf `/booking*` |
 | `cms_cron_hourly` | Action | Terminerinnerungen |
-| `cms_sitemap_entries` | Filter | `/booking/<anbieter>` |
+| `cms_sitemap_entries` | Filter | `/booking/<anbieter>`; nach Änderungen an Anbietern/Leistungen wird das gespeicherte Sitemap-Bundle verworfen (`SEOService::invalidateSavedSitemaps()`) |
+| `cms_public_form_persistent_token` | Filter | meldet für `POST /booking/<anbieter>/<leistung>` das eigene Token (`booking_submit`) an, statt des Core-Einmaltokens `form_guard` |
 | `dsgvo_export_data`, `dsgvo_delete_data` | Action | DSGVO-Auskunft und -Löschung |
 
 Registrierungen: `DataRetentionService::registerRule('cms_booking_customers')`, `AdminNoticeService::registerCheck('cms_booking_pending')`.
