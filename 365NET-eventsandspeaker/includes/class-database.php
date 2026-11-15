@@ -1141,7 +1141,7 @@ final class CMS_365NET_Events_Database
             'unique_id' => (string) ($data['unique_id'] ?? ('manual-event-' . substr(hash('sha256', $title . microtime(true)), 0, 12))),
             'source_nr' => isset($data['source_nr']) && (int) $data['source_nr'] > 0 ? (int) $data['source_nr'] : null,
             'title' => $title,
-            'slug' => $this->uniqueSlug((string) ($data['slug'] ?? $title), '365net_events', $id),
+            'slug' => $this->uniqueSlug(trim((string) ($data['slug'] ?? '')) !== '' ? (string) $data['slug'] : $title, '365net_events', $id),
             'start_date' => $this->normalizeDate((string) ($data['start_date'] ?? '')),
             'end_date' => $this->normalizeDate((string) ($data['end_date'] ?? '')),
             'date_label' => $this->cleanText((string) ($data['date_label'] ?? ''), 80),
@@ -1395,7 +1395,7 @@ final class CMS_365NET_Events_Database
             'first_name' => $firstName !== '' ? $firstName : null,
             'last_name' => $lastName !== '' ? $lastName : null,
             'display_name' => $displayName,
-            'slug' => $this->uniqueSlug((string) ($data['slug'] ?? $displayName), '365net_event_speakers', $id),
+            'slug' => $this->uniqueSlug(trim((string) ($data['slug'] ?? '')) !== '' ? (string) $data['slug'] : $displayName, '365net_event_speakers', $id),
             'company' => null,
             'topic' => $this->cleanText((string) ($data['topic'] ?? ''), 500),
             'award' => $this->cleanText((string) ($data['award'] ?? ''), 255),
@@ -4113,6 +4113,11 @@ final class CMS_365NET_Events_Database
 
         if (str_starts_with($url, './')) {
             $url = '/' . ltrim(substr($url, 2), '/');
+        }
+
+        // Andere Schemata (javascript:, data:, vbscript: …) verwerfen statt sie zu einem relativen Pfad zu machen.
+        if (preg_match('#^[a-z][a-z0-9+.\-]*:#i', $url) === 1 && preg_match('#^https?://#i', $url) !== 1) {
+            return '';
         }
 
         if (!str_starts_with($url, 'http://') && !str_starts_with($url, 'https://') && $url !== '' && $url[0] !== '/') {

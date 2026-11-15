@@ -2,7 +2,7 @@
 
 > Weitere Dokumente: [DATABASE.md](DATABASE.md) · [HOOKS.md](HOOKS.md) · [API.md](API.md) · [GLOBAL-DESIGN-MODULE.md](GLOBAL-DESIGN-MODULE.md) · [Changelog](../CHANGELOG.md)
 
-> **Plugin:** `cms-beratung` · **Version:** 3.0.2 · **Stand:** 2026-11-15
+> **Plugin:** `cms-beratung` · **Version:** 3.0.3 · **Stand:** 2026-11-15
 > **Voraussetzungen:** 365CMS 4.0.0 (Plugin-Layout-Vertrag), PHP 8.4.1
 
 ## 1. Admin-Oberfläche
@@ -24,7 +24,7 @@
 | Übersicht | `/admin/plugins/cms-beratung/cms-beratung` | Schnellaktionen, System-Check, neueste Anfragen und Landingpages |
 | Landingpages | `…/cms-beratung-landingpages` | Liste mit Filter (Status, Suche); Bearbeiten, Vorschau, Publicseite, Standalone, Export, Duplizieren, Veröffentlichen/Deaktivieren, Löschen. Badge: Anzahl |
 | ↳ Editor | `…/cms-beratung?view=cms-beratung-new[&id=…]` | Builder mit Vorlagen, Hero, Bereichen, Kontakt, Design, SEO (aktiver Menüpunkt: Landingpages) |
-| Formular-Anfragen | `…/cms-beratung-submissions` | Filter (Status, Landingpage, Suche), Detail `?view_id=<id>` mit Status/Notiz, Löschen, CSV-Export, alte Anfragen löschen. Badge: neue Anfragen |
+| Formular-Anfragen | `…/cms-beratung-submissions` | Filter (Status, Landingpage, Suche), Detail `?view_id=<id>` mit Status/Notiz, Sammelaktion (Status setzen, löschen), Löschen, CSV-Export, alte Anfragen löschen. Badge: neue Anfragen |
 | M365 FAQs | `…/cms-beratung-faqs` | Zentrale FAQs für alle Landingpages, Anzeige- und Schema-Optionen |
 | Design-Presets | `…/cms-beratung-presets` | System- und eigene Presets; Anlegen/Bearbeiten/Löschen, „Übernehmen“ in die globalen Farben |
 | Globale Einstellungen | `…/cms-beratung-settings` | Design, Kontakt, **Datenschutz**, SEO, Tracking |

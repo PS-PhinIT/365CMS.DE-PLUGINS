@@ -1,7 +1,7 @@
 {
   "name": "365CMS | Events & Speaker",
   "slug": "cms-365neteventsandspeaker",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "author": "365 Network",
   "homepage": "https://365network.de/cms-365neteventsandspeaker",
   "download_url": "https://365network.de/downloads/cms-365neteventsandspeaker.zip",
@@ -11,5 +11,5 @@
   "requires_php": "8.4.1",
   "min_php": "8.4.1",
   "last_updated": "2026-11-15",
-  "changelog": "4.0.1: Kompatibilitäts-Audit: Schema-Version in der Autoload-Option cms_365neteventsandspeaker_db_version (keine Abfrage je Anfrage, kein SQL-Fehler im Log vor der Installation; Deinstallation entfernt die Option); geprüft gegen den aktuellen Core-main. 4.0.0: Admin läuft über den Core-AdminRouter (/admin/plugins/365netevents/…) im Layout-Vertrag 4.0.0, Menütitel „365CMS | Events & Speaker“; alte Adressen /admin/365netevents/… leiten um (GET 302, POST 307). Event- und Speakerlisten mit Filtern, Sammelaktionen (Veröffentlichen/Entwurf/Löschen), Pagination und CSV-Export; Speaker-Backfill über die Einstellungen startbar, Google-API-Key verschlüsselt (CryptoService). Lifecycle cms_365neteventsandspeaker_activate/deactivate/uninstall. Sitemap, Seitensuche, Selbstauskunft (Speaker-Profile per E-Mail) und Systemhinweise angebunden; SEO-Meta für Detail- und Übersichtsseiten. Keine SELECT *, Top-Partner-Abfrage gebündelt, Einstellungen je Anfrage einmal gelesen; Fix: Speichern der Einstellungen setzte schema_version zurück. 3.2.0: Einheitliches Plugin-Layout (PhinIT-Admin-Navigation 3.0). 3.0.15: Schema-Abgleich nur noch bei Versionswechsel."
+  "changelog": "4.0.2: Funktions-Audit: Slug wird bei leerem Feld aus Titel bzw. Namen gebildet (bisher immer eintrag, eintrag-2 …); Bild-URLs mit anderem Schema als http(s) (javascript:, data:) werden verworfen; Sprachfehler in den Seed-Beschreibungen korrigiert. 4.0.1: Kompatibilitäts-Audit: Schema-Version in der Autoload-Option cms_365neteventsandspeaker_db_version (keine Abfrage je Anfrage, kein SQL-Fehler im Log vor der Installation; Deinstallation entfernt die Option); geprüft gegen den aktuellen Core-main. 4.0.0: Admin läuft über den Core-AdminRouter (/admin/plugins/365netevents/…) im Layout-Vertrag 4.0.0, Menütitel „365CMS | Events & Speaker“; alte Adressen /admin/365netevents/… leiten um (GET 302, POST 307). Event- und Speakerlisten mit Filtern, Sammelaktionen (Veröffentlichen/Entwurf/Löschen), Pagination und CSV-Export; Speaker-Backfill über die Einstellungen startbar, Google-API-Key verschlüsselt (CryptoService). Lifecycle cms_365neteventsandspeaker_activate/deactivate/uninstall. Sitemap, Seitensuche, Selbstauskunft (Speaker-Profile per E-Mail) und Systemhinweise angebunden; SEO-Meta für Detail- und Übersichtsseiten. Keine SELECT *, Top-Partner-Abfrage gebündelt, Einstellungen je Anfrage einmal gelesen; Fix: Speichern der Einstellungen setzte schema_version zurück. 3.2.0: Einheitliches Plugin-Layout (PhinIT-Admin-Navigation 3.0). 3.0.15: Schema-Abgleich nur noch bei Versionswechsel."
 }

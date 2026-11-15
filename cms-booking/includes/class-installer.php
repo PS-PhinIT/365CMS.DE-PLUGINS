@@ -46,6 +46,9 @@ final class CMS_Booking_Installer
 
     public static function uninstall(): void
     {
+        if (class_exists('CMS_Booking_Privacy')) {
+            CMS_Booking_Privacy::delete_all_exports();
+        }
         if (!class_exists('CMS\Database')) {
             return;
         }

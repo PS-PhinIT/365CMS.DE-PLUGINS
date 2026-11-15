@@ -1,5 +1,19 @@
 # Changelog – CMS Booking
 
+## 4.0.2 – 2026-11-15
+
+Funktions-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft auf der 365CMS-Testinstallation (Core-`main`).
+
+### Behoben
+
+- **FUN-PLG-04 – Statuswechsel ohne Prüfung:** `confirm()`, `cancel()`, `complete()` und `no_show()` setzten jeden Status unabhängig vom aktuellen und lösten jedes Mal die Kundenmail aus – ein zweites Bestätigen schickte die Bestätigung erneut, abgeschlossene Termine ließen sich stornieren. Jetzt nur noch `pending → confirmed/cancelled` und `confirmed → completed/no_show/cancelled`; das Update ist an den gelesenen Status gebunden, gleichzeitige Anfragen lösen den Wechsel nur einmal aus.
+- **FUN-PLG-05 – DSGVO-Auskunft ohne Ergebnis:** `dsgvo_export_data` löste nur eine Action ohne Abnehmer aus; Auskunft und Löschung berücksichtigten außerdem nur Buchungen mit Konto. Jetzt entsteht eine JSON-Auskunftsdatei in der privaten Ablage (Download/Löschen unter *Buchungen*, Entfernung nach 30 Tagen), und Auskunft wie Löschung erfassen auch Gastbuchungen über die vom Core gelieferte E-Mail-Adresse.
+
+### Neu
+
+- **FUN-PLG-03 – Sammelaktion in der Buchungsliste:** bestätigen, stornieren, abschließen, „nicht erschienen“ oder löschen für markierte Buchungen (höchstens 200 je Aufruf); Benachrichtigungen wie bei der Einzelaktion, nicht mögliche Wechsel werden übersprungen und gemeldet. „Alle auswählen“ über die neue Datei `assets/js/booking-admin.js`.
+- **Selbstauskunft:** Buchungen erscheinen im Datenexport des Mitgliederbereichs (`cms_member_export_data`).
+
 ## 4.0.1 – 2026-11-15
 
 Sicherheits-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`).

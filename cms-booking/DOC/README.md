@@ -2,7 +2,7 @@
 
 > Weitere Dokumente: [DATABASE.md](DATABASE.md) · [HOOKS.md](HOOKS.md) · [API.md](API.md) · [Changelog](../CHANGELOG.md)
 
-> **Plugin:** `cms-booking` · **Version:** 4.0.0 · **Stand:** 2026-11-15
+> **Plugin:** `cms-booking` · **Version:** 4.0.2 · **Stand:** 2026-11-15
 > **Voraussetzungen:** 365CMS 4.0.0 (Plugin-Layout-Vertrag), PHP 8.4.1
 
 ## 1. Admin-Oberfläche
@@ -24,7 +24,7 @@ Alle Seiten nutzen den Core-Layout-Vertrag (`cms_plugin_workspace_open()` / `cms
 | Menüpunkt | URL | Inhalt |
 |---|---|---|
 | Übersicht | `/admin/plugins/booking/booking` | Schnellaktionen, System-Check (Schema, buchbares Angebot, unbearbeitete Anfragen, E-Mail, Erinnerungen, Anonymisierung, Integrationen), anstehende Termine |
-| Buchungen | `…/bookings` | Filter (Suche, Status, Anbieter), Statusaktionen, Pagination, CSV-Export; `?view=<id>` Detail mit interner Notiz. Badge: offene Anfragen |
+| Buchungen | `…/bookings` | Filter (Suche, Status, Anbieter), Statusaktionen, Sammelaktion (bestätigen, stornieren, abschließen, nicht erschienen, löschen), Pagination, CSV-Export, DSGVO-Auskunftsdateien (Download/Löschen); `?view=<id>` Detail mit interner Notiz. Badge: offene Anfragen |
 | Anbieter | `…/providers` | Liste, Aktivieren/Deaktivieren, Synchronisieren, Löschen; `?action=new` / `?edit=<id>` Formular |
 | Verfügbarkeit | `…/availability?provider_id=<id>` | Wochenplan (Mo–So, bis zu zwei Zeitfenster), Abwesenheiten (Zeitraum, optional Uhrzeit) |
 | Leistungen | `…/services` | Suche, Liste; Formular mit Dauer, Puffer, Kapazität, Tageslimit, Preis, Ort, Buchungsart, Meeting-Link |
@@ -55,7 +55,7 @@ Alle Routen auch unter `/en/…`. CSS/JS nur auf diesen Routen; die Primärfarbe
 | Cron | `cms_cron_hourly` → `CMS_Booking_Notifications::send_due_reminders()` |
 | E-Mail | `CMS\Services\MailService::sendDetailed()` (Header `X-365CMS-Test-Source: cms-booking`, Reply-To aus den Einstellungen) |
 | Datenaufbewahrung | Regel `cms_booking_customers` (Aktion *anonymisieren*): Name, E-Mail, Telefon, Notizen und Meta abgeschlossener/stornierter/nicht wahrgenommener Termine nach `retention_days` |
-| DSGVO | `dsgvo_export_data`, `dsgvo_delete_data` |
+| DSGVO | `dsgvo_export_data` schreibt die Buchungen der Person als JSON in die private Ablage (`PrivateStorageService`, `cms-booking/privacy-exports`; Download/Löschen unter Buchungen, Entfernung nach 30 Tagen); `dsgvo_delete_data` anonymisiert sie; `cms_member_export_data` ergänzt die Selbstauskunft (`buchungen`). Zuordnung über das Konto **und** die vom Core gelieferte (bestätigte) E-Mail-Adresse – auch Gastbuchungen |
 | Systemhinweise | `cms_booking_pending` – Anfragen, deren Termin unbearbeitet verstrichen ist |
 | Sitemap | `cms_sitemap_entries`: aktive Anbieter mit mindestens einer aktiven Leistung |
 | Member-Bereich | `PluginDashboardRegistry` Slug `booking`, Capability `member`, eigene Buchungen des Mitglieds |

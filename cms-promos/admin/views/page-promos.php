@@ -81,9 +81,22 @@ $listUrl = CMS_Promos_Admin_Pages::page_url('promos-items');
             <p class="pr-muted">Lege eine Promo mit Ziel-URL und Platzierung an.</p>
         </div>
     <?php else: ?>
+        <form method="post" id="promos-bulk" class="pr-bulk" data-cms-confirm="Ausgewählte Aktion auf die markierten Promos anwenden?">
+            <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+            <input type="hidden" name="action" value="bulk_promos">
+            <label class="visually-hidden" for="pr-bulk-action">Sammelaktion</label>
+            <select id="pr-bulk-action" name="bulk_action" class="form-select" required>
+                <option value="">Sammelaktion wählen</option>
+                <option value="activate">Aktivieren</option>
+                <option value="pause">Pausieren</option>
+                <option value="archive">Archivieren</option>
+                <option value="delete">Löschen</option>
+            </select>
+            <button type="submit" class="btn btn-outline-secondary">Anwenden</button>
+        </form>
         <div class="users-table-container">
             <table class="users-table">
-                <thead><tr><th scope="col">Titel</th><th scope="col">Platzierung</th><th scope="col">Status</th><th scope="col">Laufzeit</th><th scope="col" class="pr-num">Impr. / Klicks</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead>
+                <thead><tr><th scope="col" class="pr-check"><input class="form-check-input" type="checkbox" data-pr-select-all aria-label="Alle Promos auswählen"></th><th scope="col">Titel</th><th scope="col">Platzierung</th><th scope="col">Status</th><th scope="col">Laufzeit</th><th scope="col" class="pr-num">Impr. / Klicks</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead>
                 <tbody>
                 <?php foreach ($promos as $item): ?>
                     <?php
@@ -92,6 +105,7 @@ $listUrl = CMS_Promos_Admin_Pages::page_url('promos-items');
                     $expired = $status === 'active' && !empty($item['end_at']) && strtotime((string) $item['end_at']) < time();
                     ?>
                     <tr>
+                        <td class="pr-check"><input class="form-check-input" type="checkbox" name="ids[]" value="<?php echo $id; ?>" form="promos-bulk" data-pr-select-item aria-label="<?php echo $e('„' . $item['title'] . '“ auswählen'); ?>"></td>
                         <td>
                             <a href="<?php echo $e(CMS_Promos_Admin_Pages::page_url('promos-items', ['edit' => $id])); ?>" class="pr-admin-link"><?php echo $e($item['title']); ?></a>
                             <?php if (!empty($item['is_featured'])): ?><span class="pr-soft-badge pr-soft-badge--featured">Featured</span><?php endif; ?>

@@ -580,6 +580,20 @@ final class CMS_Beratung_Admin_Pages
                     $count = $storage->delete_submissions([$id]);
                     self::flash($count > 0, $count > 0 ? 'Anfrage gelöscht.' : 'Anfrage nicht gefunden.');
                     break;
+                case 'bulk':
+                    $ids = is_array($_POST['ids'] ?? null) ? array_slice($_POST['ids'], 0, 500) : [];
+                    $bulk = (string) ($_POST['bulk_status'] ?? '');
+                    $statuses = CMS_Beratung_Storage::submission_statuses();
+                    if ($ids === []) {
+                        self::flash(false, 'Bitte mindestens eine Anfrage markieren.');
+                    } elseif ($bulk === 'delete') {
+                        self::flash(true, sprintf('%d Anfrage(n) gelöscht.', $storage->delete_submissions(array_map('intval', $ids))));
+                    } elseif (array_key_exists($bulk, $statuses)) {
+                        self::flash(true, sprintf('%d Anfrage(n) auf „%s“ gesetzt.', $storage->set_submissions_status($ids, $bulk), $statuses[$bulk]));
+                    } else {
+                        self::flash(false, 'Bitte eine Sammelaktion wählen.');
+                    }
+                    break;
                 case 'privacy_download':
                     $path = CMS_Beratung_Privacy::export_path((string) ($_POST['file'] ?? ''));
                     if ($path === null) {
@@ -656,11 +670,17 @@ final class CMS_Beratung_Admin_Pages
                 self::render_privacy_exports($token);
                 return;
             }
-            echo '<div class="users-table-container"><table class="users-table"><thead><tr><th scope="col">Datum</th><th scope="col">Absender</th><th scope="col">Thema</th><th scope="col">Landingpage</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead><tbody>';
+            echo '<form method="post" id="beratung-bulk" class="beratung-bulk" data-cms-confirm="Ausgewählte Aktion auf die markierten Anfragen anwenden?"><input type="hidden" name="csrf_token" value="' . self::esc($token) . '"><input type="hidden" name="beratung_admin_action" value="submission_action"><input type="hidden" name="submission_action" value="bulk">'
+                . '<label class="visually-hidden" for="beratung-bulk-status">Sammelaktion</label><select id="beratung-bulk-status" class="form-select" name="bulk_status" required><option value="">Sammelaktion wählen</option>';
+            foreach ($statuses as $key => $label) {
+                echo '<option value="' . self::esc($key) . '">Status: ' . self::esc($label) . '</option>';
+            }
+            echo '<option value="delete">Löschen</option></select><button class="btn btn-outline-secondary" type="submit">Anwenden</button></form>';
+            echo '<div class="users-table-container"><table class="users-table"><thead><tr><th scope="col" class="beratung-check"><input class="form-check-input" type="checkbox" data-beratung-select-all aria-label="Alle Anfragen auswählen"></th><th scope="col">Datum</th><th scope="col">Absender</th><th scope="col">Thema</th><th scope="col">Landingpage</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead><tbody>';
             foreach ($items as $item) {
                 $sid = (int) $item['id'];
                 $status = (string) ($item['status'] ?? 'new');
-                echo '<tr><td class="beratung-nowrap">' . self::esc(self::format_datetime((string) ($item['created_at'] ?? ''))) . '</td>'
+                echo '<tr><td class="beratung-check"><input class="form-check-input" type="checkbox" name="ids[]" value="' . $sid . '" form="beratung-bulk" data-beratung-select-item aria-label="' . self::esc('Anfrage von ' . (string) ($item['sender_name'] ?? '#' . $sid) . ' auswählen') . '"></td><td class="beratung-nowrap">' . self::esc(self::format_datetime((string) ($item['created_at'] ?? ''))) . '</td>'
                     . '<td><a class="beratung-link" href="' . self::esc(self::admin_url('cms-beratung-submissions', ['view_id' => $sid])) . '">' . self::esc((string) ($item['sender_name'] ?? '–')) . '</a><div class="beratung-muted">' . self::esc((string) ($item['sender_email'] ?? '')) . ((string) ($item['company'] ?? '') !== '' ? ' · ' . self::esc((string) $item['company']) : '') . '</div></td>'
                     . '<td>' . self::esc((string) ($item['topic'] ?? '')) . '<div class="beratung-muted">' . self::esc((string) ($item['desired_service'] ?? '')) . '</div></td>'
                     . '<td>' . self::esc((string) ($item['landingpage_title'] ?? '–')) . '</td>'
@@ -1741,6 +1761,14 @@ final class CMS_Beratung_Admin_Pages
 
     private static function enqueue_admin_scripts(): void
     {
+        $page = self::normalize_slug((string) ($_GET['page'] ?? ''));
+        if ($page === 'cms-beratung-submissions') {
+            $listJs = CMS_BERATUNG_PLUGIN_DIR . 'assets/js/admin-list.js';
+            if (is_file($listJs)) {
+                echo '<script src="' . self::esc(CMS_BERATUNG_PLUGIN_URL . 'assets/js/admin-list.js') . '?v=' . filemtime($listJs) . '" defer></script>' . "\n";
+            }
+            return;
+        }
         if (self::normalize_slug((string) ($_GET['page'] ?? '')) !== 'cms-beratung-new' && (string) ($_GET['view'] ?? '') !== 'cms-beratung-new') {
             return;
         }

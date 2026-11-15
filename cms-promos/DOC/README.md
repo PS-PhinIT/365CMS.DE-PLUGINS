@@ -2,7 +2,7 @@
 
 > Weitere Dokumente: [DATABASE.md](DATABASE.md) · [HOOKS.md](HOOKS.md) · [API.md](API.md) · [Changelog](../CHANGELOG.md)
 
-> **Plugin:** `cms-promos` · **Version:** 4.0.2 · **Stand:** 2026-11-15
+> **Plugin:** `cms-promos` · **Version:** 4.0.3 · **Stand:** 2026-11-15
 > **Voraussetzungen:** 365CMS 4.0.0 (Plugin-Layout-Vertrag), PHP 8.4.1
 
 ## 1. Admin-Oberfläche
@@ -24,7 +24,7 @@ Alle Seiten nutzen den Core-Layout-Vertrag (`cms_plugin_workspace_open()` / `cms
 | Menüpunkt | URL | Inhalt |
 |---|---|---|
 | Übersicht | `/admin/plugins/promos-dashboard/promos-dashboard` | Schnellaktionen (Neue Promo, Neue Platzierung, CSV-Export, Archiv), System-Check, zuletzt bearbeitete Promos |
-| Promos | `…/promos-items` | Liste mit Filter (Suche, Status inkl. „live“/„abgelaufen“, Platzierung); `?action=new` bzw. `?edit=<id>` öffnet das Formular. Badge: Anzahl bzw. Warnung bei abgelaufenen aktiven Promos |
+| Promos | `…/promos-items` | Liste mit Filter (Suche, Status inkl. „live“/„abgelaufen“, Platzierung); Sammelaktion für markierte Promos (aktivieren, pausieren, archivieren, löschen; „Alle auswählen“); `?action=new` bzw. `?edit=<id>` öffnet das Formular. Badge: Anzahl bzw. Warnung bei abgelaufenen aktiven Promos |
 | Platzierungen | `…/promos-placements` | Liste, Anlegen/Bearbeiten/Löschen, Theme-Hook und Priorität |
 | Einstellungen | `…/promos-settings` | Archivtexte (DE/EN), Standard-Button, Zielverhalten, Klick-Webhook, Zurücksetzen |
 

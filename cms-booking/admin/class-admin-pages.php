@@ -193,7 +193,18 @@ final class CMS_Booking_Admin_Pages
         $statusLabels = CMS_Booking_Bookings::status_labels();
         $providers = CMS_Booking_Providers::instance()->get_all(0, 500);
 
+        $privacyExports = CMS_Booking_Privacy::exports();
         include CMS_BOOKING_PLUGIN_DIR . 'admin/views/bookings.php';
+        self::enqueue_admin_script();
+    }
+
+    /** „Alle auswählen“ für die Sammelaktion der Buchungsliste (externe Datei, CSP-konform). */
+    private static function enqueue_admin_script(): void
+    {
+        $js = CMS_BOOKING_PLUGIN_DIR . 'assets/js/booking-admin.js';
+        if (is_file($js)) {
+            echo '<script src="' . htmlspecialchars(CMS_BOOKING_PLUGIN_URL . 'assets/js/booking-admin.js?v=' . (string) filemtime($js), ENT_QUOTES, 'UTF-8') . '" defer></script>' . "\n";
+        }
     }
 
     private static function view_providers(string $csrfToken): void
@@ -279,6 +290,9 @@ final class CMS_Booking_Admin_Pages
         try {
             [$ok, $message, $query] = match ($action) {
                 'booking_status' => self::action_booking_status(),
+                'booking_bulk' => self::action_booking_bulk(),
+                'privacy_download' => self::action_privacy_download(),
+                'privacy_delete' => [($ok = CMS_Booking_Privacy::delete_export((string) ($_POST['file'] ?? ''))), $ok ? 'Auskunftsdatei gelöscht.' : 'Auskunftsdatei nicht gefunden.', []],
                 'booking_notes' => self::action_booking_notes(),
                 'provider_save' => self::action_provider_save(),
                 'provider_status' => self::action_provider_status(),
@@ -700,6 +714,67 @@ final class CMS_Booking_Admin_Pages
     }
 
     /** @return array<string,scalar> */
+    /**
+     * Sammelaktion: Statuswechsel bzw. Löschen je Buchung über dieselben Methoden wie die Einzelaktion
+     * (Benachrichtigungen und Hooks laufen wie gewohnt). Höchstens 200 Buchungen je Aufruf.
+     *
+     * @return array{0:bool,1:string,2:array<string,scalar>}
+     */
+    private static function action_booking_bulk(): array
+    {
+        $operation = self::post_key('bulk_status');
+        $raw = is_array($_POST['ids'] ?? null) ? $_POST['ids'] : [];
+        $ids = array_slice(array_values(array_unique(array_filter(array_map('intval', $raw), static fn (int $id): bool => $id > 0))), 0, 200);
+        $back = self::return_filters();
+        if ($ids === []) {
+            return [false, 'Bitte mindestens eine Buchung markieren.', $back];
+        }
+        if (!in_array($operation, ['confirm', 'cancel', 'complete', 'no_show', 'delete'], true)) {
+            return [false, 'Bitte eine Sammelaktion wählen.', $back];
+        }
+
+        $bookings = CMS_Booking_Bookings::instance();
+        $done = 0;
+        $skipped = 0;
+        foreach ($ids as $id) {
+            if ($bookings->get($id) === null) {
+                $skipped++;
+                continue;
+            }
+            $ok = match ($operation) {
+                'confirm' => $bookings->confirm($id),
+                'cancel' => $bookings->cancel($id),
+                'complete' => $bookings->complete($id),
+                'no_show' => $bookings->no_show($id),
+                'delete' => $bookings->delete($id),
+            };
+            $ok ? $done++ : $skipped++;
+        }
+
+        $labels = ['confirm' => 'bestätigt', 'cancel' => 'storniert', 'complete' => 'abgeschlossen', 'no_show' => 'als „nicht erschienen“ markiert', 'delete' => 'gelöscht'];
+        $message = sprintf('%d Buchung(en) %s.', $done, $labels[$operation]) . ($skipped > 0 ? sprintf(' %d übersprungen (Statuswechsel nicht möglich oder nicht gefunden).', $skipped) : '');
+
+        return [$done > 0, $message, $back];
+    }
+
+    /** @return array{0:bool,1:string,2:array<string,scalar>} */
+    private static function action_privacy_download(): array
+    {
+        $path = CMS_Booking_Privacy::export_path((string) ($_POST['file'] ?? ''));
+        if ($path === null) {
+            return [false, 'Auskunftsdatei nicht gefunden.', []];
+        }
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . basename($path) . '"');
+        header('Cache-Control: no-store, private');
+        header('X-Content-Type-Options: nosniff');
+        readfile($path);
+        exit;
+    }
+
     private static function return_filters(): array
     {
         $query = [];

@@ -3,7 +3,7 @@
  * Plugin Name: CMS Booking
  * Plugin URI:  https://365network.de/cms-booking
  * Description: Universelles Buchungs- und Terminverwaltungssystem – Experten, Speaker, Events, Unternehmen u. a. klinken sich ein.
- * Version:     4.0.1
+ * Version:     4.0.2
  * Author:      365 Network
  * Author URI:  https://365network.de
  * Requires CMS: 4.0.0
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // ── Konstanten ────────────────────────────────────────────────────────────────
-defined('CMS_BOOKING_VERSION') || define('CMS_BOOKING_VERSION', '4.0.1');
+defined('CMS_BOOKING_VERSION') || define('CMS_BOOKING_VERSION', '4.0.2');
 defined('CMS_BOOKING_DB_VERSION') || define('CMS_BOOKING_DB_VERSION', '3');
 defined('CMS_BOOKING_PLUGIN_DIR') || define('CMS_BOOKING_PLUGIN_DIR', __DIR__ . '/');
 defined('CMS_BOOKING_PLUGIN_URL') || define('CMS_BOOKING_PLUGIN_URL', '/plugins/cms-booking/');
@@ -54,6 +54,7 @@ final class CMS_Booking
             'includes/class-availability.php',
             'includes/class-bookings.php',
             'includes/class-notifications.php',
+            'includes/class-privacy.php',
             'includes/class-calendar-export.php',
             'includes/class-integration.php',
             'includes/class-frontend.php',
@@ -112,6 +113,8 @@ final class CMS_Booking
         // DSGVO
         \CMS\Hooks::addAction('dsgvo_export_data',    [$this, 'export_user_data'],                 10);
         \CMS\Hooks::addAction('dsgvo_delete_data',    [$this, 'delete_user_data'],                 10);
+        \CMS\Hooks::addFilter('cms_member_export_data', [$this, 'member_export_data'],            20);
+        \CMS\Hooks::addAction('cms_cron_daily',        [CMS_Booking_Privacy::class, 'prune_exports'], 50);
     }
 
     /* ------------------------------------------------------------------ */
@@ -370,18 +373,36 @@ final class CMS_Booking
     /*  DSGVO                                                              */
     /* ------------------------------------------------------------------ */
 
-    public function export_user_data(mixed $userId = null): void
+    public function export_user_data(mixed $userId = null, mixed $email = null): void
     {
         if (class_exists('CMS_Booking_Bookings')) {
-            CMS_Booking_Bookings::instance()->export_user_data($userId);
+            CMS_Booking_Bookings::instance()->export_user_data($userId, $email);
         }
     }
 
-    public function delete_user_data(mixed $userId = null): void
+    public function delete_user_data(mixed $userId = null, mixed $email = null): void
     {
         if (class_exists('CMS_Booking_Bookings')) {
-            CMS_Booking_Bookings::instance()->delete_user_data($userId);
+            CMS_Booking_Bookings::instance()->delete_user_data($userId, $email);
         }
+    }
+
+    /** Filter `cms_member_export_data`: Buchungen in der Selbstauskunft des Mitgliederbereichs. */
+    public function member_export_data(mixed $export = [], mixed $userId = 0, mixed $email = ''): mixed
+    {
+        if (!is_array($export) || !class_exists('CMS_Booking_Bookings')) {
+            return $export;
+        }
+        try {
+            $entries = CMS_Booking_Bookings::instance()->export_entries(is_numeric($userId) ? (int) $userId : 0, is_string($email) ? trim($email) : '');
+            if ($entries !== []) {
+                $export['buchungen'] = $entries;
+            }
+        } catch (\Throwable $e) {
+            error_log('[cms-booking] Selbstauskunft fehlgeschlagen: ' . $e->getMessage());
+        }
+
+        return $export;
     }
 }
 }

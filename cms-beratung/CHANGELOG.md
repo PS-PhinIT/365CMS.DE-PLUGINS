@@ -2,6 +2,14 @@
 
 Ältere Versionen (bis 2.9.794) sind in `update.json` dokumentiert.
 
+## 3.0.3 – 2026-11-15
+
+Funktions-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft auf der 365CMS-Testinstallation (Core-`main`).
+
+### Neu
+
+- **FUN-PLG-03 – Sammelaktion für Formular-Anfragen:** markierte Anfragen auf einen Status setzen (Neu, Gelesen, In Bearbeitung, Beantwortet, Erledigt, Archiviert) oder löschen; „Alle auswählen“ über die neue Datei `assets/js/admin-list.js`, die nur auf dieser Seite geladen wird.
+
 ## 3.0.2 – 2026-11-15
 
 Sicherheits-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`).

@@ -281,10 +281,27 @@ final class CMS_Booking_Bookings
         return $this->change_status($id, self::STATUS_NO_SHOW);
     }
 
+    /** Erlaubte Statuswechsel (wie in der Admin-Oberfläche angeboten). */
+    private const TRANSITIONS = [
+        self::STATUS_PENDING   => [self::STATUS_CONFIRMED, self::STATUS_CANCELLED],
+        self::STATUS_CONFIRMED => [self::STATUS_COMPLETED, self::STATUS_NO_SHOW, self::STATUS_CANCELLED],
+    ];
+
+    /**
+     * Statuswechsel nur entlang TRANSITIONS: kein erneutes Bestätigen, kein Storno abgeschlossener Termine.
+     * So lösen Wiederholungen (Sammelaktion, doppelt abgeschickte Formulare) keine zweite Kundenmail aus.
+     */
     private function change_status(int $id, string $newStatus, ?string $tsColumn = null): bool
     {
         $db = \CMS\Database::instance();
         $p  = $db->getPrefix();
+
+        $stmt = $db->prepare("SELECT status FROM {$p}bookings WHERE id = ?");
+        $stmt->execute([$id]);
+        $current = $stmt->fetchColumn();
+        if (!is_string($current) || !in_array($newStatus, self::TRANSITIONS[$current] ?? [], true)) {
+            return false;
+        }
 
         $sql    = "UPDATE {$p}bookings SET status = ?";
         $params = [$newStatus];
@@ -292,10 +309,16 @@ final class CMS_Booking_Bookings
         if ($tsColumn !== null) {
             $sql    .= ", {$tsColumn} = NOW()";
         }
-        $sql    .= ' WHERE id = ?';
+        // Bedingung auf den gelesenen Status: zwei gleichzeitige Anfragen lösen den Wechsel nur einmal aus.
+        $sql    .= ' WHERE id = ? AND status = ?';
         $params[] = $id;
+        $params[] = $current;
 
-        $db->prepare($sql)->execute($params);
+        $update = $db->prepare($sql);
+        $update->execute($params);
+        if ($update->rowCount() < 1) {
+            return false;
+        }
 
         if (class_exists('CMS\Hooks')) {
             \CMS\Hooks::doAction("booking_status_{$newStatus}", $id);
@@ -606,56 +629,97 @@ final class CMS_Booking_Bookings
     /*  DSGVO                                                              */
     /* ================================================================== */
 
-    public function export_user_data(mixed $userId = null): void
+    /**
+     * Buchungen einer Person – über das Konto und/oder die vom Core gelieferte E-Mail-Adresse
+     * (bei Konten nur eine bestätigte Adresse, siehe EmailVerificationService::matchableEmail()).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function get_for_person(int $userId, string $email, int $limit = 1000): array
     {
-        // Datenschutzanfragen ohne Konto liefern user_id = NULL (Hook: user_id, email).
-        $userId = is_numeric($userId) ? (int) $userId : 0;
-        if ($userId <= 0) {
-            return;
+        [$where, $params] = $this->person_where($userId, $email);
+        if ($where === '') {
+            return [];
         }
+        $db = \CMS\Database::instance();
+        $p  = $db->getPrefix();
+        $limit = max(1, min(5000, $limit));
+        $stmt = $db->prepare(
+            "SELECT {$this->columns()}, bp.display_name AS provider_name, bs.title AS service_title
+             FROM {$p}bookings b
+             LEFT JOIN {$p}booking_providers bp ON bp.id = b.provider_id
+             LEFT JOIN {$p}booking_services  bs ON bs.id = b.service_id
+             WHERE {$where}
+             ORDER BY b.booking_date DESC, b.start_time DESC
+             LIMIT {$limit}"
+        );
+        $stmt->execute($params);
 
-        $bookings = $this->get_by_user($userId, 0, 999);
-        if (empty($bookings)) {
-            return;
-        }
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
 
-        $export = ['bookings' => []];
-        foreach ($bookings as $b) {
-            $export['bookings'][] = [
-                'id'             => $b['id'],
-                'provider'       => $b['provider_name'] ?? '',
-                'service'        => $b['service_title'] ?? '',
-                'date'           => $b['booking_date'],
-                'time'           => $b['start_time'] . ' – ' . $b['end_time'],
-                'status'         => $b['status'],
-                'customer_name'  => $b['customer_name'],
-                'customer_email' => $b['customer_email'],
-                'created_at'     => $b['created_at'],
+    /** @return list<array<string,mixed>> Auskunftsdatensätze (ohne interne Felder wie Zugangs-Token). */
+    public function export_entries(int $userId, string $email): array
+    {
+        $entries = [];
+        foreach ($this->get_for_person($userId, $email) as $b) {
+            $entries[] = [
+                'id'             => (int) $b['id'],
+                'provider'       => (string) ($b['provider_name'] ?? ''),
+                'service'        => (string) ($b['service_title'] ?? ''),
+                'date'           => (string) $b['booking_date'],
+                'time'           => substr((string) $b['start_time'], 0, 5) . ' – ' . substr((string) $b['end_time'], 0, 5),
+                'status'         => (string) $b['status'],
+                'customer_name'  => (string) $b['customer_name'],
+                'customer_email' => (string) $b['customer_email'],
+                'customer_phone' => (string) ($b['customer_phone'] ?? ''),
+                'notes'          => (string) ($b['notes'] ?? ''),
+                'created_at'     => (string) $b['created_at'],
             ];
         }
 
+        return $entries;
+    }
+
+    /** Hook `dsgvo_export_data` (user_id, E-Mail): Auskunftsdatei schreiben. */
+    public function export_user_data(mixed $userId = null, mixed $email = null): void
+    {
+        $userId = is_numeric($userId) ? (int) $userId : 0;
+        $email  = is_string($email) ? trim($email) : '';
+        $entries = $this->export_entries($userId, $email);
+        if ($entries === []) {
+            return;
+        }
+        if (class_exists('CMS_Booking_Privacy')) {
+            CMS_Booking_Privacy::write_export($userId > 0 ? $userId : null, $email, $entries);
+        }
         if (class_exists('CMS\Hooks')) {
-            \CMS\Hooks::doAction('dsgvo_export_data_booking', $userId, $export);
+            \CMS\Hooks::doAction('dsgvo_export_data_booking', $userId, ['bookings' => $entries]);
         }
     }
 
-    public function delete_user_data(mixed $userId = null): void
+    /** Hook `dsgvo_delete_data` (user_id, E-Mail): Buchungen der Person anonymisieren, Meta löschen. */
+    public function delete_user_data(mixed $userId = null, mixed $email = null): void
     {
-        // Datenschutzanfragen ohne Konto liefern user_id = NULL (Hook: user_id, email).
         $userId = is_numeric($userId) ? (int) $userId : 0;
-        if ($userId <= 0) {
+        $email  = is_string($email) ? trim($email) : '';
+        [$where, $params] = $this->person_where($userId, $email, false);
+        if ($where === '') {
             return;
         }
 
         $db = \CMS\Database::instance();
         $p  = $db->getPrefix();
 
-        // Booking-IDs des Users sammeln BEVOR wir anonymisieren
-        $stmt = $db->prepare("SELECT id FROM {$p}bookings WHERE user_id = ?");
-        $stmt->execute([$userId]);
-        $bookingIds = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        // Booking-IDs der Person sammeln BEVOR wir anonymisieren
+        $stmt = $db->prepare("SELECT id FROM {$p}bookings WHERE {$where}");
+        $stmt->execute($params);
+        $bookingIds = array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: []);
+        if ($bookingIds === []) {
+            return;
+        }
 
-        // Buchungen des Users anonymisieren
+        $placeholders = implode(',', array_fill(0, count($bookingIds), '?'));
         $db->prepare(
             "UPDATE {$p}bookings SET
                 customer_name = '[gelöscht]',
@@ -663,16 +727,31 @@ final class CMS_Booking_Bookings
                 customer_phone = NULL,
                 notes = NULL,
                 user_id = NULL
-             WHERE user_id = ?"
-        )->execute([$userId]);
+             WHERE id IN ({$placeholders})"
+        )->execute($bookingIds);
+        $db->prepare("DELETE FROM {$p}booking_meta WHERE booking_id IN ({$placeholders})")->execute($bookingIds);
+    }
 
-        // Meta gezielt für die Buchungen des Users löschen
-        if (!empty($bookingIds)) {
-            $placeholders = implode(',', array_fill(0, count($bookingIds), '?'));
-            $db->prepare(
-                "DELETE FROM {$p}booking_meta WHERE booking_id IN ({$placeholders})"
-            )->execute($bookingIds);
+    /**
+     * WHERE-Bedingung für Buchungen einer Person (Konto und/oder E-Mail).
+     *
+     * @return array{0:string,1:list<int|string>}
+     */
+    private function person_where(int $userId, string $email, bool $aliased = true): array
+    {
+        $col = $aliased ? 'b.' : '';
+        $parts = [];
+        $params = [];
+        if ($userId > 0) {
+            $parts[] = $col . 'user_id = ?';
+            $params[] = $userId;
         }
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $parts[] = $col . 'customer_email = ?';
+            $params[] = $email;
+        }
+
+        return [$parts === [] ? '' : '(' . implode(' OR ', $parts) . ')', $params];
     }
 
     /* ================================================================== */

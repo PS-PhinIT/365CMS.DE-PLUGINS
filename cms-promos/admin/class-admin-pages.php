@@ -223,6 +223,7 @@ final class CMS_Promos_Admin_Pages
             'save_promo' => $repository->save_promo($_POST),
             'delete_promo' => $repository->delete_promo($promoId),
             'duplicate_promo' => $repository->duplicate_promo($promoId),
+            'bulk_promos' => $repository->bulk_promos(is_array($_POST['ids'] ?? null) ? $_POST['ids'] : [], self::request_key($_POST, 'bulk_action')),
             'reset_promo_stats' => $repository->reset_stats($promoId),
             'reset_all_stats' => $repository->reset_stats(0),
             'save_placement' => $repository->save_placement($_POST),
@@ -234,7 +235,7 @@ final class CMS_Promos_Admin_Pages
 
         $success = (bool) ($result['success'] ?? false);
         self::store_notice($success, (string) ($result['message'] ?? $result['error'] ?? ''));
-        if ($success && in_array($action, ['save_promo', 'delete_promo', 'save_placement', 'delete_placement'], true)) {
+        if ($success && in_array($action, ['save_promo', 'delete_promo', 'bulk_promos', 'save_placement', 'delete_placement'], true)) {
             self::invalidate_sitemaps();
         }
 

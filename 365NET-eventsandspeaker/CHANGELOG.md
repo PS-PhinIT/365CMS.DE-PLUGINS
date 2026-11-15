@@ -1,5 +1,15 @@
 # 365CMS | Events & Speaker – Changelog
 
+## 4.0.2 – 2026-11-15
+
+Funktions-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft auf der 365CMS-Testinstallation (Core-`main`).
+
+### Behoben
+
+- **FUN-PLG-01 – Slug:** Ein leeres Slug-Feld ergab bei Events und Speakern immer `eintrag`, `eintrag-2` … (`$data['slug'] ?? $title` greift bei leerem String nicht). Der Slug wird jetzt aus Titel bzw. Anzeigenamen gebildet (Umlaute transliteriert, z. B. `slug-test-groesse-2026`).
+- **SEC-PLG-06 – Bild-URLs:** Werte mit einem anderen Schema als `http(s)` (`javascript:`, `data:`, `vbscript:` …) wurden zu einem relativen Pfad `/javascript:…` gemacht; jetzt werden sie verworfen (Feld bleibt leer bzw. behält den bisherigen Wert).
+- **Seed-Beschreibungen** (`defaults/event-descriptions.php`): 64 sprachliche Fehler korrigiert („ist als Unabhängig vom …“ → „ist als unabhängige Fachveranstaltung vom …“, „am Herbst 2026“ → „im Herbst 2026“ usw.). Gilt für neue Installationen und „Seed neu einspielen“; bestehende Texte bleiben unverändert.
+
 ## 4.0.1 – 2026-11-15
 
 Kompatibilitäts-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft gegen den aktuellen Core-`main`.
