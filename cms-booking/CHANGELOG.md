@@ -1,5 +1,15 @@
 # Changelog – CMS Booking
 
+## 4.0.1 – 2026-11-15
+
+Sicherheits-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`).
+
+### Sicherheit
+
+- **SEC-PLG-02 – Buchungsformular ohne Ratenbegrenzung:** Offene Anfragen (`pending`) blockieren das Zeitfenster; ein Bot konnte so sämtliche Termine eines Anbieters belegen. Jetzt höchstens 10 Buchungsversuche je Stunde pro Sitzung (`Security::checkRateLimit()`) und 10 angelegte Buchungen je Stunde pro IP (`checkDbRateLimit()`, IP über `Security::getClientIp()`). Meldung auf Deutsch und Englisch.
+- **SEC-PLG-05:** JSON-Antworten der Slot-API mit `JSON_HEX_TAG`/`JSON_HEX_AMP`.
+- `update.json`: `tested_cms` von `3.4.00` auf `4.0.0` korrigiert.
+
 ## 4.0.0 – 2026-11-15
 
 ### Behoben

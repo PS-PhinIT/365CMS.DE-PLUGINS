@@ -3,7 +3,7 @@
  * Plugin Name: CMS Booking
  * Plugin URI:  https://365network.de/cms-booking
  * Description: Universelles Buchungs- und Terminverwaltungssystem – Experten, Speaker, Events, Unternehmen u. a. klinken sich ein.
- * Version:     4.0.0
+ * Version:     4.0.1
  * Author:      365 Network
  * Author URI:  https://365network.de
  * Requires CMS: 4.0.0
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // ── Konstanten ────────────────────────────────────────────────────────────────
-defined('CMS_BOOKING_VERSION') || define('CMS_BOOKING_VERSION', '4.0.0');
+defined('CMS_BOOKING_VERSION') || define('CMS_BOOKING_VERSION', '4.0.1');
 defined('CMS_BOOKING_DB_VERSION') || define('CMS_BOOKING_DB_VERSION', '3');
 defined('CMS_BOOKING_PLUGIN_DIR') || define('CMS_BOOKING_PLUGIN_DIR', __DIR__ . '/');
 defined('CMS_BOOKING_PLUGIN_URL') || define('CMS_BOOKING_PLUGIN_URL', '/plugins/cms-booking/');

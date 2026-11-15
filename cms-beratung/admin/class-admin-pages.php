@@ -17,6 +17,18 @@ if (class_exists('CMS_Beratung_Admin_Pages', false)) {
 
 final class CMS_Beratung_Admin_Pages
 {
+    /** Höchstgröße einer Landingpage-Importdatei bzw. des eingefügten JSON-Texts. */
+    private const IMPORT_MAX_BYTES = 2 * 1024 * 1024;
+
+    /** Erlaubte Upload-Endungen und die dazu passenden MIME-Typen (Inhaltsprüfung). */
+    private const UPLOAD_TYPES = [
+        'jpg' => ['image/jpeg', 'image/pjpeg'],
+        'png' => ['image/png'],
+        'gif' => ['image/gif'],
+        'webp' => ['image/webp'],
+        'svg' => ['image/svg+xml'],
+    ];
+
     public const MENU_SLUG = 'cms-beratung';
     public const DEFAULT_PAGE_SLUG = 'cms-beratung-dashboard';
     public const CAPABILITY = 'manage_options';
@@ -153,9 +165,14 @@ final class CMS_Beratung_Admin_Pages
         $tmpName = (string) ($file['tmp_name'] ?? '');
         $originalName = (string) ($file['name'] ?? 'beratung-bild');
         $extension = strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION));
-        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'svg'];
-        if (!in_array($extension, $allowedExtensions, true) || !self::uploaded_file_is_image($tmpName)) {
-            self::json_response(['success' => 0, 'message' => 'Nur Bilddateien sind erlaubt.'], 400);
+        if ($extension === 'jpeg') {
+            $extension = 'jpg';
+        }
+        if (!isset(self::UPLOAD_TYPES[$extension])) {
+            self::json_response(['success' => 0, 'message' => 'Erlaubt sind JPG, PNG, GIF, WebP und SVG.'], 400);
+        }
+        if ($extension !== 'svg' && !self::uploaded_file_is_image($tmpName, $extension)) {
+            self::json_response(['success' => 0, 'message' => 'Die Datei ist kein gültiges Bild oder passt nicht zur Endung .' . $extension . '.'], 400);
         }
 
         if ($extension === 'svg' && !self::svg_upload_is_safe($tmpName)) {
@@ -1815,34 +1832,39 @@ final class CMS_Beratung_Admin_Pages
             http_response_code($status);
             header('Content-Type: application/json; charset=utf-8');
         }
-        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{"success":0}';
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?: '{"success":0}';
         exit;
     }
 
-    private static function uploaded_file_is_image(string $tmpName): bool
+    /**
+     * Rasterbild prüfen: Die Datei muss als Bild mit Abmessungen lesbar sein (getimagesize, nicht nur
+     * Magic Bytes) und ihr erkannter Typ muss zur Endung passen; zusätzlich muss finfo – falls verfügbar –
+     * denselben MIME-Typ melden. Verhindert Polyglot-Dateien (Bild-Header + Skriptcode) und vertauschte Endungen.
+     */
+    private static function uploaded_file_is_image(string $tmpName, string $extension): bool
     {
-        if ($tmpName === '' || !is_file($tmpName)) {
+        $allowed = self::UPLOAD_TYPES[$extension] ?? null;
+        if ($allowed === null || $tmpName === '' || !is_file($tmpName)) {
             return false;
         }
 
-        if (function_exists('exif_imagetype') && @exif_imagetype($tmpName) !== false) {
-            return true;
-        }
-
-        if (@getimagesize($tmpName) !== false) {
-            return true;
+        $info = @getimagesize($tmpName);
+        if (!is_array($info) || (int) ($info[0] ?? 0) <= 0 || (int) ($info[1] ?? 0) <= 0 || !in_array((string) ($info['mime'] ?? ''), $allowed, true)) {
+            return false;
         }
 
         if (function_exists('finfo_open')) {
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             if ($finfo !== false) {
                 $mime = finfo_file($finfo, $tmpName);
-                unset($finfo); // finfo_close() ist seit PHP 8.5 veraltet; die Ausgabe würde die JSON-Antwort des Uploads zerstören.
-                return is_string($mime) && str_starts_with(strtolower($mime), 'image/');
+                unset($finfo); // finfo_close() ist seit PHP 8.5 veraltet.
+                if (!is_string($mime) || !in_array(strtolower($mime), $allowed, true)) {
+                    return false;
+                }
             }
         }
 
-        return false;
+        return true;
     }
 
     private static function svg_upload_is_safe(string $tmpName): bool
@@ -1935,10 +1957,17 @@ final class CMS_Beratung_Admin_Pages
     {
         $file = $_FILES['import_file'] ?? null;
         if (is_array($file) && (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK && is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
+            if ((int) ($file['size'] ?? 0) > self::IMPORT_MAX_BYTES || (int) filesize((string) $file['tmp_name']) > self::IMPORT_MAX_BYTES) {
+                throw new \InvalidArgumentException('Die Importdatei ist größer als 2 MB.');
+            }
             $content = file_get_contents((string) $file['tmp_name']);
             return is_string($content) ? $content : '';
         }
-        return (string) ($_POST['import_json'] ?? '');
+        $json = (string) ($_POST['import_json'] ?? '');
+        if (strlen($json) > self::IMPORT_MAX_BYTES) {
+            throw new \InvalidArgumentException('Der eingefügte JSON-Text ist größer als 2 MB.');
+        }
+        return $json;
     }
 
     /** @param array<string,mixed> $payload @return array<string,mixed> */

@@ -1,6 +1,6 @@
 # 365CMS | Experts & Companies
 
-Version: 2.0.0
+Version: 2.0.1
 
 Kombi-Plugin für Experts und Companies mit gemeinsamer Public-Übersicht, eigenen Verzeichnissen und Detailseiten.
 

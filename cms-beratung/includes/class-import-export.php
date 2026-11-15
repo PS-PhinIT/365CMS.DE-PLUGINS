@@ -33,7 +33,7 @@ final class CMS_Beratung_Import_Export
     /** @return array<string,mixed>|null */
     public static function decode_import_json(string $json): ?array
     {
-        $decoded = json_decode($json, true);
+        $decoded = json_decode($json, true, 64);
         if (!is_array($decoded)) {
             return null;
         }

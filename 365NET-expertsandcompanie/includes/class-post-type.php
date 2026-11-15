@@ -439,7 +439,7 @@ final class CMS_365NET_Experts_And_Companie_Post_Type
             http_response_code($status);
             header('Content-Type: application/json; charset=utf-8');
         }
-        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{"success":0}';
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?: '{"success":0}';
         exit;
     }
 

@@ -2,6 +2,16 @@
 
 Ältere Versionen (bis 2.9.794) sind in `update.json` dokumentiert.
 
+## 3.0.2 – 2026-11-15
+
+Sicherheits-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`).
+
+### Sicherheit
+
+- **SEC-PLG-01 – Bild-Upload:** Bisher reichten Magic Bytes (`exif_imagetype()`) bzw. ein `image/*`-MIME-Typ – eine Datei aus JPEG-Header und PHP-Code wurde als `.jpg` gespeichert. Jetzt muss die Datei mit Abmessungen als Bild lesbar sein (`getimagesize()`), ihr Typ muss zur Endung passen und `finfo` muss denselben MIME-Typ melden. Erlaubt sind JPG, PNG, GIF, WebP und SVG (aktive SVG-Inhalte werden weiterhin abgewiesen); BMP und ICO entfallen.
+- **SEC-PLG-04 – Import:** Landingpage-Import (Datei oder eingefügter Text) höchstens 2 MB, JSON-Verschachtelung höchstens 64 Ebenen.
+- **SEC-PLG-05:** JSON-Antworten des Medien-Uploads mit `JSON_HEX_TAG`/`JSON_HEX_AMP`.
+
 ## 3.0.1 – 2026-11-15
 
 Übernommen aus PR #12; geprüft gegen die 365CMS-4.0.0-Testinstallation.
