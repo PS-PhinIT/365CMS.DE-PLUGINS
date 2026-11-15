@@ -2,9 +2,6 @@
 
 Offizielle Plugins für **365CMS 4.0.0**
 
-Jedes Plugin liegt in einem eigenen Ordner und lässt sich einzeln installieren, aktivieren und aktualisieren. 
-Der Katalog [`index.json`](index.json) listet alle Plugins für den Core-Updater.
-
 | | |
 |---|---|
 | **Voraussetzungen** | 365CMS ≥ 4.0.0 · PHP ≥ 8.4.1 |
