@@ -5,7 +5,7 @@ Offizielle Plugins für **365CMS 4.0.0**
 | | |
 |---|---|
 | **Voraussetzungen** | 365CMS ≥ 4.0.0 · PHP ≥ 8.4.1 |
-| **Autor** | [365 Network](https://365network.de) |
+| **Autor** | [PhinIT.DE](https://phinit.de) |
 | **Katalog** | [`index.json`](index.json) (Version 2, Stand 15.11.2026) |
 | **Lizenz** | proprietär (siehe `plugin.json` des jeweiligen Plugins) |
 
