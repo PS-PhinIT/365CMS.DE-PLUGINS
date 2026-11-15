@@ -1,0 +1,27 @@
+{
+  "name": "CMS Promos",
+  "slug": "cms-promos",
+  "version": "4.0.0",
+  "description": "Promo- und Kampagnenverwaltung für Banner, Teaserflächen, Platzierungen und klickbare Aktionsboxen im 365CMS.",
+  "author": "365 Network",
+  "author_uri": "https://365network.de",
+  "homepage": "https://365network.de/cms-promos",
+  "requires_cms": "4.0.0",
+  "min_cms_version": "4.0.0",
+  "requires_php": "8.4.1",
+  "min_php": "8.4.1",
+  "tested": "4.0.0",
+  "last_updated": "2026-11-14",
+  "admin_menu_title": "365CMS | Promos",
+  "admin_url": "/admin/plugins/promos-dashboard",
+  "admin_pages": {
+    "promos-dashboard": "/admin/plugins/promos-dashboard/promos-dashboard",
+    "promos-items": "/admin/plugins/promos-dashboard/promos-items",
+    "promos-placements": "/admin/plugins/promos-dashboard/promos-placements",
+    "promos-settings": "/admin/plugins/promos-dashboard/promos-settings"
+  },
+  "public_routes": ["/promos", "/en/promos", "/promos/placement/:slug", "/en/promos/placement/:slug", "/promo/click/:slug", "/en/promo/click/:slug"],
+  "db_version": "1.2.0",
+  "tables": ["promos", "promo_placements", "promo_settings"],
+  "license": "proprietary"
+}

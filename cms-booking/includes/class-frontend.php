@@ -8,7 +8,13 @@
  *   POST /booking/{provider-slug}/{service-slug}    → Buchung absenden
  *   GET  /booking/confirm/{booking-id}              → Bestätigungsseite
  *   GET  /booking/ical/{booking-id}                 → ICS-Download
+ *   POST /booking/cancel/{booking-id}               → Selbst-Stornierung (Token + CSRF)
  *   GET  /api/booking/slots/{provider-id}/{date}    → Verfügbare Slots (JSON)
+ *
+ * Öffentliche POSTs: Der Core-Router verlangt für öffentliche Formulare ein Token. Das Plugin meldet
+ * über den Filter `cms_public_form_persistent_token` sein eigenes Token (`booking_token`, Aktion
+ * `booking_submit` bzw. `booking_cancel`) und prüft es anschließend einmalig selbst; zusätzlich wird
+ * `csrf_token` als `form_guard`-Token für Cores ohne diesen Filter mitgesendet.
  *
  * @package CMS_Booking
  */
@@ -62,6 +68,14 @@ final class CMS_Booking_Frontend
             $this->serve_ical((int) $bookingId);
         });
 
+        // Selbst-Stornierung (vor der generischen POST-Route registrieren)
+        $router->addRoute('POST', '/booking/cancel/:bookingId', function (string $bookingId): void {
+            $this->process_cancellation((int) $bookingId);
+        });
+        $router->addRoute('POST', '/en/booking/cancel/:bookingId', function (string $bookingId): void {
+            $this->process_cancellation((int) $bookingId);
+        });
+
         // Bestätigungsseite
         $router->addRoute('GET', '/booking/confirm/:bookingId', function (string $bookingId): void {
             $this->render_confirmation((int) $bookingId);
@@ -93,6 +107,49 @@ final class CMS_Booking_Frontend
         });
     }
 
+    /**
+     * Filter `cms_public_form_persistent_token`: meldet dem Core-Router das Plugin-Token der
+     * öffentlichen Buchungs-/Stornoformulare (nur für die eigenen POST-Pfade).
+     */
+    public static function public_form_token(mixed $current = null, mixed $routingUri = '', mixed $method = 'GET'): mixed
+    {
+        if (is_array($current) || strtoupper((string) $method) !== 'POST') {
+            return $current;
+        }
+
+        $path = '/' . trim((string) $routingUri, '/');
+        $path = (string) preg_replace('#^/en(?=/)#', '', $path);
+        $token = $_POST['booking_token'] ?? '';
+        if (!is_string($token) || $token === '') {
+            return $current;
+        }
+
+        if (preg_match('#^/booking/cancel/\d+$#', $path) === 1) {
+            return ['action' => 'booking_cancel', 'token' => $token];
+        }
+        if (preg_match('#^/booking/[^/]+/[^/]+$#', $path) === 1) {
+            return ['action' => 'booking_submit', 'token' => $token];
+        }
+
+        return $current;
+    }
+
+    /**
+     * @return array{csrf: string, booking: string}
+     */
+    private function form_tokens(string $action): array
+    {
+        if (!class_exists('CMS\Security')) {
+            return ['csrf' => '', 'booking' => ''];
+        }
+        $security = \CMS\Security::instance();
+
+        return [
+            'csrf'    => $security->generateToken('form_guard'),
+            'booking' => $security->generateToken($action),
+        ];
+    }
+
     /* ================================================================== */
     /*  Provider-Übersicht                                                 */
     /* ================================================================== */
@@ -117,7 +174,8 @@ final class CMS_Booking_Frontend
         // SEO
         $this->set_seo(
             $this->t('seo_provider_title', $lang, 'Termin buchen') . ' – ' . $providerTitle,
-            $this->t('seo_provider_description', $lang, 'Buchen Sie einen Termin bei') . ' ' . $providerTitle
+            $this->t('seo_provider_description', $lang, 'Buchen Sie einen Termin bei') . ' ' . $providerTitle,
+            $this->localized_path('booking/' . rawurlencode((string) $provider['slug']), $lang)
         );
 
         $siteUrl = (string) (defined('SITE_URL') ? SITE_URL : '');
@@ -150,19 +208,12 @@ final class CMS_Booking_Frontend
         // Kontakt-Template aus cms-contact laden?
         $useContactForm = $this->should_use_contact_form($service, $provider);
 
-        $csrfToken = '';
-        if (class_exists('CMS\Security')) {
-            $csrfToken = \CMS\Security::instance()->generateToken('booking_submit');
-        }
+        $tokens       = $this->form_tokens('booking_submit');
+        $csrfToken    = $tokens['csrf'];
+        $bookingToken = $tokens['booking'];
 
-        // Verfügbare Tage
-        $availability = CMS_Booking_Availability::instance();
-        $availDates   = $availability->get_available_dates(
-            (int) $provider['id'],
-            (int) $service['duration_min'],
-            90
-        );
-        $availDates = $this->filter_dates_by_daily_limits($availDates, $provider, $service);
+        // Verfügbare Tage (Vorlauf-Fenster aus den Einstellungen, Tageslimits gebündelt)
+        $availDates = $this->available_dates($provider, $service);
 
         $error   = '';
         $success = '';
@@ -175,7 +226,8 @@ final class CMS_Booking_Frontend
 
         $this->set_seo(
             $serviceTitle . ' – ' . $providerTitle,
-            $serviceDescription
+            mb_substr(trim(strip_tags($serviceDescription)), 0, 160),
+            $this->localized_path('booking/' . rawurlencode((string) $provider['slug']) . '/' . rawurlencode((string) $service['slug']), $lang)
         );
 
         $siteUrl = (string) (defined('SITE_URL') ? SITE_URL : '');
@@ -201,32 +253,45 @@ final class CMS_Booking_Frontend
 
         $error   = '';
         $success = '';
-        $old     = $_POST;
+        $old     = [];
+        foreach (['customer_name', 'customer_email', 'customer_phone', 'booking_date', 'start_time', 'notes'] as $field) {
+            $old[$field] = $this->post_string($field, $field === 'notes' ? 2000 : 255);
+        }
 
-        // CSRF
-        if (!class_exists('CMS\Security') || !\CMS\Security::instance()->verifyToken($_POST['csrf_token'] ?? '', 'booking_submit')) {
+        // CSRF (eigenes Einmal-Token; Fallback: csrf_token mit Aktion booking_submit aus 3.x-Formularen)
+        $security = class_exists('CMS\Security') ? \CMS\Security::instance() : null;
+        $tokenOk = $security !== null && (
+            $security->verifyToken($_POST['booking_token'] ?? '', 'booking_submit')
+            || $security->verifyToken($_POST['csrf_token'] ?? '', 'booking_submit')
+        );
+        if (!$tokenOk) {
             $error = $this->t('error_security_check_failed', $lang, 'Sicherheitscheck fehlgeschlagen. Bitte versuchen Sie es erneut.');
         }
 
         // Honeypot
-        if ($error === '' && !empty($_POST['website_url'])) {
+        if ($error === '' && $this->post_string('website_url', 255) !== '') {
             $error = $this->t('error_spam_detected', $lang, 'Spam erkannt.');
+        }
+
+        // Rate-Limit je IP (Einstellung „Buchungen je Stunde und IP“, 0 = aus)
+        if ($error === '' && !$this->rate_limit_allows('booking_submit', CMS_Booking_Settings::int('booking_rate_limit', 10))) {
+            $error = $this->t('error_rate_limited', $lang, 'Zu viele Buchungsversuche. Bitte versuchen Sie es später erneut.');
         }
 
         // Validierung
         if ($error === '') {
-            $customerName  = sanitize_text_field($_POST['customer_name'] ?? '');
-            $customerEmail = filter_var($_POST['customer_email'] ?? '', FILTER_VALIDATE_EMAIL);
-            $customerPhone = sanitize_text_field($_POST['customer_phone'] ?? '');
-            $bookingDate   = sanitize_text_field($_POST['booking_date'] ?? '');
-            $startTime     = sanitize_text_field($_POST['start_time'] ?? '');
-            $notes         = mb_substr(trim(strip_tags((string) ($_POST['notes'] ?? ''))), 0, 2000);
+            $customerName  = sanitize_text_field($old['customer_name']);
+            $customerEmail = filter_var($old['customer_email'], FILTER_VALIDATE_EMAIL);
+            $customerPhone = (string) preg_replace('/[^0-9+()\/\-. ]/', '', sanitize_text_field($old['customer_phone']));
+            $bookingDate   = $old['booking_date'];
+            $startTime     = $old['start_time'];
+            $notes         = mb_substr(trim(strip_tags($old['notes'])), 0, 2000);
 
             if ($customerName === '') {
                 $error = $this->t('error_name_required', $lang, 'Bitte geben Sie Ihren Namen an.');
             } elseif (!$customerEmail) {
                 $error = $this->t('error_valid_email_required', $lang, 'Bitte geben Sie eine gültige E-Mail-Adresse an.');
-            } elseif ($bookingDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $bookingDate)) {
+            } elseif (!CMS_Booking_Bookings::is_date($bookingDate)) {
                 $error = $this->t('error_valid_date_required', $lang, 'Bitte wählen Sie ein gültiges Datum.');
             } elseif ($startTime === '' || !$this->is_valid_time($startTime)) {
                 $error = $this->t('error_valid_time_required', $lang, 'Bitte wählen Sie eine Uhrzeit.');
@@ -239,12 +304,12 @@ final class CMS_Booking_Frontend
             $bufferMin   = (int) $service['buffer_min'];
 
             // Booking-Advance-Window prüfen (Min/Max Vorlaufzeit)
-            $advanceMinDays = (int) $this->get_setting('booking_advance_min', '1');
-            $advanceMaxDays = (int) $this->get_setting('booking_advance_max', '90');
+            $advanceMinDays = max(0, CMS_Booking_Settings::int('booking_advance_min', 1));
+            $advanceMaxDays = max(1, CMS_Booking_Settings::int('booking_advance_max', 90));
             $bookingTs      = strtotime($bookingDate);
             $todayTs        = strtotime('today');
             $diffDays       = (int) round(($bookingTs - $todayTs) / 86400);
-            $noticeHours    = max(0, (int) $this->get_setting('booking_min_notice_hours', '0'));
+            $noticeHours    = max(0, CMS_Booking_Settings::int('booking_min_notice_hours', 0));
 
             if ($diffDays < $advanceMinDays) {
                 $error = sprintf(
@@ -258,13 +323,15 @@ final class CMS_Booking_Frontend
                 );
             }
 
-            if ($error === '' && $noticeHours > 0) {
+            if ($error === '') {
                 $providerTimezone = $this->provider_timezone($provider);
                 $tz = new \DateTimeZone($providerTimezone);
                 $bookingStart = \DateTimeImmutable::createFromFormat('Y-m-d H:i', $bookingDate . ' ' . $startTime, $tz);
                 $now = new \DateTimeImmutable('now', $tz);
                 $minAllowed = $now->modify('+' . $noticeHours . ' hours');
-                if (!$bookingStart || $bookingStart < $minAllowed) {
+                if (!$bookingStart || $bookingStart <= $now) {
+                    $error = $this->t('error_slot_unavailable', $lang, 'Der gewählte Zeitpunkt ist leider nicht mehr verfügbar.');
+                } elseif ($noticeHours > 0 && $bookingStart < $minAllowed) {
                     $error = sprintf(
                         $this->t('error_min_notice_hours', $lang, 'Buchungen müssen mindestens %d Stunde(n) im Voraus erfolgen.'),
                         $noticeHours
@@ -297,6 +364,16 @@ final class CMS_Booking_Frontend
             $endTime = date('H:i', $endTs);
 
             try {
+                // booking_type / auto_confirm auswerten: Sofortbuchung wird direkt bestätigt angelegt
+                // (eine Eingangs-Mail mit Bestätigung statt zweier Mails).
+                $bookingType = (string) ($service['booking_type'] ?? 'confirmation');
+                $autoConfirm = CMS_Booking_Settings::bool('auto_confirm');
+                $initialStatus = ($bookingType === 'instant' || $autoConfirm)
+                    ? CMS_Booking_Bookings::STATUS_CONFIRMED
+                    : CMS_Booking_Bookings::STATUS_PENDING;
+
+                $this->record_rate_limit_attempt('booking_submit');
+
                 $bookingId = CMS_Booking_Bookings::instance()->create([
                     'provider_id'   => (int) $provider['id'],
                     'service_id'    => (int) $service['id'],
@@ -311,49 +388,39 @@ final class CMS_Booking_Frontend
                     'location_type'  => $service['location_type'] ?? 'online',
                     'meeting_url'    => $service['meeting_url'] ?? null,
                     'price_cents'    => (int) $service['price_cents'],
-                    'currency'       => $provider['currency'] ?? 'EUR',
+                    'currency'       => (string) ($provider['currency'] ?? CMS_Booking_Settings::currency()),
                     'notes'          => $notes,
+                    'status'         => $initialStatus,
                 ]);
 
-                // booking_type / auto_confirm auswerten
-                $bookingType = $service['booking_type'] ?? 'confirmation';
-                $autoConfirm = $this->get_setting('auto_confirm', '0') === '1';
-
-                if ($bookingType === 'instant' || $autoConfirm) {
-                    CMS_Booking_Bookings::instance()->confirm($bookingId);
-                }
-
-                // Benachrichtigungen senden
+                // Benachrichtigungen versendet CMS_Booking_Notifications über den Hook `booking_created`.
                 $booking = CMS_Booking_Bookings::instance()->get($bookingId);
                 if (!$booking) {
                     throw new \RuntimeException('Booking record missing after creation.');
                 }
 
-                if (class_exists('CMS_Booking_Notifications')) {
-                    CMS_Booking_Notifications::instance()->send_booking_created($booking);
-                }
-
                 // Zugangs-Token für Bestätigungsseite generieren
-                $accessToken = $this->generate_access_token($bookingId, $booking['ical_uid'] ?? '');
+                $accessToken = CMS_Booking_Bookings::access_token($bookingId, (string) ($booking['ical_uid'] ?? ''));
 
-                // Weiterleitung zur Bestätigungsseite
-                $confirmUrl = (defined('SITE_URL') ? SITE_URL : '') . $this->localized_path('booking/confirm/' . $bookingId, $lang)
+                // Weiterleitung zur Bestätigungsseite (lokaler Pfad)
+                $confirmUrl = (defined('SITE_URL') ? rtrim((string) SITE_URL, '/') : '') . $this->localized_path('booking/confirm/' . $bookingId, $lang)
                     . '?token=' . rawurlencode($accessToken);
                 header('Location: ' . $confirmUrl, true, 303);
                 exit;
             } catch (\Throwable $e) {
+                error_log('[cms-booking] booking not saved: ' . $e->getMessage());
                 $error = $this->t('error_save_failed', $lang, 'Beim Speichern der Buchung ist ein Fehler aufgetreten.');
             }
         }
 
         // Bei Fehler: Formular erneut rendern
-        $csrfToken = '';
-        if (class_exists('CMS\Security')) {
-            $csrfToken = \CMS\Security::instance()->generateToken('booking_submit');
+        if (!headers_sent()) {
+            http_response_code(422);
         }
-        $availability  = CMS_Booking_Availability::instance();
-        $availDates    = $availability->get_available_dates((int) $provider['id'], (int) $service['duration_min'], 90);
-        $availDates    = $this->filter_dates_by_daily_limits($availDates, $provider, $service);
+        $tokens        = $this->form_tokens('booking_submit');
+        $csrfToken     = $tokens['csrf'];
+        $bookingToken  = $tokens['booking'];
+        $availDates    = $this->available_dates($provider, $service);
         $useContactForm = $this->should_use_contact_form($service, $provider);
         $providerTitle = $this->i18n_entity_value($provider, 'display_name', $lang, (string) ($provider['display_name'] ?? ''));
         $serviceTitle = $this->i18n_entity_value($service, 'title', $lang, (string) ($service['title'] ?? ''));
@@ -384,23 +451,32 @@ final class CMS_Booking_Frontend
         }
 
         // Token-basierter Zugangsschutz (DSGVO)
-        $token = (string) ($_GET['token'] ?? '');
-        $expectedToken = $this->generate_access_token($bookingId, $booking['ical_uid'] ?? '');
-        if (!hash_equals($expectedToken, $token)) {
-            http_response_code(403);
-            echo '<h1>' . htmlspecialchars($this->t('access_denied', $lang, 'Zugriff verweigert'), ENT_QUOTES, 'UTF-8') . '</h1>';
-            echo '<p>' . htmlspecialchars($this->t('access_token_invalid', $lang, 'Ungültiger oder fehlender Zugangs-Token.'), ENT_QUOTES, 'UTF-8') . '</p>';
-            exit;
+        $token = $_GET['token'] ?? '';
+        if (!CMS_Booking_Bookings::verify_access_token($bookingId, (string) ($booking['ical_uid'] ?? ''), $token)) {
+            $this->render_access_denied($lang);
         }
 
-        $accessToken = $expectedToken;
+        $accessToken = CMS_Booking_Bookings::access_token($bookingId, (string) ($booking['ical_uid'] ?? ''));
+        if (!headers_sent()) {
+            header('Cache-Control: private, no-store, max-age=0');
+            header('X-Robots-Tag: noindex, nofollow');
+        }
 
         $calExport = CMS_Booking_Calendar_Export::instance();
         $googleUrl = $calExport->google_calendar_url($booking);
 
+        // Selbst-Stornierung
+        $canCancel   = $this->can_customer_cancel($booking);
+        $cancelTokens = $canCancel ? $this->form_tokens('booking_cancel') : ['csrf' => '', 'booking' => ''];
+        $cancelUrl   = $this->localized_path('booking/cancel/' . $bookingId, $lang) . '?token=' . rawurlencode($accessToken);
+        $notice      = (string) ($_GET['notice'] ?? '');
+        $notice      = in_array($notice, ['cancelled', 'cancel_failed'], true) ? $notice : '';
+
         $this->set_seo(
             $this->t('seo_confirmation_title', $lang, 'Buchung bestätigt'),
-            $this->t('seo_confirmation_description', $lang, 'Ihre Buchung wurde erfolgreich registriert.')
+            $this->t('seo_confirmation_description', $lang, 'Ihre Buchung wurde erfolgreich registriert.'),
+            '',
+            false
         );
 
         $siteUrl = (string) (defined('SITE_URL') ? SITE_URL : '');
@@ -426,11 +502,10 @@ final class CMS_Booking_Frontend
         }
 
         // Token-basierter Zugangsschutz (DSGVO)
-        $token = (string) ($_GET['token'] ?? '');
-        $expectedToken = $this->generate_access_token($bookingId, $booking['ical_uid'] ?? '');
-        if (!hash_equals($expectedToken, $token)) {
+        if (!CMS_Booking_Bookings::verify_access_token($bookingId, (string) ($booking['ical_uid'] ?? ''), $_GET['token'] ?? '')) {
             http_response_code(403);
-            echo htmlspecialchars($this->t('access_denied', $lang, 'Zugriff verweigert'), ENT_QUOTES, 'UTF-8');
+            header('Content-Type: text/plain; charset=utf-8');
+            echo $this->t('access_denied', $lang, 'Zugriff verweigert');
             exit;
         }
 
@@ -446,8 +521,9 @@ final class CMS_Booking_Frontend
         $this->send_security_headers();
         $lang = $this->detect_lang();
         header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store, max-age=0');
 
-        if ($providerId <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        if ($providerId <= 0 || !CMS_Booking_Bookings::is_date($date)) {
             http_response_code(400);
             echo json_encode(['error' => $this->t('api_error_invalid_request', $lang, 'Ungültige Anfrage')]);
             exit;
@@ -484,14 +560,15 @@ final class CMS_Booking_Frontend
             }
         }
 
-        $slots = CMS_Booking_Availability::instance()->get_available_slots(
-            $providerId,
-            $date,
-            $durationMin,
-            $bufferMin
-        );
+        $slots = $this->is_within_advance_window($date)
+            ? $this->filter_past_slots(
+                CMS_Booking_Availability::instance()->get_available_slots($providerId, $date, $durationMin, $bufferMin),
+                $date,
+                $provider
+            )
+            : [];
 
-        echo json_encode(['success' => true, 'slots' => $slots]);
+        echo json_encode(['success' => true, 'slots' => array_values($slots)], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
         exit;
     }
 
@@ -511,12 +588,32 @@ final class CMS_Booking_Frontend
         return !empty($service['contact_template']) || !empty($provider['contact_form_id']);
     }
 
-    private function set_seo(string $title, string $description): void
+    private function set_seo(string $title, string $description, string $canonicalPath = '', bool $index = true): void
     {
-        if (class_exists('CMS\Services\SEOService')) {
-            $seo = \CMS\Services\SEOService::instance();
-            $seo->setTitle($title);
-            $seo->setDescription($description);
+        try {
+            if (!class_exists('CMS\Services\SEOService')) {
+                return;
+            }
+            $seo = method_exists('CMS\Services\SEOService', 'getInstance')
+                ? \CMS\Services\SEOService::getInstance()
+                : \CMS\Services\SEOService::instance();
+            $meta = [
+                'title'         => $title,
+                'description'   => $description,
+                'robots_index'  => $index,
+                'robots_follow' => $index,
+            ];
+            if ($canonicalPath !== '' && defined('SITE_URL')) {
+                $meta['canonical_url'] = rtrim((string) SITE_URL, '/') . $canonicalPath;
+            }
+            if (method_exists($seo, 'setRequestMeta')) {
+                $seo->setRequestMeta($meta);
+            } else {
+                $seo->setTitle($title);
+                $seo->setDescription($description);
+            }
+        } catch (\Throwable $e) {
+            // SEO-Metadaten sind optional.
         }
     }
 
@@ -535,26 +632,146 @@ final class CMS_Booking_Frontend
 
     private function get_current_user_id(): ?int
     {
-        if (class_exists('CMS\Auth')) {
-            $auth = \CMS\Auth::instance();
-            if ($auth->isLoggedIn()) {
-                $user = $auth->getUser();
-                return isset($user['id']) ? (int) $user['id'] : null;
-            }
+        if (!class_exists('CMS\Auth') || !\CMS\Auth::isLoggedIn()) {
+            return null;
         }
-        return null;
+        $user = \CMS\Auth::getCurrentUser();
+        $id = is_object($user) ? (int) ($user->id ?? 0) : 0;
+
+        return $id > 0 ? $id : null;
     }
 
-    /**
-     * Generiert einen nicht-erratbaren Zugangs-Token für eine Buchung.
-     */
-    private function generate_access_token(int $bookingId, string $icalUid): string
+    /** Skalarer POST-Wert mit Längenbegrenzung (Arrays werden verworfen). */
+    private function post_string(string $key, int $maxLength): string
     {
-        $secret = defined('CMS_SECRET_KEY') && CMS_SECRET_KEY !== ''
-            ? (string) CMS_SECRET_KEY
-            : hash('sha256', (defined('ABSPATH') ? (string) ABSPATH : __DIR__) . '|' . (defined('SITE_URL') ? (string) SITE_URL : ''));
+        $value = $_POST[$key] ?? '';
+        if (!is_scalar($value)) {
+            return '';
+        }
 
-        return hash_hmac('sha256', $bookingId . ':' . $icalUid, $secret);
+        return mb_substr(trim((string) $value), 0, $maxLength);
+    }
+
+    private function client_ip(): string
+    {
+        if (class_exists('CMS\Security') && method_exists('CMS\Security', 'getClientIp')) {
+            return (string) \CMS\Security::getClientIp();
+        }
+
+        return (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+    }
+
+    private function rate_limit_allows(string $action, int $maxPerHour): bool
+    {
+        if ($maxPerHour <= 0 || !class_exists('CMS\Security')) {
+            return true;
+        }
+        try {
+            if (method_exists('CMS\Security', 'checkDbRateLimit')) {
+                return \CMS\Security::checkDbRateLimit($this->client_ip(), $action, $maxPerHour, 3600);
+            }
+
+            return \CMS\Security::checkRateLimit($action . '_' . $this->client_ip(), $maxPerHour, 3600);
+        } catch (\Throwable $e) {
+            return true;
+        }
+    }
+
+    private function record_rate_limit_attempt(string $action): void
+    {
+        try {
+            if (class_exists('CMS\Security') && method_exists('CMS\Security', 'recordDbRateLimitAttempt')) {
+                \CMS\Security::recordDbRateLimitAttempt($this->client_ip(), $action);
+            }
+        } catch (\Throwable $e) {
+            // Rate-Limit-Protokoll darf die Buchung nicht verhindern.
+        }
+    }
+
+    private function render_access_denied(string $lang): never
+    {
+        http_response_code(403);
+        if (!headers_sent()) {
+            header('Content-Type: text/html; charset=utf-8');
+            header('X-Robots-Tag: noindex, nofollow');
+        }
+        echo '<!DOCTYPE html><html lang="' . htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') . '"><head><meta charset="UTF-8"><meta name="robots" content="noindex"><title>'
+            . htmlspecialchars($this->t('access_denied', $lang, 'Zugriff verweigert'), ENT_QUOTES, 'UTF-8') . '</title></head><body>';
+        echo '<h1>' . htmlspecialchars($this->t('access_denied', $lang, 'Zugriff verweigert'), ENT_QUOTES, 'UTF-8') . '</h1>';
+        echo '<p>' . htmlspecialchars($this->t('access_token_invalid', $lang, 'Ungültiger oder fehlender Zugangs-Token.'), ENT_QUOTES, 'UTF-8') . '</p>';
+        echo '</body></html>';
+        exit;
+    }
+
+    /* ================================================================== */
+    /*  Selbst-Stornierung                                                 */
+    /* ================================================================== */
+
+    /**
+     * Darf der Kunde (Token-Inhaber bzw. Mitglied) diese Buchung selbst stornieren?
+     * Einstellung „Selbst-Stornierung erlauben“ und Frist „Stornierungsfrist (Std.)“.
+     */
+    public function can_customer_cancel(array $booking): bool
+    {
+        if (!CMS_Booking_Settings::bool('allow_customer_cancel')) {
+            return false;
+        }
+        if (!in_array((string) ($booking['status'] ?? ''), CMS_Booking_Bookings::ACTIVE_STATUSES, true)) {
+            return false;
+        }
+
+        $timezone = (string) ($booking['provider_timezone'] ?? '');
+        if ($timezone === '' || !in_array($timezone, timezone_identifiers_list(), true)) {
+            $timezone = CMS_Booking_Settings::timezone();
+        }
+        try {
+            $start = new \DateTimeImmutable(
+                (string) $booking['booking_date'] . ' ' . substr((string) $booking['start_time'], 0, 5),
+                new \DateTimeZone($timezone)
+            );
+        } catch (\Throwable $e) {
+            return false;
+        }
+
+        $hours = max(0, CMS_Booking_Settings::int('cancellation_hours', 24));
+
+        return $start->getTimestamp() - time() >= $hours * 3600;
+    }
+
+    private function process_cancellation(int $bookingId): void
+    {
+        $this->send_security_headers();
+        $lang = $this->detect_lang();
+
+        $booking = $bookingId > 0 ? CMS_Booking_Bookings::instance()->get($bookingId) : null;
+        if (!$booking) {
+            $this->render_404();
+            return;
+        }
+
+        $accessToken = $_GET['token'] ?? ($_POST['access_token'] ?? '');
+        if (!CMS_Booking_Bookings::verify_access_token($bookingId, (string) ($booking['ical_uid'] ?? ''), $accessToken)) {
+            $this->render_access_denied($lang);
+        }
+
+        $security = class_exists('CMS\Security') ? \CMS\Security::instance() : null;
+        $ok = $security !== null
+            && $security->verifyToken($_POST['booking_token'] ?? '', 'booking_cancel')
+            && $this->can_customer_cancel($booking);
+
+        if ($ok) {
+            try {
+                $ok = CMS_Booking_Bookings::instance()->cancel($bookingId);
+            } catch (\Throwable $e) {
+                $ok = false;
+            }
+        }
+
+        $target = $this->localized_path('booking/confirm/' . $bookingId, $lang)
+            . '?token=' . rawurlencode(CMS_Booking_Bookings::access_token($bookingId, (string) ($booking['ical_uid'] ?? '')))
+            . '&notice=' . ($ok ? 'cancelled' : 'cancel_failed');
+        header('Location: ' . (defined('SITE_URL') ? rtrim((string) SITE_URL, '/') : '') . $target, true, 303);
+        exit;
     }
 
     private function is_valid_time(string $time): bool
@@ -647,6 +864,12 @@ final class CMS_Booking_Frontend
             'error_min_notice_hours' => ['text' => 'Buchungen müssen mindestens %d Stunde(n) im Voraus erfolgen.', 'text_en' => 'Bookings must be made at least %d hour(s) in advance.'],
             'error_slot_unavailable' => ['text' => 'Der gewählte Zeitpunkt ist leider nicht mehr verfügbar.', 'text_en' => 'The selected time is no longer available.'],
             'error_save_failed' => ['text' => 'Beim Speichern der Buchung ist ein Fehler aufgetreten.', 'text_en' => 'An error occurred while saving the booking.'],
+            'error_rate_limited' => ['text' => 'Zu viele Buchungsversuche. Bitte versuchen Sie es später erneut.', 'text_en' => 'Too many booking attempts. Please try again later.'],
+            'cancel_button' => ['text' => 'Termin stornieren', 'text_en' => 'Cancel appointment'],
+            'cancel_confirm' => ['text' => 'Möchten Sie diesen Termin wirklich stornieren?', 'text_en' => 'Do you really want to cancel this appointment?'],
+            'cancel_done' => ['text' => 'Ihr Termin wurde storniert.', 'text_en' => 'Your appointment has been cancelled.'],
+            'cancel_failed' => ['text' => 'Die Stornierung war nicht möglich (Frist abgelaufen oder Formular ungültig).', 'text_en' => 'Cancellation was not possible (deadline passed or form invalid).'],
+            'cancel_hint' => ['text' => 'Eine Stornierung ist bis %d Stunde(n) vor Terminbeginn möglich.', 'text_en' => 'Cancellation is possible up to %d hour(s) before the appointment.'],
             'error_daily_limit_global' => ['text' => 'Für diesen Tag ist das Tageslimit erreicht.', 'text_en' => 'The daily booking limit is reached for this day.'],
             'error_daily_limit_provider' => ['text' => 'Für diesen Anbieter ist das Tageslimit erreicht.', 'text_en' => 'The provider daily limit is reached for this day.'],
             'error_daily_limit_service' => ['text' => 'Für diese Leistung ist das Tageslimit erreicht.', 'text_en' => 'The service daily limit is reached for this day.'],
@@ -789,6 +1012,11 @@ final class CMS_Booking_Frontend
             'confirmationSentSuffix' => $this->t('confirmation_sent_suffix', $lang, 'gesendet.'),
             'confirmationBackHome' => $this->t('confirmation_back_home', $lang, '← Zur Startseite'),
             'confirmationOpenMeetingLink' => $this->t('confirmation_open_meeting_link', $lang, 'Meeting-Link öffnen ↗'),
+            'cancelButton' => $this->t('cancel_button', $lang, 'Termin stornieren'),
+            'cancelConfirm' => $this->t('cancel_confirm', $lang, 'Möchten Sie diesen Termin wirklich stornieren?'),
+            'cancelDone' => $this->t('cancel_done', $lang, 'Ihr Termin wurde storniert.'),
+            'cancelFailed' => $this->t('cancel_failed', $lang, 'Die Stornierung war nicht möglich.'),
+            'cancelHint' => sprintf($this->t('cancel_hint', $lang, 'Eine Stornierung ist bis %d Stunde(n) vor Terminbeginn möglich.'), max(0, CMS_Booking_Settings::int('cancellation_hours', 24))),
             'monthNames' => [
                 $this->t('month_01', $lang, 'Januar'),
                 $this->t('month_02', $lang, 'Februar'),
@@ -854,12 +1082,7 @@ final class CMS_Booking_Frontend
             return $timezone;
         }
 
-        $defaultTimezone = $this->get_setting('default_timezone', 'Europe/Berlin');
-        if ($defaultTimezone !== '' && in_array($defaultTimezone, timezone_identifiers_list(), true)) {
-            return $defaultTimezone;
-        }
-
-        return 'Europe/Berlin';
+        return CMS_Booking_Settings::timezone();
     }
 
     /**
@@ -868,7 +1091,7 @@ final class CMS_Booking_Frontend
      */
     private function is_daily_limit_reached(int $providerId, int $serviceId, string $date, array $provider, array $service): bool
     {
-        $globalLimit = max(0, (int) $this->get_setting('booking_daily_limit', '0'));
+        $globalLimit = max(0, CMS_Booking_Settings::int('booking_daily_limit', 0));
         $providerLimit = $this->json_int_setting($provider['settings_json'] ?? null, 'daily_booking_limit');
         $serviceLimit = $this->json_int_setting($service['settings_json'] ?? null, 'daily_booking_limit');
 
@@ -942,14 +1165,102 @@ final class CMS_Booking_Frontend
             return $dates;
         }
 
+        $globalLimit   = max(0, CMS_Booking_Settings::int('booking_daily_limit', 0));
+        $providerLimit = $this->json_int_setting($provider['settings_json'] ?? null, 'daily_booking_limit');
+        $serviceLimit  = $this->json_int_setting($service['settings_json'] ?? null, 'daily_booking_limit');
+        if ($globalLimit === 0 && $providerLimit === 0 && $serviceLimit === 0) {
+            return array_values(array_map('strval', $dates));
+        }
+
+        // Je eine gruppierte Abfrage für den gesamten Zeitraum statt bis zu drei Abfragen je Tag.
+        $from = (string) min($dates);
+        $to   = (string) max($dates);
+        $bookings = CMS_Booking_Bookings::instance();
+        $providerCounts = ($globalLimit > 0 || $providerLimit > 0) ? $bookings->count_active_between($providerId, $from, $to) : [];
+        $serviceCounts  = $serviceLimit > 0 ? $bookings->count_active_between($providerId, $from, $to, $serviceId) : [];
+
         $filtered = [];
         foreach ($dates as $date) {
-            if (!$this->is_daily_limit_reached($providerId, $serviceId, (string) $date, $provider, $service)) {
-                $filtered[] = (string) $date;
+            $date = (string) $date;
+            $providerCount = $providerCounts[$date] ?? 0;
+            if ($globalLimit > 0 && $providerCount >= $globalLimit) {
+                continue;
             }
+            if ($providerLimit > 0 && $providerCount >= $providerLimit) {
+                continue;
+            }
+            if ($serviceLimit > 0 && ($serviceCounts[$date] ?? 0) >= $serviceLimit) {
+                continue;
+            }
+            $filtered[] = $date;
         }
 
         return $filtered;
+    }
+
+    /**
+     * Buchbare Tage einer Leistung innerhalb des Vorlauf-Fensters (min./max. Tage im Voraus).
+     *
+     * @return list<string>
+     */
+    private function available_dates(array $provider, array $service): array
+    {
+        $minDays = max(0, CMS_Booking_Settings::int('booking_advance_min', 1));
+        $maxDays = max(1, min(366, CMS_Booking_Settings::int('booking_advance_max', 90)));
+        $dates = CMS_Booking_Availability::instance()->get_available_dates(
+            (int) $provider['id'],
+            (int) $service['duration_min'],
+            $maxDays,
+            (int) ($service['buffer_min'] ?? 0),
+            $minDays
+        );
+        $dates = $this->filter_dates_by_daily_limits($dates, $provider, $service);
+
+        // Heute: nur, wenn noch ein künftiger Slot übrig ist.
+        $today = date('Y-m-d');
+        if (in_array($today, $dates, true)) {
+            $slots = $this->filter_past_slots(
+                CMS_Booking_Availability::instance()->get_available_slots((int) $provider['id'], $today, (int) $service['duration_min'], (int) ($service['buffer_min'] ?? 0)),
+                $today,
+                $provider
+            );
+            if ($slots === []) {
+                $dates = array_values(array_filter($dates, static fn (string $d): bool => $d !== $today));
+            }
+        }
+
+        return $dates;
+    }
+
+    private function is_within_advance_window(string $date): bool
+    {
+        $minDays = max(0, CMS_Booking_Settings::int('booking_advance_min', 1));
+        $maxDays = max(1, CMS_Booking_Settings::int('booking_advance_max', 90));
+        $diff = (int) round((strtotime($date) - strtotime('today')) / 86400);
+
+        return $diff >= $minDays && $diff <= $maxDays;
+    }
+
+    /**
+     * Entfernt Slots, die bereits begonnen haben bzw. die Mindest-Vorlaufzeit (Stunden) unterschreiten.
+     *
+     * @param list<string> $slots
+     * @return list<string>
+     */
+    private function filter_past_slots(array $slots, string $date, array $provider): array
+    {
+        try {
+            $tz  = new \DateTimeZone($this->provider_timezone($provider));
+            $min = (new \DateTimeImmutable('now', $tz))->modify('+' . max(0, CMS_Booking_Settings::int('booking_min_notice_hours', 0)) . ' hours');
+        } catch (\Throwable $e) {
+            return $slots;
+        }
+
+        return array_values(array_filter($slots, static function (string $slot) use ($date, $tz, $min): bool {
+            $start = \DateTimeImmutable::createFromFormat('Y-m-d H:i', $date . ' ' . $slot, $tz);
+
+            return $start !== false && $start > $min;
+        }));
     }
 
     private function json_int_setting(mixed $jsonValue, string $key): int
@@ -964,24 +1275,5 @@ final class CMS_Booking_Frontend
         }
 
         return max(0, (int) $decoded[$key]);
-    }
-
-    /**
-     * Liest einen Booking-Setting-Wert aus der DB.
-     */
-    private function get_setting(string $key, string $default = ''): string
-    {
-        static $cache = null;
-        if ($cache === null) {
-            try {
-                $db   = \CMS\Database::instance();
-                $stmt = $db->prepare("SELECT setting_key, setting_value FROM {$db->getPrefix()}booking_settings");
-                $stmt->execute();
-                $cache = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
-            } catch (\Throwable $e) {
-                $cache = [];
-            }
-        }
-        return $cache[$key] ?? $default;
     }
 }

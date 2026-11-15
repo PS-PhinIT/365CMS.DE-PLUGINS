@@ -1,0 +1,259 @@
+/*
+ * CMS Projects – plugin-spezifische Admin-Bausteine (Toolbar, Sammelaktionen, Formular-Raster, Board-Vorschau).
+ * Layout (Kopfzeile, Menü, Dashboard) liefert der Core über admin-plugins.css bzw. cms-plugin-workspace.css.
+ * Nur Tokens, Kantenrundung höchstens 2px, alle Selektoren unter .cms-plugin-admin-content bzw. .cms-plugin-main.
+ */
+
+.cms-plugin-main .cp-admin-section {
+    min-width: 0;
+    margin-bottom: 1.25rem;
+}
+
+.cms-plugin-main .cp-panel-header--split {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.cms-plugin-main .cp-muted,
+.cms-plugin-main .cp-field-hint {
+    color: var(--cms-text-muted, var(--tblr-secondary, #667085));
+}
+
+.cms-plugin-main .cp-field-hint {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 400;
+}
+
+.cms-plugin-main .cp-text-danger {
+    color: var(--cms-danger, var(--tblr-danger, #d63939));
+}
+
+/* Toolbar / Filter */
+.cms-plugin-main .cp-toolbar,
+.cms-plugin-main .cp-bulkbar,
+.cms-plugin-main .cp-inline-upload {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.cms-plugin-main .cp-toolbar {
+    margin-bottom: 1.25rem;
+    padding: 0.75rem;
+    background: var(--cms-surface, var(--tblr-bg-surface, #ffffff));
+    border: 1px solid var(--cms-border, var(--tblr-border-color, #e6e7e9));
+    border-radius: 2px;
+}
+
+.cms-plugin-main .cp-bulkbar {
+    margin-bottom: 0.75rem;
+}
+
+.cms-plugin-main .cp-toolbar__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+    flex: 0 1 12rem;
+}
+
+.cms-plugin-main .cp-toolbar__field--grow {
+    flex: 1 1 16rem;
+}
+
+.cms-plugin-main .cp-toolbar__field .form-label {
+    margin: 0;
+    font-size: 0.8rem;
+}
+
+.cms-plugin-main .cp-toolbar__check {
+    align-self: center;
+    margin: 0;
+}
+
+.cms-plugin-main .cp-toolbar__actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Tabellen */
+.cms-plugin-main .users-table-container {
+    overflow-x: auto;
+}
+
+.cms-plugin-main .cp-col-check {
+    width: 2.25rem;
+}
+
+.cms-plugin-main .cp-row-actions {
+    white-space: nowrap;
+}
+
+.cms-plugin-main .cp-row-actions .btn + .btn {
+    margin-left: 0.25rem;
+}
+
+.cms-plugin-main .cp-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.cms-plugin-main .cp-pagination .pagination {
+    margin: 0;
+}
+
+/* Formulare */
+.cms-plugin-main .cp-form {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.cms-plugin-main .cp-form label:not(.form-check) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.cms-plugin-main .cp-form .form-label {
+    margin: 0;
+}
+
+.cms-plugin-main .cp-form-section {
+    display: grid;
+    gap: 0.85rem;
+    min-width: 0;
+    margin: 0;
+    padding: 1rem;
+    border: 1px solid var(--cms-border, var(--tblr-border-color, #e6e7e9));
+    border-radius: 2px;
+}
+
+.cms-plugin-main .cp-form-section__title {
+    float: none;
+    width: auto;
+    margin: 0;
+    padding: 0 0.25rem;
+    color: var(--cms-text-muted, var(--tblr-secondary, #667085));
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.cms-plugin-main .cp-form-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.cms-plugin-main .cp-form-checks {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.35rem;
+}
+
+.cms-plugin-main .cp-form-actions,
+.cms-plugin-main .cp-inline-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.cms-plugin-main .cp-inline-form {
+    margin-top: 0.75rem;
+}
+
+.cms-plugin-main .cp-input-narrow {
+    max-width: 10rem;
+}
+
+.cms-plugin-main .cp-code-input {
+    font-family: var(--tblr-font-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+/* Projekt bearbeiten: Formular + Seitenspalte */
+.cms-plugin-main .cp-admin-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+    gap: 1.25rem;
+    align-items: start;
+}
+
+.cms-plugin-main .cp-admin-aside {
+    display: grid;
+    gap: 0;
+    min-width: 0;
+}
+
+.cms-plugin-main .cp-facts {
+    display: grid;
+    gap: 0.35rem;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    list-style: none;
+}
+
+.cms-plugin-main .cp-facts li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.cms-plugin-main .cp-danger-zone {
+    border-color: var(--cms-danger, var(--tblr-danger, #d63939));
+}
+
+/* Badges */
+.cms-plugin-main .cp-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--cms-border, var(--tblr-border-color, #e6e7e9));
+    border-radius: 2px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.cms-plugin-main .cp-badge--success { color: var(--cms-success, var(--tblr-success, #2fb344)); border-color: currentColor; }
+.cms-plugin-main .cp-badge--warning,
+.cms-plugin-main .cp-badge--priority-high { color: var(--cms-warning, var(--tblr-warning, #f59f00)); border-color: currentColor; }
+.cms-plugin-main .cp-badge--danger,
+.cms-plugin-main .cp-badge--priority-critical { color: var(--cms-danger, var(--tblr-danger, #d63939)); border-color: currentColor; }
+.cms-plugin-main .cp-badge--muted { color: var(--cms-text-muted, var(--tblr-secondary, #667085)); }
+
+/* Board-Vorschau im Admin: Kantenrundung und Flächen aus Admin-Tokens */
+.cms-plugin-main .cp-board-stack--admin,
+.cms-plugin-main .cp-widget-grid {
+    --cp-surface: var(--cms-surface, var(--tblr-bg-surface, #ffffff));
+    --cp-surface-alt: var(--cms-surface-alt, var(--tblr-bg-surface-secondary, #f6f8fb));
+    --cp-border: var(--cms-border, var(--tblr-border-color, #e6e7e9));
+    --cp-text: var(--cms-text, var(--tblr-body-color, #182433));
+    --cp-muted: var(--cms-text-muted, var(--tblr-secondary, #667085));
+    --cp-primary: var(--cms-primary, var(--tblr-primary, #206bc4));
+    --cp-radius: 2px;
+}
+
+@media (max-width: 991px) {
+    .cms-plugin-main .cp-admin-columns,
+    .cms-plugin-main .cp-form-grid-2 {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

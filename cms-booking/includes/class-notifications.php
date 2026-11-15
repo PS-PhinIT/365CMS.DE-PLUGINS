@@ -2,6 +2,13 @@
 /**
  * CMS Booking – E-Mail-Benachrichtigungen
  *
+ * - Versand über den Core-Mailer (`cms_mail()` → MailService/MailQueue, SMTP-Konfiguration, Mail-Log),
+ *   Rückfall auf `mail()` nur ohne Core-Helfer.
+ * - Header-Injection: Betreff, Absendername und Adressen werden von CR/LF und Steuerzeichen befreit,
+ *   Adressen per FILTER_VALIDATE_EMAIL geprüft, der Absendername als quoted-string gesetzt.
+ * - Alle Platzhalter werden HTML-escaped; URLs nur mit http/https.
+ * - Erinnerungen über `cms_cron_hourly` (Einstellungen „Erinnerungen versenden“ / „Stunden vorher“).
+ *
  * @package CMS_Booking
  */
 
@@ -26,6 +33,7 @@ final class CMS_Booking_Notifications
             \CMS\Hooks::addAction('booking_created',          [$this, 'on_booking_created'],    10);
             \CMS\Hooks::addAction('booking_status_confirmed', [$this, 'on_booking_confirmed'],  10);
             \CMS\Hooks::addAction('booking_status_cancelled', [$this, 'on_booking_cancelled'],  10);
+            \CMS\Hooks::addAction('cms_cron_hourly',          [$this, 'send_due_reminders'],    40);
         }
     }
 
@@ -33,40 +41,74 @@ final class CMS_Booking_Notifications
     /*  Hook-Callbacks                                                     */
     /* ================================================================== */
 
-    public function on_booking_created(int $bookingId): void
+    public function on_booking_created(mixed $bookingId = 0): void
     {
-        $booking = CMS_Booking_Bookings::instance()->get($bookingId);
-        if (!$booking) {
+        $booking = $this->load((int) $bookingId);
+        if ($booking === null) {
             return;
         }
 
-        // Kundenbestätigung
         $this->send_customer_confirmation($booking);
-
-        // Provider-Benachrichtigung
         $this->send_provider_notification($booking);
-
-        // Admin-Info
         $this->send_admin_notification($booking);
     }
 
-    public function on_booking_confirmed(int $bookingId): void
+    public function on_booking_confirmed(mixed $bookingId = 0): void
     {
-        $booking = CMS_Booking_Bookings::instance()->get($bookingId);
-        if (!$booking) {
+        $booking = $this->load((int) $bookingId);
+        if ($booking === null) {
             return;
         }
         $this->send_customer_status_update($booking, 'bestätigt');
     }
 
-    public function on_booking_cancelled(int $bookingId): void
+    public function on_booking_cancelled(mixed $bookingId = 0): void
     {
-        $booking = CMS_Booking_Bookings::instance()->get($bookingId);
-        if (!$booking) {
+        $booking = $this->load((int) $bookingId);
+        if ($booking === null) {
             return;
         }
         $this->send_customer_status_update($booking, 'storniert');
         $this->send_provider_cancellation($booking);
+    }
+
+    /**
+     * Kompatibilität 3.x: direkter Versand der Eingangsmails für einen geladenen Datensatz.
+     */
+    public function send_booking_created(array $booking): void
+    {
+        $this->on_booking_created((int) ($booking['id'] ?? 0));
+    }
+
+    /**
+     * Cron (stündlich): Erinnerungen für bestätigte Termine innerhalb der eingestellten Vorlaufzeit.
+     */
+    public function send_due_reminders(): int
+    {
+        try {
+            if (!CMS_Booking_Settings::bool('send_reminders')) {
+                return 0;
+            }
+            $hours = max(1, CMS_Booking_Settings::int('reminder_hours', 24));
+            $sent  = 0;
+            $now   = time();
+
+            foreach (CMS_Booking_Bookings::instance()->get_reminder_candidates($hours) as $booking) {
+                $startTs = $this->start_timestamp($booking);
+                if ($startTs === null || $startTs <= $now || $startTs - $now > $hours * 3600) {
+                    continue;
+                }
+                $this->send_reminder($booking);
+                CMS_Booking_Bookings::instance()->mark_reminder_sent((int) $booking['id']);
+                $sent++;
+            }
+
+            return $sent;
+        } catch (\Throwable $e) {
+            $this->log_notice('reminder run failed: ' . $e->getMessage());
+
+            return 0;
+        }
     }
 
     /* ================================================================== */
@@ -75,19 +117,53 @@ final class CMS_Booking_Notifications
 
     private function send_customer_confirmation(array $booking): void
     {
-        $subject = 'Buchungsbestätigung – ' . ($booking['service_title'] ?? 'Termin');
-        $body    = $this->render_template('customer-confirmation', $booking);
-        $this->send($booking['customer_email'], $subject, $body);
+        $confirmed = ($booking['status'] ?? '') === CMS_Booking_Bookings::STATUS_CONFIRMED;
+        $subject = ($confirmed ? 'Terminbestätigung – ' : 'Buchungseingang – ') . ($booking['service_title'] ?? 'Termin');
+        $body    = $this->render_mail(
+            $confirmed ? 'Ihr Termin ist bestätigt' : 'Ihre Buchung ist eingegangen',
+            [
+                'Hallo ' . (string) ($booking['customer_name'] ?? '') . ',',
+                $confirmed
+                    ? 'Ihr Termin wurde verbindlich gebucht.'
+                    : 'Ihre Buchung wurde registriert. Sie erhalten eine weitere E-Mail, sobald sie bestätigt wurde.',
+            ],
+            $this->booking_rows($booking, ['booking_id', 'service', 'provider', 'date', 'time', 'location', 'price']),
+            $booking,
+            true
+        );
+        $this->send((string) ($booking['customer_email'] ?? ''), $subject, $body);
     }
 
     private function send_customer_status_update(array $booking, string $statusText): void
     {
         $subject = "Buchung {$statusText} – " . ($booking['service_title'] ?? 'Termin');
-        $body    = $this->render_template('customer-status-update', [
-            ...$booking,
-            'status_text' => $statusText,
-        ]);
-        $this->send($booking['customer_email'], $subject, $body);
+        $body    = $this->render_mail(
+            'Buchung ' . $statusText,
+            [
+                'Hallo ' . (string) ($booking['customer_name'] ?? '') . ',',
+                'der Status Ihrer Buchung #' . (int) ($booking['id'] ?? 0) . ' wurde auf „' . $statusText . '“ geändert.',
+            ],
+            $this->booking_rows($booking, ['service', 'provider', 'date', 'time', 'location']),
+            $booking,
+            $statusText !== 'storniert'
+        );
+        $this->send((string) ($booking['customer_email'] ?? ''), $subject, $body);
+    }
+
+    private function send_reminder(array $booking): void
+    {
+        $subject = 'Erinnerung: ' . ($booking['service_title'] ?? 'Termin') . ' am ' . $this->format_date((string) ($booking['booking_date'] ?? ''));
+        $body    = $this->render_mail(
+            'Terminerinnerung',
+            [
+                'Hallo ' . (string) ($booking['customer_name'] ?? '') . ',',
+                'wir erinnern Sie an Ihren bevorstehenden Termin.',
+            ],
+            $this->booking_rows($booking, ['service', 'provider', 'date', 'time', 'location']),
+            $booking,
+            true
+        );
+        $this->send((string) ($booking['customer_email'] ?? ''), $subject, $body);
     }
 
     /* ================================================================== */
@@ -96,25 +172,43 @@ final class CMS_Booking_Notifications
 
     private function send_provider_notification(array $booking): void
     {
-        $email = $booking['provider_email'] ?? '';
+        $email = (string) ($booking['provider_email'] ?? '');
         if ($email === '') {
             return;
         }
 
-        $subject = 'Neue Buchung von ' . $booking['customer_name'];
-        $body    = $this->render_template('provider-new-booking', $booking);
+        $subject = 'Neue Buchung von ' . (string) ($booking['customer_name'] ?? '');
+        $body    = $this->render_mail(
+            'Neue Buchungsanfrage',
+            [
+                'Hallo ' . (string) ($booking['provider_name'] ?? '') . ',',
+                'Sie haben eine neue Buchung erhalten.',
+            ],
+            $this->booking_rows($booking, ['booking_id', 'customer', 'customer_email', 'customer_phone', 'service', 'date', 'time', 'notes']),
+            $booking,
+            false
+        );
         $this->send($email, $subject, $body);
     }
 
     private function send_provider_cancellation(array $booking): void
     {
-        $email = $booking['provider_email'] ?? '';
+        $email = (string) ($booking['provider_email'] ?? '');
         if ($email === '') {
             return;
         }
 
-        $subject = 'Stornierung – ' . $booking['customer_name'];
-        $body    = $this->render_template('provider-cancellation', $booking);
+        $subject = 'Stornierung – ' . (string) ($booking['customer_name'] ?? '');
+        $body    = $this->render_mail(
+            'Stornierung',
+            [
+                'Hallo ' . (string) ($booking['provider_name'] ?? '') . ',',
+                'die folgende Buchung wurde storniert.',
+            ],
+            $this->booking_rows($booking, ['booking_id', 'customer', 'service', 'date', 'time']),
+            $booking,
+            false
+        );
         $this->send($email, $subject, $body);
     }
 
@@ -124,182 +218,141 @@ final class CMS_Booking_Notifications
 
     private function send_admin_notification(array $booking): void
     {
-        $adminEmail = $this->get_setting('admin_email');
+        $adminEmail = CMS_Booking_Settings::get('admin_email');
         if ($adminEmail === '') {
             return;
         }
 
-        $subject = '[CMS Booking] Neue Buchung #' . $booking['id'];
-        $body    = $this->render_template('admin-new-booking', $booking);
+        $subject = '[CMS Booking] Neue Buchung #' . (int) ($booking['id'] ?? 0);
+        $rows = $this->booking_rows($booking, ['booking_id', 'customer', 'customer_email', 'provider', 'service', 'date', 'time', 'price', 'status']);
+        $adminUrl = (defined('SITE_URL') ? rtrim((string) SITE_URL, '/') : '')
+            . '/admin/plugins/booking/bookings?view=detail&id=' . (int) ($booking['id'] ?? 0);
+        $body = $this->render_mail('Neue Buchung', ['Im Buchungssystem ist eine neue Buchung eingegangen.'], $rows, $booking, false, $adminUrl, 'Im Admin öffnen');
         $this->send($adminEmail, $subject, $body);
     }
 
     /* ================================================================== */
-    /*  Template-Engine                                                    */
+    /*  Mail-Aufbau                                                        */
     /* ================================================================== */
 
-    private function render_template(string $templateName, array $data): string
+    /**
+     * @param list<string> $keys
+     * @return list<array{0: string, 1: string}>
+     */
+    private function booking_rows(array $booking, array $keys): array
     {
-        $siteName = defined('SITE_NAME') ? SITE_NAME : '365CMS';
-        $siteUrl  = defined('SITE_URL')  ? SITE_URL  : '';
-        $date     = isset($data['booking_date'])
-            ? date('d.m.Y', strtotime($data['booking_date']))
-            : '';
-        $time = ($data['start_time'] ?? '') . ' – ' . ($data['end_time'] ?? '');
+        $labels = CMS_Booking_Bookings::status_labels();
+        $locationLabels = ['online' => 'Online', 'onsite' => 'Vor Ort', 'hybrid' => 'Online / Vor Ort'];
+        $rows = [];
+        foreach ($keys as $key) {
+            $row = match ($key) {
+                'booking_id'     => ['Buchung', '#' . (int) ($booking['id'] ?? 0)],
+                'customer'       => ['Kunde', (string) ($booking['customer_name'] ?? '')],
+                'customer_email' => ['E-Mail', (string) ($booking['customer_email'] ?? '')],
+                'customer_phone' => ['Telefon', (string) ($booking['customer_phone'] ?? '')],
+                'provider'       => ['Anbieter', (string) ($booking['provider_name'] ?? '')],
+                'service'        => ['Leistung', (string) ($booking['service_title'] ?? 'Termin')],
+                'date'           => ['Datum', $this->format_date((string) ($booking['booking_date'] ?? ''))],
+                'time'           => ['Uhrzeit', substr((string) ($booking['start_time'] ?? ''), 0, 5) . ' – ' . substr((string) ($booking['end_time'] ?? ''), 0, 5) . ' Uhr'],
+                'location'       => ['Ort', $locationLabels[(string) ($booking['location_type'] ?? '')] ?? (string) ($booking['location_type'] ?? '')],
+                'price'          => ['Preis', CMS_Booking_Services::format_price((int) ($booking['price_cents'] ?? 0), (string) ($booking['currency'] ?? ''))],
+                'status'         => ['Status', $labels[(string) ($booking['status'] ?? '')] ?? (string) ($booking['status'] ?? '')],
+                'notes'          => ['Nachricht', (string) ($booking['notes'] ?? '')],
+                default          => null,
+            };
+            if ($row !== null && trim($row[1]) !== '') {
+                $rows[] = $row;
+            }
+        }
 
-        $vars = [
-            '{{site_name}}'      => htmlspecialchars($siteName),
-            '{{site_url}}'       => htmlspecialchars($siteUrl),
-            '{{booking_id}}'     => (string) ($data['id'] ?? ''),
-            '{{customer_name}}'  => htmlspecialchars($data['customer_name'] ?? ''),
-            '{{customer_email}}' => htmlspecialchars($data['customer_email'] ?? ''),
-            '{{customer_phone}}' => htmlspecialchars($data['customer_phone'] ?? ''),
-            '{{provider_name}}'  => htmlspecialchars($data['provider_name'] ?? ''),
-            '{{service_title}}'  => htmlspecialchars($data['service_title'] ?? 'Termin'),
-            '{{date}}'           => $date,
-            '{{time}}'           => $time,
-            '{{location_type}}'  => htmlspecialchars($data['location_type'] ?? ''),
-            '{{meeting_url}}'    => htmlspecialchars($data['meeting_url'] ?? ''),
-            '{{status}}'         => htmlspecialchars($data['status'] ?? ''),
-            '{{status_text}}'    => htmlspecialchars($data['status_text'] ?? ''),
-            '{{notes}}'          => nl2br(htmlspecialchars($data['notes'] ?? '')),
-            '{{price}}'          => CMS_Booking_Services::format_price(
-                (int) ($data['price_cents'] ?? 0),
-                (string) ($data['currency'] ?? 'EUR')
-            ),
-        ];
-
-        $html = $this->get_template_html($templateName);
-        return str_replace(array_keys($vars), array_values($vars), $html);
+        return $rows;
     }
 
-    private function get_template_html(string $name): string
-    {
-        $templates = [
-            'customer-confirmation' => $this->tpl_customer_confirmation(),
-            'customer-status-update' => $this->tpl_customer_status_update(),
-            'provider-new-booking'  => $this->tpl_provider_new_booking(),
-            'provider-cancellation' => $this->tpl_provider_cancellation(),
-            'admin-new-booking'     => $this->tpl_admin_new_booking(),
-        ];
+    /**
+     * Einheitliches, schlichtes HTML-Layout (Inline-Styles sind in E-Mails erforderlich; keine Emojis).
+     *
+     * @param list<string>                     $paragraphs Klartext (wird escaped)
+     * @param list<array{0: string, 1: string}> $rows       Label/Wert (wird escaped)
+     */
+    private function render_mail(
+        string $heading,
+        array $paragraphs,
+        array $rows,
+        array $booking,
+        bool $withCustomerLink,
+        string $buttonUrl = '',
+        string $buttonLabel = ''
+    ): string {
+        $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $siteName = defined('SITE_NAME') ? (string) SITE_NAME : '365CMS';
 
-        return $templates[$name] ?? '<p>{{customer_name}}, Ihre Buchung #{{booking_id}} wurde registriert.</p>';
+        if ($withCustomerLink && $buttonUrl === '') {
+            $buttonUrl = $this->customer_link($booking);
+            $buttonLabel = 'Buchung ansehen';
+        }
+        $meetingUrl = $this->safe_url((string) ($booking['meeting_url'] ?? ''));
+
+        $html = '<div style="max-width:600px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">'
+            . '<div style="background:#1e293b;color:#ffffff;padding:20px 24px;border-radius:2px 2px 0 0;">'
+            . '<h2 style="margin:0;font-size:20px;">' . $e($heading) . '</h2></div>'
+            . '<div style="padding:24px;background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 2px 2px;">';
+        foreach ($paragraphs as $paragraph) {
+            $html .= '<p style="margin:0 0 12px;">' . $e($paragraph) . '</p>';
+        }
+        if ($rows !== []) {
+            $html .= '<table style="width:100%;border-collapse:collapse;margin:16px 0;">';
+            foreach ($rows as [$label, $value]) {
+                $html .= '<tr><td style="padding:6px 8px;color:#64748b;vertical-align:top;width:35%;">' . $e($label) . ':</td>'
+                    . '<td style="padding:6px 8px;">' . nl2br($e($value)) . '</td></tr>';
+            }
+            $html .= '</table>';
+        }
+        if ($withCustomerLink && $meetingUrl !== '') {
+            $html .= '<p style="margin:0 0 12px;">Meeting-Link: <a href="' . $e($meetingUrl) . '">' . $e($meetingUrl) . '</a></p>';
+        }
+        if ($buttonUrl !== '' && $this->safe_url($buttonUrl) !== '') {
+            $html .= '<p style="margin:20px 0;"><a href="' . $e($buttonUrl) . '" style="display:inline-block;padding:10px 18px;background:#1e293b;color:#ffffff;text-decoration:none;border-radius:2px;">'
+                . $e($buttonLabel !== '' ? $buttonLabel : 'Öffnen') . '</a></p>';
+        }
+        $html .= '<p style="margin-top:24px;color:#94a3b8;font-size:12px;">– ' . $e($siteName) . '</p></div></div>';
+
+        return $html;
     }
 
-    /* ================================================================== */
-    /*  HTML-Templates                                                     */
-    /* ================================================================== */
-
-    private function tpl_customer_confirmation(): string
+    private function customer_link(array $booking): string
     {
-        return <<<'HTML'
-<div style="max-width:600px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;">
-    <div style="background:#3b82f6;color:#fff;padding:1.5rem;text-align:center;border-radius:8px 8px 0 0;">
-        <h2 style="margin:0;font-size:1.25rem;">✅ Buchungsbestätigung</h2>
-    </div>
-    <div style="padding:1.5rem;background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;">
-        <p>Hallo {{customer_name}},</p>
-        <p>Ihre Buchung wurde erfolgreich registriert.</p>
-        <table style="width:100%;border-collapse:collapse;margin:1rem 0;">
-            <tr><td style="padding:.5rem;color:#64748b;">Buchung:</td><td style="padding:.5rem;">#{{booking_id}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Leistung:</td><td style="padding:.5rem;">{{service_title}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Anbieter:</td><td style="padding:.5rem;">{{provider_name}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Datum:</td><td style="padding:.5rem;">{{date}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Uhrzeit:</td><td style="padding:.5rem;">{{time}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Preis:</td><td style="padding:.5rem;">{{price}}</td></tr>
-        </table>
-        <p style="color:#64748b;font-size:.875rem;">Sie erhalten eine weitere E-Mail, sobald Ihre Buchung bestätigt wird.</p>
-        <p style="margin-top:1.5rem;color:#94a3b8;font-size:.8rem;">– {{site_name}}</p>
-    </div>
-</div>
-HTML;
+        $id  = (int) ($booking['id'] ?? 0);
+        $uid = (string) ($booking['ical_uid'] ?? '');
+        if ($id <= 0 || $uid === '' || !defined('SITE_URL')) {
+            return '';
+        }
+
+        return rtrim((string) SITE_URL, '/') . '/booking/confirm/' . $id . '?token=' . rawurlencode(CMS_Booking_Bookings::access_token($id, $uid));
     }
 
-    private function tpl_customer_status_update(): string
+    private function format_date(string $date): string
     {
-        return <<<'HTML'
-<div style="max-width:600px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;">
-    <div style="background:#3b82f6;color:#fff;padding:1.5rem;text-align:center;border-radius:8px 8px 0 0;">
-        <h2 style="margin:0;font-size:1.25rem;">📋 Buchungs-Update</h2>
-    </div>
-    <div style="padding:1.5rem;background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;">
-        <p>Hallo {{customer_name}},</p>
-        <p>Der Status Ihrer Buchung <strong>#{{booking_id}}</strong> wurde auf <strong>{{status_text}}</strong> geändert.</p>
-        <table style="width:100%;border-collapse:collapse;margin:1rem 0;">
-            <tr><td style="padding:.5rem;color:#64748b;">Leistung:</td><td style="padding:.5rem;">{{service_title}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Datum:</td><td style="padding:.5rem;">{{date}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Uhrzeit:</td><td style="padding:.5rem;">{{time}}</td></tr>
-        </table>
-        <p style="margin-top:1.5rem;color:#94a3b8;font-size:.8rem;">– {{site_name}}</p>
-    </div>
-</div>
-HTML;
+        $ts = $date !== '' ? strtotime($date) : false;
+
+        return $ts !== false ? date('d.m.Y', $ts) : $date;
     }
 
-    private function tpl_provider_new_booking(): string
+    private function start_timestamp(array $booking): ?int
     {
-        return <<<'HTML'
-<div style="max-width:600px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;">
-    <div style="background:#059669;color:#fff;padding:1.5rem;text-align:center;border-radius:8px 8px 0 0;">
-        <h2 style="margin:0;font-size:1.25rem;">📥 Neue Buchungsanfrage</h2>
-    </div>
-    <div style="padding:1.5rem;background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;">
-        <p>Hallo {{provider_name}},</p>
-        <p>Sie haben eine neue Buchungsanfrage erhalten:</p>
-        <table style="width:100%;border-collapse:collapse;margin:1rem 0;">
-            <tr><td style="padding:.5rem;color:#64748b;">Kunde:</td><td style="padding:.5rem;">{{customer_name}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">E-Mail:</td><td style="padding:.5rem;">{{customer_email}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Telefon:</td><td style="padding:.5rem;">{{customer_phone}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Leistung:</td><td style="padding:.5rem;">{{service_title}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Datum:</td><td style="padding:.5rem;">{{date}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Uhrzeit:</td><td style="padding:.5rem;">{{time}}</td></tr>
-        </table>
-        <p>Bitte bestätigen oder bearbeiten Sie die Buchung im Admin-Bereich.</p>
-    </div>
-</div>
-HTML;
-    }
+        $timezone = (string) ($booking['provider_timezone'] ?? '');
+        if ($timezone === '' || !in_array($timezone, timezone_identifiers_list(), true)) {
+            $timezone = CMS_Booking_Settings::timezone();
+        }
+        try {
+            $start = new \DateTimeImmutable(
+                (string) ($booking['booking_date'] ?? '') . ' ' . substr((string) ($booking['start_time'] ?? ''), 0, 5),
+                new \DateTimeZone($timezone)
+            );
 
-    private function tpl_provider_cancellation(): string
-    {
-        return <<<'HTML'
-<div style="max-width:600px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;">
-    <div style="background:#ef4444;color:#fff;padding:1.5rem;text-align:center;border-radius:8px 8px 0 0;">
-        <h2 style="margin:0;font-size:1.25rem;">❌ Stornierung</h2>
-    </div>
-    <div style="padding:1.5rem;background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;">
-        <p>Hallo {{provider_name}},</p>
-        <p>Die folgende Buchung wurde storniert:</p>
-        <table style="width:100%;border-collapse:collapse;margin:1rem 0;">
-            <tr><td style="padding:.5rem;color:#64748b;">Buchung:</td><td style="padding:.5rem;">#{{booking_id}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Kunde:</td><td style="padding:.5rem;">{{customer_name}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Datum:</td><td style="padding:.5rem;">{{date}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Uhrzeit:</td><td style="padding:.5rem;">{{time}}</td></tr>
-        </table>
-    </div>
-</div>
-HTML;
-    }
-
-    private function tpl_admin_new_booking(): string
-    {
-        return <<<'HTML'
-<div style="max-width:600px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;">
-    <div style="background:#1e293b;color:#fff;padding:1.5rem;text-align:center;border-radius:8px 8px 0 0;">
-        <h2 style="margin:0;font-size:1.25rem;">🔔 Neue Buchung</h2>
-    </div>
-    <div style="padding:1.5rem;background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;">
-        <table style="width:100%;border-collapse:collapse;">
-            <tr><td style="padding:.5rem;color:#64748b;">Buchung:</td><td style="padding:.5rem;">#{{booking_id}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Kunde:</td><td style="padding:.5rem;">{{customer_name}} ({{customer_email}})</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Anbieter:</td><td style="padding:.5rem;">{{provider_name}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Leistung:</td><td style="padding:.5rem;">{{service_title}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Datum:</td><td style="padding:.5rem;">{{date}} {{time}}</td></tr>
-            <tr><td style="padding:.5rem;color:#64748b;">Preis:</td><td style="padding:.5rem;">{{price}}</td></tr>
-        </table>
-    </div>
-</div>
-HTML;
+            return $start->getTimestamp();
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /* ================================================================== */
@@ -313,23 +366,29 @@ HTML;
             return false;
         }
 
-        $fromName  = $this->sanitize_header_value(
-            $this->get_setting('from_name') ?: (defined('SITE_NAME') ? SITE_NAME : '365CMS')
+        $subject   = $this->sanitize_header_value($subject);
+        $fromEmail = CMS_Booking_Settings::sender_email();
+        $fromName  = $this->sanitize_display_name(
+            CMS_Booking_Settings::get('from_name') ?: (defined('SITE_NAME') ? (string) SITE_NAME : '365CMS')
         );
-        $fromEmail = $this->sanitize_email(
-            $this->get_setting('from_email') ?: (defined('ADMIN_EMAIL') ? ADMIN_EMAIL : '')
-        );
-        if ($fromEmail === '') {
-            $fromEmail = 'noreply@localhost';
+
+        $headers = [];
+        if ($fromEmail !== '') {
+            $headers['From'] = '"' . $fromName . '" <' . $fromEmail . '>';
         }
-        $subject = $this->sanitize_header_value($subject);
 
-        $headers   = [];
-        $headers[] = 'MIME-Version: 1.0';
-        $headers[] = 'Content-Type: text/html; charset=UTF-8';
-        $headers[] = "From: {$fromName} <{$fromEmail}>";
+        try {
+            if (function_exists('cms_mail')) {
+                $sent = cms_mail($to, $subject, $htmlBody, $headers);
+            } else {
+                $raw = ['MIME-Version: 1.0', 'Content-Type: text/html; charset=UTF-8'];
+                $raw[] = 'From: "' . $fromName . '" <' . ($fromEmail !== '' ? $fromEmail : 'noreply@' . $this->host()) . '>';
+                $sent = mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $htmlBody, implode("\r\n", $raw));
+            }
+        } catch (\Throwable $e) {
+            $sent = false;
+        }
 
-        $sent = mail($to, $subject, $htmlBody, implode("\r\n", $headers));
         if (!$sent) {
             $this->log_notice('booking notification mail not sent');
         }
@@ -337,36 +396,54 @@ HTML;
         return $sent;
     }
 
-    private function get_setting(string $key): string
+    private function load(int $bookingId): ?array
     {
-        static $settings = null;
-        if (is_array($settings)) {
-            return (string) ($settings[$key] ?? '');
+        if ($bookingId <= 0) {
+            return null;
         }
-
         try {
-            $db   = \CMS\Database::instance();
-            $stmt = $db->prepare("SELECT setting_key, setting_value FROM {$db->getPrefix()}booking_settings");
-            $stmt->execute();
-            $settings = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+            return CMS_Booking_Bookings::instance()->get($bookingId);
         } catch (\Throwable $e) {
-            $settings = [];
-            $this->log_notice('booking settings not readable for notifications');
-        }
+            $this->log_notice('booking not loadable for notification');
 
-        return (string) ($settings[$key] ?? '');
+            return null;
+        }
     }
 
     private function sanitize_email(string $email): string
     {
-        $clean = filter_var(trim($email), FILTER_VALIDATE_EMAIL);
+        $email = trim(str_replace(["\r", "\n", "\0"], '', $email));
+        $clean = filter_var($email, FILTER_VALIDATE_EMAIL);
         return is_string($clean) ? $clean : '';
     }
 
     private function sanitize_header_value(string $value): string
     {
-        $value = str_replace(["\r", "\n"], ' ', trim($value));
+        $value = trim((string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $value));
+        $value = mb_substr($value, 0, 200);
         return $value === '' ? '365CMS' : $value;
+    }
+
+    private function sanitize_display_name(string $value): string
+    {
+        $value = str_replace(['"', '\\', '<', '>'], '', $this->sanitize_header_value($value));
+
+        return $value === '' ? '365CMS' : mb_substr($value, 0, 100);
+    }
+
+    private function safe_url(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return '';
+        }
+
+        return in_array(strtolower((string) parse_url($url, PHP_URL_SCHEME)), ['http', 'https'], true) ? $url : '';
+    }
+
+    private function host(): string
+    {
+        return defined('SITE_URL') ? (string) (parse_url((string) SITE_URL, PHP_URL_HOST) ?: 'localhost') : 'localhost';
     }
 
     private function log_notice(string $message): void

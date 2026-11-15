@@ -40,20 +40,24 @@ Das Plugin verarbeitet im Seiteninhalt folgende Tags:
 [cms_projects_widget project="mein-projekt" scope="member" type="stats"]
 ```
 
-## MVP-Stand
+`scope="member"` wird nur für angemeldete Personen ausgegeben; `scope="public"` nur für aktive, öffentliche Projekte.
 
-Dieses erste MVP enthält bereits:
+## Anforderungen
 
-- Datenbanktabellen für Projekte, Boards und Widgets
-- Admin-Maske zum Anlegen von Projekten
-- Board- und Widget-Erstellung pro Projekt
-- Member-Dashboard-Integration
-- öffentliche Projektseiten
+- 365CMS 4.0.0 oder neuer
+- PHP 8.4.1 oder neuer
 
-## Nächste sinnvolle Ausbaustufen
+## Administration
 
-- Aufgaben/Tickets je Board als eigene Datensätze
-- Kommentare, Verantwortliche und Fälligkeiten
-- Drag-and-drop für Board-Spalten
-- Dateien, Releases und Activity-Feed
-- Rollen/Rechte je Projekt
+`/admin/plugins/cms-projects` – Übersicht, Projekte, Boards (inkl. Drag-and-drop-Ansicht), Tickets, Widgets, Audit-Log, Einstellungen.
+
+- Filter, Suche, Sammelaktionen und Pagination in allen Listen
+- CSV-Export von Tickets und Audit-Log, JSON-Export/-Import ganzer Projekte
+- Öffentliche Projekte (Status „Aktiv“, Sichtbarkeit „Öffentlich“) erscheinen in Sitemap und Seitensuche (abschaltbar)
+- Audit-Log mit einstellbarer Löschfrist (System → Datenaufbewahrung), DSGVO-Auskunft und -Anonymisierung
+
+## Lebenszyklus
+
+- Aktivieren: `cms_projects_activate()` legt die Tabellen an und migriert Indizes
+- Deaktivieren: `cms_projects_deactivate()` (Daten bleiben erhalten)
+- Löschen: `cms_projects_uninstall()` entfernt Tabellen, Optionen und DSGVO-Exportdateien des Plugins

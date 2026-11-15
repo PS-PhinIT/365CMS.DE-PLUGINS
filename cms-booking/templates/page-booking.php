@@ -3,8 +3,8 @@
  * Template: Buchungsformular
  * Datum-/Zeitwahl + Kundendaten für eine Leistung.
  *
- * Variablen: $provider, $service, $csrfToken, $availDates, $useContactForm,
- *            $error, $success, $old, $siteUrl
+ * Variablen: $provider, $service, $csrfToken (form_guard), $bookingToken (booking_submit),
+ *            $availDates, $useContactForm, $error, $success, $old, $siteUrl
  *
  * @package CMS_Booking
  */
@@ -13,8 +13,9 @@ if (!defined('ABSPATH')) exit;
 
 $e = fn(?string $v): string => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
 $siteName = $siteName ?? (defined('SITE_NAME') ? SITE_NAME : '365CMS');
-$old      = $old ?? [];
-$val      = fn(string $key, string $default = ''): string => $e($old[$key] ?? $default);
+$old      = is_array($old ?? null) ? $old : [];
+$bookingToken = (string) ($bookingToken ?? '');
+$val      = fn(string $key, string $default = ''): string => $e(is_scalar($old[$key] ?? null) ? (string) $old[$key] : $default);
 $lang = is_array($i18n ?? null) ? (string) ($i18n['lang'] ?? 'de') : 'de';
 $providerTitle = (string) ($provider['display_name'] ?? '');
 $serviceTitle = (string) ($service['title'] ?? '');
@@ -73,13 +74,13 @@ $bookingSubmit = is_array($i18n ?? null) ? (string) ($i18n['bookingSubmit'] ?? '
                         <p><?php echo $e($serviceDescription); ?></p>
                         <?php endif; ?>
                         <ul class="booking-info-list">
-                            <li><?php echo $e($bookingDurationLabel); ?>: <?php echo CMS_Booking_Services::format_duration((int) $service['duration_min']); ?></li>
+                            <li><?php echo $e($bookingDurationLabel); ?>: <?php echo $e(CMS_Booking_Services::format_duration((int) $service['duration_min'])); ?></li>
                             <li>
                                 <?php
                                 $priceCents = (int) $service['price_cents'];
-                                echo $priceCents > 0
-                                    ? $bookingPriceLabel . ': ' . CMS_Booking_Services::format_price($priceCents)
-                                    : $freeLabel;
+                                echo $e($priceCents > 0
+                                    ? $bookingPriceLabel . ': ' . CMS_Booking_Services::format_price($priceCents, (string) ($provider['currency'] ?? ''))
+                                    : $freeLabel);
                                 ?>
                             </li>
                             <?php
@@ -106,7 +107,8 @@ $bookingSubmit = is_array($i18n ?? null) ? (string) ($i18n['bookingSubmit'] ?? '
 
                     <?php if (empty($success)): ?>
                     <form method="POST" class="booking-form" id="bookingForm" novalidate>
-                        <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+                        <input type="hidden" name="csrf_token" value="<?php echo $e((string) ($csrfToken ?? '')); ?>">
+                        <input type="hidden" name="booking_token" value="<?php echo $e($bookingToken); ?>">
                         <!-- Honeypot -->
                         <div class="booking-honeypot" aria-hidden="true">
                             <input type="text" name="website_url" tabindex="-1" autocomplete="off">
@@ -118,7 +120,7 @@ $bookingSubmit = is_array($i18n ?? null) ? (string) ($i18n['bookingSubmit'] ?? '
                             <div class="booking-calendar" id="bookingCalendar"
                                  data-provider-id="<?php echo (int) $provider['id']; ?>"
                                  data-service-id="<?php echo (int) $service['id']; ?>"
-                                 data-available-dates='<?php echo htmlspecialchars((string) json_encode($availDates, JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8'); ?>'
+                                 data-available-dates='<?php echo htmlspecialchars((string) json_encode(array_values($availDates), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8'); ?>'
                                  data-api-url="<?php echo $e($siteUrl . $slotsApiPath); ?>"
                                  data-i18n='<?php echo htmlspecialchars((string) json_encode([
                                      'monthNames' => $i18n['monthNames'] ?? [],
@@ -129,7 +131,7 @@ $bookingSubmit = is_array($i18n ?? null) ? (string) ($i18n['bookingSubmit'] ?? '
                                      'chooseDateFirst' => $i18n['jsChooseDateFirst'] ?? 'Bitte zuerst ein Datum wählen.',
                                      'clockLabel' => $i18n['clockLabel'] ?? 'Uhr',
                                      'summaryAt' => $i18n['jsSummaryAt'] ?? 'um',
-                                 ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8'); ?>'>
+                                 ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8'); ?>'>
                                 <!-- JS-gesteuerter Kalender -->
                             </div>
                             <input type="hidden" name="booking_date" id="bookingDate" value="<?php echo $val('booking_date'); ?>" required>
@@ -150,28 +152,28 @@ $bookingSubmit = is_array($i18n ?? null) ? (string) ($i18n['bookingSubmit'] ?? '
 
                             <div class="booking-field">
                                 <label for="customer_name"><?php echo $e($lang === 'en' ? 'Name' : 'Name'); ?> <span class="required">*</span></label>
-                                <input type="text" id="customer_name" name="customer_name" class="booking-input"
+                                <input type="text" id="customer_name" name="customer_name" class="booking-input" maxlength="255"
                                        value="<?php echo $val('customer_name'); ?>" required
                                        placeholder="<?php echo $e($bookingPlaceholderName); ?>" autocomplete="name">
                             </div>
 
                             <div class="booking-field">
                                 <label for="customer_email">E-Mail <span class="required">*</span></label>
-                                <input type="email" id="customer_email" name="customer_email" class="booking-input"
+                                <input type="email" id="customer_email" name="customer_email" class="booking-input" maxlength="255"
                                        value="<?php echo $val('customer_email'); ?>" required
                                        placeholder="<?php echo $e($bookingPlaceholderEmail); ?>" autocomplete="email" inputmode="email">
                             </div>
 
                             <div class="booking-field">
                                 <label for="customer_phone"><?php echo $e($bookingPhoneLabel); ?></label>
-                                <input type="tel" id="customer_phone" name="customer_phone" class="booking-input"
+                                <input type="tel" id="customer_phone" name="customer_phone" class="booking-input" maxlength="50"
                                        value="<?php echo $val('customer_phone'); ?>"
                                        placeholder="+49 123 456789" autocomplete="tel" inputmode="tel">
                             </div>
 
                             <div class="booking-field">
                                 <label for="notes"><?php echo $e($bookingNotesLabel); ?></label>
-                                <textarea id="notes" name="notes" class="booking-input booking-textarea"
+                                <textarea id="notes" name="notes" class="booking-input booking-textarea" maxlength="2000"
                                           placeholder="<?php echo $e($bookingPlaceholderNotes); ?>"><?php echo $val('notes'); ?></textarea>
                             </div>
                         </div>

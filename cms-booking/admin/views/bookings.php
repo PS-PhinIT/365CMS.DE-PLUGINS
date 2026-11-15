@@ -1,131 +1,152 @@
-<?php declare(strict_types=1); if (!defined('ABSPATH')) exit; ?>
-
-<!-- Page Header -->
+<?php
+/**
+ * Buchungen – Header → Filter → Sammelaktionen/Tabelle → Paginierung
+ *
+ * @var list<array<string, mixed>> $items
+ * @var array<string, mixed>       $filters
+ * @var array<string, string|int>  $query
+ * @var array<string, string>      $statusLabels
+ * @var list<array<string, mixed>> $providers
+ * @var string $csrfToken, $exportToken, $error
+ * @var int    $page, $pages, $total
+ */
+declare(strict_types=1);
+if (!defined('ABSPATH')) exit;
+$e = static fn (mixed $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+$hiddenFilters = static function (array $filters) use ($e): string {
+    $html = '';
+    foreach (['status' => $filters['status'], 'q' => $filters['search'], 'provider_id' => $filters['provider_id'] ?: '', 'date_from' => $filters['date_from'], 'date_to' => $filters['date_to']] as $name => $value) {
+        $html .= '<input type="hidden" name="' . $e($name) . '" value="' . $e($value) . '">';
+    }
+    return $html;
+};
+?>
 <div class="admin-page-header">
     <div>
-        <h2>Buchungen verwalten</h2>
-        <p>Alle Buchungsanfragen und Termine in der Übersicht</p>
+        <h2>Buchungen</h2>
+        <p>Anfragen bestätigen, Termine verwalten und exportieren (<?php echo (int) $total; ?> Treffer).</p>
+    </div>
+    <div class="header-actions">
+        <form method="post" action="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('bookings')); ?>">
+            <input type="hidden" name="csrf_token" value="<?php echo $e($exportToken); ?>">
+            <input type="hidden" name="export_csv" value="1">
+            <?php echo $hiddenFilters($filters); ?>
+            <button type="submit" class="btn btn-secondary"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> CSV exportieren</button>
+        </form>
     </div>
 </div>
 
-<!-- Alerts -->
-<?php if (!empty($success)): ?>
-<div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div>
-<?php endif; ?>
-<?php if (!empty($error)): ?>
-<div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
-<?php endif; ?>
+<?php self::render_alerts($error); ?>
 
-<!-- Filter-Bar -->
-<div class="admin-card">
-    <form method="GET" class="booking-admin-filter-form">
-        <div class="form-group booking-admin-filter-group booking-admin-filter-group--status">
-            <label class="form-label">Status</label>
-            <select name="status" class="form-control" data-booking-autosubmit>
-                <option value="">Alle</option>
-                <?php foreach ($statusLabels as $key => $label): ?>
-                <option value="<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" <?php echo $status === $key ? 'selected' : ''; ?>>
-                    <?php echo htmlspecialchars($label); ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
+<form method="get" action="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('bookings')); ?>" class="admin-card booking-admin-toolbar" role="search">
+    <div class="form-group">
+        <label class="form-label" for="booking-filter-status">Status</label>
+        <select id="booking-filter-status" name="status" class="form-control" data-booking-autosubmit>
+            <option value="">Alle</option>
+            <?php foreach ($statusLabels as $key => $label): ?>
+            <option value="<?php echo $e($key); ?>" <?php echo $filters['status'] === $key ? 'selected' : ''; ?>><?php echo $e($label); ?></option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="booking-filter-provider">Anbieter</label>
+        <select id="booking-filter-provider" name="provider_id" class="form-control" data-booking-autosubmit>
+            <option value="">Alle Anbieter</option>
+            <?php foreach ($providers as $prov): ?>
+            <option value="<?php echo (int) $prov['id']; ?>" <?php echo (int) $filters['provider_id'] === (int) $prov['id'] ? 'selected' : ''; ?>><?php echo $e($prov['display_name']); ?></option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="booking-filter-from">Von</label>
+        <input id="booking-filter-from" type="date" name="date_from" class="form-control" value="<?php echo $e($filters['date_from']); ?>">
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="booking-filter-to">Bis</label>
+        <input id="booking-filter-to" type="date" name="date_to" class="form-control" value="<?php echo $e($filters['date_to']); ?>">
+    </div>
+    <div class="form-group booking-admin-toolbar__grow">
+        <label class="form-label" for="booking-filter-q">Suche</label>
+        <input id="booking-filter-q" type="search" name="q" class="form-control" placeholder="Name, E-Mail, Telefon, Nr." value="<?php echo $e($filters['search']); ?>">
+    </div>
+    <div class="booking-admin-toolbar__actions">
+        <button type="submit" class="btn btn-secondary"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>
+        <a class="btn btn-link" href="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('bookings')); ?>">Zurücksetzen</a>
+    </div>
+</form>
 
-        <div class="form-group booking-admin-filter-group booking-admin-filter-group--provider">
-            <label class="form-label">Anbieter</label>
-            <select name="provider_id" class="form-control" data-booking-autosubmit>
-                <option value="">Alle Anbieter</option>
-                <?php foreach ($providers as $prov): ?>
-                <option value="<?php echo (int) $prov['id']; ?>" <?php echo $providerId === (int) $prov['id'] ? 'selected' : ''; ?>>
-                    <?php echo htmlspecialchars($prov['display_name']); ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-        <div class="form-group booking-admin-filter-group booking-admin-filter-group--search">
-            <label class="form-label">Suche</label>
-            <input type="text" name="q" class="form-control" placeholder="Name, E-Mail …"
-                   value="<?php echo htmlspecialchars($search); ?>">
-        </div>
-
-        <button type="submit" class="btn btn-secondary btn-sm">Filtern</button>
-    </form>
-</div>
-
-<!-- Tabelle -->
 <div class="admin-card">
     <?php if (empty($items)): ?>
-        <div class="empty-state">
-            <p><strong>Keine Buchungen gefunden</strong></p>
-            <p class="text-muted">Passen Sie die Filter an oder warten Sie auf neue Buchungen.</p>
-        </div>
+        <p class="booking-admin-empty">Keine Buchungen gefunden. Passen Sie die Filter an oder warten Sie auf neue Buchungen.</p>
     <?php else: ?>
+    <form method="post" action="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('bookings', $query + ['paged' => $page])); ?>" data-booking-bulk-form>
+        <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+        <?php echo $hiddenFilters($filters); ?>
+        <div class="booking-admin-bulkbar">
+            <label class="visually-hidden" for="booking-bulk-action">Sammelaktion</label>
+            <select id="booking-bulk-action" name="bulk_action" class="form-control">
+                <option value="">Sammelaktion wählen …</option>
+                <option value="confirm">Bestätigen</option>
+                <option value="complete">Als abgeschlossen markieren</option>
+                <option value="no_show">Als „Nicht erschienen“ markieren</option>
+                <option value="cancel">Stornieren</option>
+                <option value="pending">Auf „Offen“ zurücksetzen</option>
+                <option value="delete">Löschen</option>
+            </select>
+            <button type="submit" name="apply_bulk" value="1" class="btn btn-secondary" data-booking-bulk-submit
+                    data-cms-confirm="Sammelaktion auf alle ausgewählten Buchungen anwenden?">Anwenden</button>
+            <span class="booking-admin-muted" data-booking-selected-count aria-live="polite"></span>
+        </div>
         <div class="users-table-container">
             <table class="users-table">
                 <thead>
                     <tr>
-                        <th>#</th>
-                        <th>Kunde</th>
-                        <th>Anbieter</th>
-                        <th>Leistung</th>
-                        <th>Datum / Zeit</th>
-                        <th>Status</th>
-                        <th>Aktionen</th>
+                        <th scope="col" class="booking-admin-col-check"><input type="checkbox" data-booking-check-all aria-label="Alle auswählen"></th>
+                        <th scope="col">#</th>
+                        <th scope="col">Kunde</th>
+                        <th scope="col">Anbieter / Leistung</th>
+                        <th scope="col">Datum / Zeit</th>
+                        <th scope="col">Status</th>
+                        <th scope="col"><span class="visually-hidden">Aktionen</span></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($items as $item): ?>
+                    <?php $id = (int) $item['id']; $status = (string) $item['status']; ?>
                     <tr>
-                        <td><?php echo (int) $item['id']; ?></td>
+                        <td class="booking-admin-col-check"><input type="checkbox" name="ids[]" value="<?php echo $id; ?>" data-booking-check aria-label="Buchung #<?php echo $id; ?> auswählen"></td>
+                        <td><a href="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('bookings', ['view' => 'detail', 'id' => $id])); ?>">#<?php echo $id; ?></a></td>
                         <td>
-                            <strong><?php echo htmlspecialchars($item['customer_name']); ?></strong>
-                            <div class="booking-admin-muted"><?php echo htmlspecialchars($item['customer_email']); ?></div>
+                            <strong><?php echo $e($item['customer_name']); ?></strong>
+                            <div class="booking-admin-muted"><?php echo $e($item['customer_email']); ?></div>
                             <?php if (!empty($item['customer_phone'])): ?>
-                            <div class="booking-admin-muted booking-admin-muted--subtle"><?php echo htmlspecialchars($item['customer_phone']); ?></div>
+                            <div class="booking-admin-muted"><?php echo $e($item['customer_phone']); ?></div>
                             <?php endif; ?>
                         </td>
-                        <td><?php echo htmlspecialchars($item['provider_name'] ?? '—'); ?></td>
-                        <td><?php echo htmlspecialchars($item['service_title'] ?? '—'); ?></td>
                         <td>
-                            <?php echo htmlspecialchars((string) date('d.m.Y', strtotime((string) $item['booking_date'])), ENT_QUOTES, 'UTF-8'); ?>
-                            <div class="booking-admin-muted">
-                                <?php echo htmlspecialchars((string) substr((string) $item['start_time'], 0, 5), ENT_QUOTES, 'UTF-8'); ?> – <?php echo htmlspecialchars((string) substr((string) $item['end_time'], 0, 5), ENT_QUOTES, 'UTF-8'); ?>
-                            </div>
+                            <?php echo $e($item['provider_name'] ?? '—'); ?>
+                            <div class="booking-admin-muted"><?php echo $e($item['service_title'] ?? '—'); ?></div>
                         </td>
                         <td>
-                            <span class="status-badge <?php echo htmlspecialchars(CMS_Booking_Bookings::status_badge_class((string) $item['status']), ENT_QUOTES, 'UTF-8'); ?>">
-                                <?php echo htmlspecialchars($statusLabels[$item['status']] ?? $item['status']); ?>
-                            </span>
+                            <?php echo $e(date('d.m.Y', (int) strtotime((string) $item['booking_date']))); ?>
+                            <div class="booking-admin-muted"><?php echo $e(substr((string) $item['start_time'], 0, 5)); ?> – <?php echo $e(substr((string) $item['end_time'], 0, 5)); ?></div>
                         </td>
+                        <td><span class="status-badge <?php echo $e(CMS_Booking_Bookings::status_badge_class($status)); ?>"><?php echo $e($statusLabels[$status] ?? $status); ?></span></td>
                         <td>
                             <div class="booking-admin-actions">
-                                <?php if ($item['status'] === 'pending'): ?>
-                                <form method="POST" class="booking-admin-inline-form">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
-                                    <input type="hidden" name="booking_id" value="<?php echo (int) $item['id']; ?>">
-                                    <input type="hidden" name="booking_action" value="confirm">
-                                    <button type="submit" class="btn btn-sm btn-primary" title="Bestätigen"><i class="ti ti-check" aria-hidden="true"></i></button>
-                                </form>
+                                <a class="btn btn-sm btn-secondary" title="Details" href="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('bookings', ['view' => 'detail', 'id' => $id])); ?>"><i class="ti ti-eye" aria-hidden="true"></i><span class="visually-hidden">Details</span></a>
+                                <?php if ($status === 'pending'): ?>
+                                <button type="submit" name="row_action" value="confirm:<?php echo $id; ?>" class="btn btn-sm btn-primary" title="Bestätigen"><i class="ti ti-check" aria-hidden="true"></i><span class="visually-hidden">Bestätigen</span></button>
                                 <?php endif; ?>
-
-                                <?php if (in_array($item['status'], ['pending', 'confirmed'], true)): ?>
-                                <form method="POST" class="booking-admin-inline-form">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
-                                    <input type="hidden" name="booking_id" value="<?php echo (int) $item['id']; ?>">
-                                    <input type="hidden" name="booking_action" value="cancel">
-                                    <button type="submit" class="btn btn-sm btn-danger" title="Stornieren"><i class="ti ti-x" aria-hidden="true"></i></button>
-                                </form>
+                                <?php if ($status === 'confirmed'): ?>
+                                <button type="submit" name="row_action" value="complete:<?php echo $id; ?>" class="btn btn-sm btn-secondary" title="Abschließen"><i class="ti ti-circle-check" aria-hidden="true"></i><span class="visually-hidden">Abschließen</span></button>
                                 <?php endif; ?>
-
-                                <?php if ($item['status'] === 'confirmed'): ?>
-                                <form method="POST" class="booking-admin-inline-form">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
-                                    <input type="hidden" name="booking_id" value="<?php echo (int) $item['id']; ?>">
-                                    <input type="hidden" name="booking_action" value="complete">
-                                    <button type="submit" class="btn btn-sm btn-secondary" title="Abschließen">✔</button>
-                                </form>
+                                <?php if (in_array($status, ['pending', 'confirmed'], true)): ?>
+                                <button type="submit" name="row_action" value="cancel:<?php echo $id; ?>" class="btn btn-sm btn-secondary" title="Stornieren"
+                                        data-cms-confirm="Buchung #<?php echo $id; ?> stornieren? Der Kunde wird benachrichtigt."><i class="ti ti-x" aria-hidden="true"></i><span class="visually-hidden">Stornieren</span></button>
                                 <?php endif; ?>
+                                <button type="submit" name="row_action" value="delete:<?php echo $id; ?>" class="btn btn-sm btn-danger" title="Löschen"
+                                        data-cms-confirm="Buchung #<?php echo $id; ?> endgültig löschen?"><i class="ti ti-trash" aria-hidden="true"></i><span class="visually-hidden">Löschen</span></button>
                             </div>
                         </td>
                     </tr>
@@ -133,20 +154,7 @@
                 </tbody>
             </table>
         </div>
-
-        <!-- Paginierung -->
-        <?php if ($pages > 1): ?>
-        <div class="pagination booking-admin-pagination">
-            <?php if ($page > 1): ?>
-                <a href="<?php echo htmlspecialchars(CMS_Booking_Admin_Pages::admin_url('bookings', ['paged' => (int) ($page - 1), 'status' => $status, 'q' => $search, 'provider_id' => $providerId]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-secondary btn-sm">← Zurück</a>
-            <?php endif; ?>
-            <span class="booking-admin-pagination-info">
-                Seite <?php echo (int) $page; ?> von <?php echo (int) $pages; ?>
-            </span>
-            <?php if ($page < $pages): ?>
-                <a href="<?php echo htmlspecialchars(CMS_Booking_Admin_Pages::admin_url('bookings', ['paged' => (int) ($page + 1), 'status' => $status, 'q' => $search, 'provider_id' => $providerId]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-secondary btn-sm">Weiter →</a>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
+    </form>
+    <?php self::render_pagination('bookings', $query, $page, $pages); ?>
     <?php endif; ?>
 </div>

@@ -1,98 +1,147 @@
-<?php declare(strict_types=1); if (!defined('ABSPATH')) exit; ?>
+<?php
+/**
+ * Übersicht (rechte Spalte des Plugin-Layouts).
+ *
+ * @var array<string,int> $stats
+ * @var array<string,string> $settings
+ * @var list<array<string,mixed>> $placements
+ * @var list<array<string,mixed>> $recent
+ * @var bool $tablesExist
+ * @var array{type:string,message:string}|null $notice
+ * @var CMS_Promos_Repository $repository
+ *
+ * @package CMS_Promos
+ */
 
-<div class="pr-admin-shell">
-    <div class="admin-page-header">
+declare(strict_types=1);
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+$esc = static fn (mixed $value): string => htmlspecialchars(is_scalar($value) ? (string) $value : '', ENT_QUOTES, 'UTF-8');
+$schemaVersion = CMS_Promos_Installer::installed_schema_version();
+$webhookOn = ($settings['click_export_enabled'] ?? '0') === '1';
+$webhookUrl = $repository->get_webhook_url();
+$retentionDays = max(0, (int) ($settings['retention_days'] ?? 0));
+$ctr = $stats['impressions'] > 0 ? round($stats['clicks'] / $stats['impressions'] * 100, 1) : 0.0;
+
+$checks = [
+    [
+        'label' => 'Datenbanktabellen',
+        'status' => $tablesExist ? 'ok' : 'error',
+        'value' => $tablesExist ? 'vorhanden' : 'fehlen',
+        'hint' => $tablesExist ? '' : 'Plugin deaktivieren und erneut aktivieren, um die Tabellen anzulegen.',
+    ],
+    [
+        'label' => 'Schema-Version',
+        'status' => $schemaVersion === CMS_PROMOS_DB_VERSION ? 'ok' : 'warning',
+        'value' => $schemaVersion !== '' ? $schemaVersion : 'unbekannt',
+        'hint' => $schemaVersion === CMS_PROMOS_DB_VERSION ? '' : 'Erwartet: ' . CMS_PROMOS_DB_VERSION,
+    ],
+    [
+        'label' => 'Automatische Ausspielung',
+        'status' => $stats['active_hook_placements'] > 0 ? 'ok' : 'info',
+        'value' => $stats['active_hook_placements'] . ' Hook-Platzierung(en) aktiv',
+        'url' => CMS_Promos_Admin_Pages::url('promos-placements'),
+    ],
+    [
+        'label' => 'Abgelaufen, aber noch aktiv',
+        'status' => $stats['expired_active'] > 0 ? 'warning' : 'ok',
+        'value' => (string) $stats['expired_active'],
+        'hint' => $stats['expired_active'] > 0 ? 'Laufzeit überschritten – archivieren oder Ende verlängern.' : '',
+        'url' => $stats['expired_active'] > 0 ? CMS_Promos_Admin_Pages::url('promos-items', ['status' => 'expired']) : '',
+    ],
+    [
+        'label' => 'Aktive Promos ohne Ziel-URL',
+        'status' => $stats['active_without_target'] > 0 ? 'warning' : 'ok',
+        'value' => (string) $stats['active_without_target'],
+        'hint' => $stats['active_without_target'] > 0 ? 'Ohne Ziel-URL verweist der Button nur auf die Übersicht.' : '',
+    ],
+    [
+        'label' => 'Klick-Export (Webhook)',
+        'status' => !$webhookOn ? 'muted' : ($webhookUrl !== '' ? 'ok' : 'warning'),
+        'value' => !$webhookOn ? 'aus' : ($webhookUrl !== '' ? (string) parse_url($webhookUrl, PHP_URL_HOST) : 'URL fehlt'),
+        'url' => CMS_Promos_Admin_Pages::url('promos-settings'),
+    ],
+    [
+        'label' => 'Löschfrist',
+        'status' => $retentionDays > 0 ? 'ok' : 'muted',
+        'value' => $retentionDays > 0 ? $retentionDays . ' Tage' : 'nie',
+        'url' => CMS_Promos_Admin_Pages::url('promos-settings'),
+    ],
+];
+
+$activity = [];
+foreach ($recent as $item) {
+    $status = (string) ($item['status'] ?? 'draft');
+    $live = (int) ($item['is_live'] ?? 0) === 1;
+    $activity[] = [
+        'title' => (string) ($item['title'] ?? ''),
+        'url' => CMS_Promos_Admin_Pages::url('promos-items', ['edit' => (int) $item['id']]),
+        'meta' => trim(((string) ($item['placement_name'] ?? '') !== '' ? (string) $item['placement_name'] . ' · ' : '')
+            . CMS_Promos_Admin_Pages::format_datetime((string) ($item['updated_at'] ?? ''))
+            . ' · ' . number_format((int) ($item['impression_count'] ?? 0), 0, ',', '.') . ' Impr. / '
+            . number_format((int) ($item['click_count'] ?? 0), 0, ',', '.') . ' Klicks'),
+        'badge' => $status === 'active' && !$live ? 'Aktiv (außerhalb Laufzeit)' : (CMS_Promos_Repository::STATUS_LABELS[$status] ?? $status),
+        'tone' => $status === 'active' ? ($live ? 'success' : 'warning') : ($status === 'paused' ? 'warning' : 'muted'),
+    ];
+}
+
+if ($notice !== null) {
+    echo '<div class="alert alert-' . ($notice['type'] === 'success' ? 'success' : 'danger') . '" role="status">' . $esc($notice['message']) . '</div>';
+}
+
+echo cms_plugin_dashboard([
+    'intro' => sprintf(
+        '%s Promos, davon %s gerade sichtbar. Klickrate gesamt: %s %%.',
+        number_format($stats['promos'], 0, ',', '.'),
+        number_format($stats['live_promos'], 0, ',', '.'),
+        number_format($ctr, 1, ',', '.')
+    ),
+    'actions' => [
+        ['label' => 'Neue Promo', 'url' => CMS_Promos_Admin_Pages::url('promos-items', ['action' => 'new']), 'icon' => 'ti ti-plus', 'primary' => true, 'description' => 'Teaser, Ziel-URL, Laufzeit und Platzierung festlegen.'],
+        ['label' => 'Neue Platzierung', 'url' => CMS_Promos_Admin_Pages::url('promos-placements', ['action' => 'new']), 'icon' => 'ti ti-layout-grid-add', 'description' => 'Einbauort anlegen und an einen Theme-Hook koppeln.'],
+        ['label' => 'Laufende Promos', 'url' => CMS_Promos_Admin_Pages::url('promos-items', ['status' => 'live']), 'icon' => 'ti ti-player-play', 'description' => 'Alle aktuell ausgespielten Kampagnen.'],
+        ['label' => 'Öffentliche Übersicht', 'url' => '/promos', 'icon' => 'ti ti-world', 'external' => true, 'description' => 'Archivseite /promos im Frontend.'],
+    ],
+    'checks' => $checks,
+    'activity' => [
+        'heading' => 'Zuletzt bearbeitete Promos',
+        'items' => $activity,
+        'empty' => 'Noch keine Promos angelegt.',
+        'more_url' => CMS_Promos_Admin_Pages::url('promos-items', ['sort' => 'updated']),
+    ],
+]);
+?>
+
+<section class="admin-card pr-section">
+    <div class="pr-section__head">
         <div>
-            <h2>Promos-Dashboard</h2>
-            <p>Überblick zu aktiven Promo-Flächen, Klickzielen, Platzierungen und Reichweite.</p>
+            <h3>Platzierungen</h3>
+            <p>Einbauorte mit Theme-Hook, Kapazität und aktuell laufenden Promos.</p>
         </div>
-        <div class="header-actions">
-            <a href="/promos" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">Übersicht öffnen</a>
-            <a href="/admin/plugins/promos-dashboard/promos-items" class="btn btn-primary">Promo anlegen</a>
-        </div>
+        <a class="btn btn-sm btn-outline-secondary" href="<?php echo $esc(CMS_Promos_Admin_Pages::url('promos-placements')); ?>"><i class="ti ti-settings" aria-hidden="true"></i> Verwalten</a>
     </div>
-
-    <?php if (!empty($notice)): ?>
-    <div class="alert alert-<?php echo ($notice['type'] ?? '') === 'success' ? 'success' : 'error'; ?>"><?php echo htmlspecialchars((string) ($notice['message'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></div>
+    <?php if ($placements === []): ?>
+        <div class="empty-state"><p><strong>Keine Platzierungen vorhanden</strong></p></div>
+    <?php else: ?>
+        <div class="users-table-container">
+            <table class="users-table">
+                <thead><tr><th scope="col">Platzierung</th><th scope="col">Theme-Hook</th><th scope="col">Max.</th><th scope="col">Laufend / gesamt</th><th scope="col">Status</th></tr></thead>
+                <tbody>
+                <?php foreach ($placements as $placement): ?>
+                    <?php $live = (int) ($placement['live_count'] ?? 0); $max = (int) ($placement['max_items'] ?? 0); ?>
+                    <tr>
+                        <td><a href="<?php echo $esc(CMS_Promos_Admin_Pages::url('promos-placements', ['edit' => (int) $placement['id']])); ?>"><?php echo $esc($placement['name'] ?? ''); ?></a></td>
+                        <td><?php echo $esc($repository->get_theme_hook_label((string) ($placement['theme_hook'] ?? 'manual'))); ?></td>
+                        <td><?php echo $max; ?></td>
+                        <td><?php echo $live; ?> / <?php echo (int) ($placement['promo_count'] ?? 0); ?><?php if ($live > $max): ?> <span class="pr-meta">(nur <?php echo $max; ?> sichtbar)</span><?php endif; ?></td>
+                        <td><span class="badge bg-<?php echo ($placement['status'] ?? '') === 'active' ? 'green' : 'secondary'; ?>-lt"><?php echo ($placement['status'] ?? '') === 'active' ? 'Aktiv' : 'Inaktiv'; ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     <?php endif; ?>
-
-    <div class="dashboard-grid">
-        <div class="stat-card"><div class="stat-icon">ALL</div><div class="stat-number"><?php echo number_format((int) ($stats['promos'] ?? 0)); ?></div><div class="stat-label">Promos</div></div>
-        <div class="stat-card"><div class="stat-icon">ACT</div><div class="stat-number"><?php echo number_format((int) ($stats['active_promos'] ?? 0)); ?></div><div class="stat-label">Aktiv</div></div>
-        <div class="stat-card"><div class="stat-icon">TOP</div><div class="stat-number"><?php echo number_format((int) ($stats['featured_promos'] ?? 0)); ?></div><div class="stat-label">Featured</div></div>
-        <div class="stat-card"><div class="stat-icon">PLC</div><div class="stat-number"><?php echo number_format((int) ($stats['placements'] ?? 0)); ?></div><div class="stat-label">Platzierungen</div></div>
-        <div class="stat-card"><div class="stat-icon">IMP</div><div class="stat-number"><?php echo number_format((int) ($stats['impressions'] ?? 0)); ?></div><div class="stat-label">Impressions</div></div>
-        <div class="stat-card"><div class="stat-icon">CLK</div><div class="stat-number"><?php echo number_format((int) ($stats['clicks'] ?? 0)); ?></div><div class="stat-label">Klicks</div></div>
-    </div>
-
-    <div class="pr-card-grid">
-        <div class="pr-info-card"><span class="pr-info-card__eyebrow">Archiv</span><span class="pr-info-card__value"><?php echo htmlspecialchars((string) ($settings['archive_title'] ?? 'Promotions & Highlights'), ENT_QUOTES, 'UTF-8'); ?></span><span class="pr-info-card__text"><?php echo htmlspecialchars((string) ($settings['archive_description'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></span></div>
-        <div class="pr-info-card"><span class="pr-info-card__eyebrow">Button-Standard</span><span class="pr-info-card__value"><?php echo htmlspecialchars((string) ($settings['default_button_label'] ?? 'Mehr erfahren'), ENT_QUOTES, 'UTF-8'); ?></span><span class="pr-info-card__text">Voreinstellung für neue Kampagnen und CTA-Kacheln.</span></div>
-    </div>
-
-    <div class="pr-feature-grid">
-        <a href="/admin/plugins/promos-dashboard/promos-items" class="pr-feature-card"><span class="pr-feature-card__icon">PR</span><span><span class="pr-feature-card__eyebrow">Kampagnen</span><span class="pr-feature-card__title">Promos pflegen</span><span class="pr-feature-card__text">Teaser, Ziel-URLs, Priorität und Laufzeiten verwalten.</span></span></a>
-        <a href="/admin/plugins/promos-dashboard/promos-placements" class="pr-feature-card"><span class="pr-feature-card__icon">PL</span><span><span class="pr-feature-card__eyebrow">Layout</span><span class="pr-feature-card__title">Platzierungen definieren</span><span class="pr-feature-card__text">Hero, Sidebar, CTA-Bereiche und andere Einbauorte strukturieren.</span></span></a>
-        <a href="/admin/plugins/promos-dashboard/promos-settings" class="pr-feature-card"><span class="pr-feature-card__icon">CFG</span><span><span class="pr-feature-card__eyebrow">Standards</span><span class="pr-feature-card__title">Anzeige konfigurieren</span><span class="pr-feature-card__text">Archive, Button-Verhalten und Grundparameter festlegen.</span></span></a>
-    </div>
-
-    <div class="pr-panel-grid">
-        <div class="admin-card">
-            <div class="pr-panel-header">
-                <div><h3>Letzte Promos</h3><p>Aktuelle Teaser und CTA-Elemente mit Performance-Basisdaten.</p></div>
-                <a href="/admin/plugins/promos-dashboard/promos-items" class="btn btn-secondary btn-sm">Verwalten</a>
-            </div>
-            <?php if (empty($promos)): ?>
-                <div class="empty-state"><p class="pr-empty-icon">Keine Daten</p><p><strong>Noch keine Promos vorhanden</strong></p><p class="pr-empty-text">Lege deine erste Promo mit Ziel-URL und Platzierung an.</p></div>
-            <?php else: ?>
-                <div class="users-table-container">
-                    <table class="users-table">
-                        <thead><tr><th>Titel</th><th>Platzierung</th><th>Status</th><th>Leistung</th></tr></thead>
-                        <tbody>
-                        <?php foreach ($promos as $item): ?>
-                            <tr>
-                                <td><a href="/admin/plugins/promos-dashboard/promos-items?edit=<?php echo (int) $item['id']; ?>" class="pr-admin-link"><?php echo htmlspecialchars((string) $item['title'], ENT_QUOTES, 'UTF-8'); ?></a></td>
-                                <td>
-                                    <?php echo htmlspecialchars((string) ($item['placement_name'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?>
-                                    <?php if (!empty($item['placement_theme_hook'])): ?>
-                                        <div class="pr-table-meta"><?php echo htmlspecialchars(CMS_Promos_Repository::instance()->get_theme_hook_label((string) $item['placement_theme_hook']), ENT_QUOTES, 'UTF-8'); ?></div>
-                                    <?php endif; ?>
-                                </td>
-                                <td><span class="pr-soft-badge pr-soft-badge--<?php echo htmlspecialchars((string) ($item['status'] ?? 'draft'), ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars((string) ($item['status'] ?? 'draft'), ENT_QUOTES, 'UTF-8'); ?></span></td>
-                                <td><?php echo number_format((int) ($item['impression_count'] ?? 0)); ?> / <?php echo number_format((int) ($item['click_count'] ?? 0)); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
-        </div>
-
-        <div class="pr-side-stack">
-            <div class="admin-card">
-                <div class="pr-panel-header"><div><h3>Platzierungen</h3><p>Alle registrierten Promo-Flächen auf einen Blick.</p></div></div>
-                <?php if (empty($placements)): ?>
-                    <div class="empty-state"><p class="pr-empty-icon">Keine Daten</p><p><strong>Keine Platzierungen vorhanden</strong></p></div>
-                <?php else: ?>
-                    <ul class="pr-compact-list">
-                        <?php foreach ($placements as $placement): ?>
-                            <li>
-                                <span>
-                                    <?php echo htmlspecialchars((string) $placement['name'], ENT_QUOTES, 'UTF-8'); ?>
-                                    <span class="pr-table-meta"><?php echo htmlspecialchars(CMS_Promos_Repository::instance()->get_theme_hook_label((string) ($placement['theme_hook'] ?? 'manual')), ENT_QUOTES, 'UTF-8'); ?></span>
-                                </span>
-                                <span class="status-badge <?php echo ($placement['status'] ?? 'active') === 'active' ? 'active' : 'inactive'; ?>"><?php echo (int) ($placement['promo_count'] ?? 0); ?> Promos</span>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
-            </div>
-
-            <div class="pr-note-card">
-                <span class="pr-note-card__eyebrow">Auto-Einbindung</span>
-                <span class="pr-note-card__title">Platzierungen direkt an Theme-Hooks koppeln</span>
-                <p class="pr-note-card__text">Weise Flächen wie Hero, Home-Content oder Footer-Banner einem Hook zu. Aktive Promos erscheinen dann automatisch an dieser Stelle — ganz ohne Template-Gefrickel.</p>
-            </div>
-        </div>
-    </div>
-</div>
+</section>

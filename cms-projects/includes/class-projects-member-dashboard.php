@@ -6,8 +6,16 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+/**
+ * Mitgliederbereich /member/plugin/projects (PluginDashboardRegistry).
+ *
+ * Projekte sind redaktionelle Inhalte des Admins (Sichtbarkeit „Mitglieder“ oder „Öffentlich“,
+ * Status aktiv/pausiert); der Bereich ist nur lesend und verarbeitet keine POST-Anfragen.
+ */
 final class CMS_Projects_Member_Dashboard
 {
+    public const SECTION_SLUG = 'projects';
+
     public function __construct(private readonly CMS_Projects_Service $service)
     {
         if (class_exists('CMS\\Hooks')) {
@@ -16,72 +24,55 @@ final class CMS_Projects_Member_Dashboard
         }
     }
 
-    public function register(\CMS\Member\PluginDashboardRegistry $registry): void
+    public function register(mixed $registry = null): void
     {
+        if (!$registry instanceof \CMS\Member\PluginDashboardRegistry) {
+            return;
+        }
+
         $registry->register([
             'plugin' => 'cms-projects',
-            'slug' => 'projects',
-            'label' => 'PROJECTS',
+            'slug' => self::SECTION_SLUG,
+            'label' => 'Projekte',
             'icon' => 'PRJ',
             'category' => 'plugins',
             'priority' => 30,
-            'capability' => null,
+            'capability' => 'member',
+            'csrf' => 'core',
             'dashboard_widget' => [
-                'title' => 'PROJECTS',
-                'description' => 'Projektboards, Widgets und Statusübersichten verwalten.',
+                'title' => 'Projekte',
+                'description' => 'Projektboards, Widgets und Statusübersichten.',
                 'color' => '#2563eb',
                 'stats_callback' => [$this, 'getDashboardStats'],
                 'link_label' => 'Zu den Projekten',
                 'admin_url' => '/admin/plugins/cms-projects',
-                'admin_label' => 'Admin',
+                'admin_label' => 'Verwalten',
             ],
             'render_callback' => [$this, 'renderPage'],
         ]);
     }
 
     /**
-     * Hook member_plugin_section_head liefert ($section, $user, $params);
-     * $section ist das Registry-Array des aktiven Member-Bereichs.
+     * Hook member_plugin_section_head liefert ($section, $user, $params); $section ist das Registry-Array.
      */
     public function enqueueSectionStyles(mixed $section = null): void
     {
         $slug = is_array($section) ? (string) ($section['slug'] ?? '') : (is_string($section) ? $section : '');
-        if ($slug !== 'projects') {
-            return;
+        if ($slug === self::SECTION_SLUG) {
+            echo CMS_Projects_View::stylesheetTag();
         }
-
-        $cssFile = CMS_PROJECTS_PLUGIN_DIR . 'assets/css/style.css';
-        if (!is_file($cssFile)) {
-            return;
-        }
-
-        echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_PROJECTS_PLUGIN_URL . 'assets/css/style.css', ENT_QUOTES, 'UTF-8')
-            . '?v=' . (int) filemtime($cssFile) . '">' . "\n";
     }
 
     public function getDashboardStats(object $user): array
     {
-        $projects = $this->service->getMemberProjects();
-        return [
-            'count' => count($projects),
-            'label' => 'Projekte',
-        ];
+        return ['count' => $this->service->countMemberProjects(), 'label' => 'Projekte'];
     }
 
     public function renderPage(object $user, array $params = []): void
     {
         $projects = $this->service->getMemberProjects();
-        $selectedSlug = trim((string) ($_GET['project'] ?? ''));
-        $selectedSlug = preg_replace('/[^a-z0-9\-_]/i', '', $selectedSlug) ?? '';
-        $selectedSlug = substr($selectedSlug, 0, 120);
-        $currentProject = null;
-
-        if ($selectedSlug !== '') {
-            $candidate = $this->service->findProjectBySlug($selectedSlug);
-            if ($candidate !== null && ($candidate['visibility'] ?? '') !== 'private') {
-                $currentProject = $candidate;
-            }
-        }
+        $selectedSlug = substr((string) (preg_replace('/[^a-z0-9\-_]/i', '', (string) ($_GET['project'] ?? '')) ?? ''), 0, 120);
+        $currentProject = $selectedSlug !== '' ? $this->service->findAccessibleProjectBySlug($selectedSlug, 'member') : null;
 
         if ($currentProject === null && $projects !== []) {
             $currentProject = $projects[0];
@@ -90,6 +81,7 @@ final class CMS_Projects_Member_Dashboard
         $dashboard = $currentProject !== null
             ? $this->service->getProjectDashboardPayload((int) $currentProject['id'], 'member')
             : null;
+        $statusLabels = $this->service->getProjectStatuses();
 
         include CMS_PROJECTS_PLUGIN_DIR . 'templates/member-projects.php';
     }

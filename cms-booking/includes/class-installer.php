@@ -2,7 +2,7 @@
 /**
  * CMS Booking – Installer
  *
- * Erstellt DB-Tabellen, Seeds und Migrationen.
+ * Erstellt DB-Tabellen, Seeds und versionierte Migrationen (Schema-Version CMS_BOOKING_DB_VERSION).
  *
  * @package CMS_Booking
  */
@@ -19,10 +19,24 @@ if (class_exists('CMS_Booking_Installer', false)) {
 
 final class CMS_Booking_Installer
 {
+    /** Option (Core-Tabelle `settings`) mit der installierten Schema-Version. */
+    public const VERSION_OPTION = 'booking_db_version';
+
+    /** Plugin-eigene Tabellen (ohne Präfix), in Löschreihenfolge (abhängige zuerst). */
+    public const TABLES = [
+        'booking_meta',
+        'bookings',
+        'booking_availability',
+        'booking_services',
+        'booking_providers',
+        'booking_settings',
+    ];
+
     public static function install(): void
     {
         try {
             self::create_tables();
+            self::migrate_indexes();
             self::seed_defaults();
             self::store_db_version(CMS_BOOKING_DB_VERSION);
         } catch (\Throwable $e) {
@@ -30,19 +44,17 @@ final class CMS_Booking_Installer
         }
     }
 
+    /**
+     * Läuft bei jedem Request in `cms_init`, arbeitet aber nur bei abweichender Schema-Version
+     * (gelesen über den gebündelten OptionStore, also ohne eigene Abfrage).
+     */
     public static function maybe_install(): void
     {
         try {
-            $stored = self::get_stored_version();
-            if ($stored === CMS_BOOKING_DB_VERSION) {
+            if (self::get_stored_version() === CMS_BOOKING_DB_VERSION) {
                 return;
             }
-            if ($stored === '0') {
-                self::install();
-            } else {
-                self::create_tables();
-                self::store_db_version(CMS_BOOKING_DB_VERSION);
-            }
+            self::install();
         } catch (\Throwable $e) {
             self::log_install_error($e);
         }
@@ -57,24 +69,61 @@ final class CMS_Booking_Installer
         $pdo = $db->getPdo();
         $p   = $db->getPrefix();
 
-        $tables = [
-            'booking_meta',
-            'bookings',
-            'booking_availability',
-            'booking_services',
-            'booking_providers',
-            'booking_settings',
-        ];
-        foreach ($tables as $t) {
-            $pdo->exec("DROP TABLE IF EXISTS {$p}{$t}");
+        try {
+            $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+            foreach (self::TABLES as $t) {
+                $pdo->exec('DROP TABLE IF EXISTS ' . self::quote_identifier($p . $t));
+            }
+        } finally {
+            $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
         }
 
         try {
             $stmt = $db->prepare("DELETE FROM {$p}settings WHERE option_name = ?");
-            $stmt->execute(['booking_db_version']);
+            $stmt->execute([self::VERSION_OPTION]);
+            if (class_exists('CMS\Services\OptionStore')) {
+                \CMS\Services\OptionStore::getInstance()->flush();
+            }
         } catch (\Throwable $e) {
-            // ignore
+            self::log_install_error($e);
         }
+
+        // DSGVO-Exportdateien des Plugins entfernen.
+        if (class_exists('CMS_Booking_Privacy')) {
+            CMS_Booking_Privacy::prune_exports(0);
+        }
+    }
+
+    /** Prüft, ob alle Plugin-Tabellen existieren (für System-Check und Hinweise). */
+    public static function tables_present(): bool
+    {
+        static $present = null;
+        if ($present !== null) {
+            return $present;
+        }
+        if (!class_exists('CMS\Database')) {
+            return $present = false;
+        }
+
+        try {
+            $db = \CMS\Database::instance();
+            $p  = $db->getPrefix();
+            $names = array_map(static fn (string $t): string => $p . $t, self::TABLES);
+            $placeholders = implode(', ', array_fill(0, count($names), '?'));
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ({$placeholders})"
+            );
+            $stmt->execute($names);
+
+            return $present = ((int) $stmt->fetchColumn()) === count($names);
+        } catch (\Throwable $e) {
+            return $present = false;
+        }
+    }
+
+    public static function stored_version(): string
+    {
+        return self::get_stored_version();
     }
 
     /* ================================================================== */
@@ -214,6 +263,64 @@ final class CMS_Booking_Installer
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
         self::add_foreign_keys($pdo, $p);
+    }
+
+    /**
+     * Schema-Version 3: zusammengesetzte Indizes für Slot-Berechnung, Listen und Löschfristen.
+     * Idempotent über SHOW INDEX – vorhandene Indizes werden nicht erneut angelegt.
+     */
+    private static function migrate_indexes(): void
+    {
+        if (!class_exists('CMS\Database')) {
+            return;
+        }
+
+        $db  = \CMS\Database::instance();
+        $pdo = $db->getPdo();
+        $p   = $db->getPrefix();
+
+        $indexes = [
+            ['bookings', 'idx_provider_date_status', ['provider_id', 'booking_date', 'status']],
+            ['bookings', 'idx_status_date', ['status', 'booking_date']],
+            ['bookings', 'idx_user_date', ['user_id', 'booking_date']],
+            ['bookings', 'idx_reminder', ['reminder_sent', 'status', 'booking_date']],
+            ['booking_availability', 'idx_provider_date', ['provider_id', 'specific_date']],
+            ['booking_availability', 'idx_provider_dow', ['provider_id', 'day_of_week']],
+            ['booking_services', 'idx_provider_status_sort', ['provider_id', 'status', 'sort_order']],
+            ['booking_providers', 'idx_status_name', ['status', 'display_name']],
+        ];
+
+        foreach ($indexes as [$table, $name, $columns]) {
+            $fullTable = $p . $table;
+            try {
+                if (!self::table_exists($pdo, $fullTable) || self::index_exists($pdo, $fullTable, $name)) {
+                    continue;
+                }
+                $pdo->exec(sprintf(
+                    'ALTER TABLE %s ADD INDEX %s (%s)',
+                    self::quote_identifier($fullTable),
+                    self::quote_identifier($name),
+                    implode(', ', array_map([self::class, 'quote_identifier'], $columns))
+                ));
+            } catch (\Throwable $e) {
+                error_log('[cms-booking] index skipped (' . $name . '): ' . $e->getMessage());
+            }
+        }
+    }
+
+    private static function index_exists(\PDO $pdo, string $table, string $index): bool
+    {
+        $stmt = $pdo->query('SHOW INDEX FROM ' . self::quote_identifier($table));
+        if ($stmt === false) {
+            return false;
+        }
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            if ((string) ($row['Key_name'] ?? '') === $index) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function add_foreign_keys(\PDO $pdo, string $p): void
@@ -366,31 +473,13 @@ final class CMS_Booking_Installer
         $db = \CMS\Database::instance();
         $p  = $db->getPrefix();
 
-        $defaults = [
-            'admin_email'          => '',
-            'from_name'            => defined('SITE_NAME') ? SITE_NAME : '365CMS',
-            'from_email'           => '',
-            'default_duration'     => '60',
-            'default_buffer'       => '15',
-            'default_timezone'     => 'Europe/Berlin',
-            'default_currency'     => 'EUR',
-            'booking_advance_min'  => '1',
-            'booking_advance_max'  => '90',
-            'booking_min_notice_hours' => '0',
-            'booking_daily_limit'  => '0',
-            'cancellation_hours'   => '24',
-            'auto_confirm'         => '0',
-            'send_reminders'       => '1',
-            'reminder_hours'       => '24',
-            'primary_color'        => '#3b82f6',
-        ];
-
         $stmt = $db->prepare(
             "INSERT IGNORE INTO {$p}booking_settings (setting_key, setting_value) VALUES (?, ?)"
         );
-        foreach ($defaults as $k => $v) {
+        foreach (CMS_Booking_Settings::defaults() as $k => $v) {
             $stmt->execute([$k, $v]);
         }
+        CMS_Booking_Settings::flush();
     }
 
     /* ================================================================== */
@@ -400,11 +489,15 @@ final class CMS_Booking_Installer
     private static function get_stored_version(): string
     {
         try {
+            if (class_exists('CMS\Services\OptionStore')) {
+                return (string) (\CMS\Services\OptionStore::getInstance()->get(self::VERSION_OPTION, '0') ?? '0');
+            }
+
             $db   = \CMS\Database::instance();
             $stmt = $db->prepare(
                 "SELECT option_value FROM {$db->getPrefix()}settings WHERE option_name = ?"
             );
-            $stmt->execute(['booking_db_version']);
+            $stmt->execute([self::VERSION_OPTION]);
             return (string) ($stmt->fetchColumn() ?: '0');
         } catch (\Throwable $e) {
             return '0';
@@ -420,9 +513,12 @@ final class CMS_Booking_Installer
                 "INSERT INTO {$p}settings (option_name, option_value)
                  VALUES (?, ?)
                  ON DUPLICATE KEY UPDATE option_value = VALUES(option_value)"
-            )->execute(['booking_db_version', $version]);
+            )->execute([self::VERSION_OPTION, $version]);
+            if (class_exists('CMS\Services\OptionStore')) {
+                \CMS\Services\OptionStore::getInstance()->flush();
+            }
         } catch (\Throwable $e) {
-            // ignore
+            self::log_install_error($e);
         }
     }
 

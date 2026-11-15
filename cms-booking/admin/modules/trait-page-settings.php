@@ -1,6 +1,6 @@
 <?php
 /**
- * CMS Booking – Admin Einstellungen Trait
+ * CMS Booking – Admin Einstellungen
  *
  * @package CMS_Booking
  */
@@ -13,86 +13,76 @@ if (!defined('ABSPATH')) {
 
 trait CMS_Booking_Page_Settings_Trait
 {
-    public function render_settings_page(): void
+    public function handle_settings_post(): string
     {
-        $error   = '';
-        $success = '';
-        $db      = \CMS\Database::instance();
-        $p       = $db->getPrefix();
+        $error = self::guard_post('booking_settings');
+        if ($error !== '') {
+            return $error;
+        }
 
-        // POST-Handler
-        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST' && isset($_POST['settings_action'])) {
-            if (!self::can_manage_admin_actions()) {
-                $error = 'Keine Berechtigung für diese Aktion.';
-            } elseif (!class_exists('CMS\Security') || !\CMS\Security::instance()->verifyToken($_POST['csrf_token'] ?? '', 'booking_settings')) {
-                $error = 'Sicherheitscheck fehlgeschlagen.';
-            } else {
-                $settingKeys = [
-                    'admin_email', 'from_name', 'from_email',
-                    'default_duration', 'default_buffer', 'default_timezone',
-                    'default_currency', 'booking_advance_min', 'booking_advance_max',
-                    'booking_min_notice_hours', 'booking_daily_limit',
-                    'cancellation_hours', 'auto_confirm', 'send_reminders',
-                    'reminder_hours', 'primary_color',
-                ];
+        $int = static fn (string $key, int $default, int $min, int $max): string
+            => (string) max($min, min($max, (int) (is_scalar($_POST[$key] ?? null) ? $_POST[$key] : $default)));
+        $email = static function (string $key): string {
+            $value = trim((string) (is_scalar($_POST[$key] ?? null) ? $_POST[$key] : ''));
 
-                $stmt = $db->prepare(
-                    "INSERT INTO {$p}booking_settings (setting_key, setting_value) VALUES (?, ?)
-                     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
-                );
+            return $value === '' ? '' : (string) (filter_var($value, FILTER_VALIDATE_EMAIL) ?: '');
+        };
+        $check = static fn (string $key): string => !empty($_POST[$key]) ? '1' : '0';
 
-                $sanitizeValue = static function (string $key): string {
-                    return match ($key) {
-                        'admin_email', 'from_email' => (string) (filter_var($_POST[$key] ?? '', FILTER_VALIDATE_EMAIL) ?: ''),
-                        'default_duration' => (string) max(5, (int) ($_POST[$key] ?? 60)),
-                        'default_buffer' => (string) max(0, (int) ($_POST[$key] ?? 15)),
-                        'booking_advance_min' => (string) max(0, (int) ($_POST[$key] ?? 1)),
-                        'booking_advance_max' => (string) max(1, (int) ($_POST[$key] ?? 90)),
-                        'booking_min_notice_hours' => (string) max(0, (int) ($_POST[$key] ?? 0)),
-                        'booking_daily_limit' => (string) max(0, (int) ($_POST[$key] ?? 0)),
-                        'cancellation_hours' => (string) max(0, (int) ($_POST[$key] ?? 24)),
-                        'reminder_hours' => (string) max(1, (int) ($_POST[$key] ?? 24)),
-                        'default_timezone' => in_array((string) ($_POST[$key] ?? ''), timezone_identifiers_list(), true)
-                            ? (string) $_POST[$key]
-                            : 'Europe/Berlin',
-                        'default_currency' => in_array((string) ($_POST[$key] ?? ''), ['EUR', 'CHF', 'USD', 'GBP'], true)
-                            ? (string) $_POST[$key]
-                            : 'EUR',
-                        'auto_confirm', 'send_reminders' => !empty($_POST[$key]) ? '1' : '0',
-                        'primary_color' => preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($_POST[$key] ?? '')) === 1
-                            ? (string) $_POST[$key]
-                            : '#3b82f6',
-                        default => sanitize_text_field((string) ($_POST[$key] ?? '')),
-                    };
-                };
-
-                try {
-                    foreach ($settingKeys as $key) {
-                        if (array_key_exists($key, $_POST) || in_array($key, ['auto_confirm', 'send_reminders'], true)) {
-                            $stmt->execute([$key, $sanitizeValue($key)]);
-                        }
-                    }
-                    $success = 'Einstellungen gespeichert.';
-                } catch (\Throwable $e) {
-                    $error = 'Einstellungen konnten nicht gespeichert werden.';
-                }
+        foreach (['admin_email', 'from_email'] as $key) {
+            $raw = trim((string) (is_scalar($_POST[$key] ?? null) ? $_POST[$key] : ''));
+            if ($raw !== '' && $email($key) === '') {
+                return 'Die Adresse im Feld „' . ($key === 'admin_email' ? 'Admin-E-Mail' : 'Absender-E-Mail') . '“ ist ungültig.';
             }
         }
 
-        $csrfToken = '';
-        if (class_exists('CMS\Security')) {
-            $csrfToken = \CMS\Security::instance()->generateToken('booking_settings');
+        $timezone = self::post_text('default_timezone', 80);
+        $currency = self::post_text('default_currency', 3);
+        $color    = self::post_text('primary_color', 7);
+        $advanceMin = (int) $int('booking_advance_min', 1, 0, 365);
+        $advanceMax = (int) $int('booking_advance_max', 90, 1, 366);
+        if ($advanceMax < $advanceMin) {
+            return 'Die maximale Vorlaufzeit muss größer oder gleich der minimalen sein.';
         }
 
-        // Alle Einstellungen laden
-        try {
-            $stmt = $db->prepare("SELECT setting_key, setting_value FROM {$p}booking_settings");
-            $stmt->execute();
-            $settings = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
-        } catch (\Throwable $e) {
-            $settings = [];
-            if ($error === '') {
-                $error = 'Einstellungen konnten nicht geladen werden.';
+        $values = [
+            'admin_email'              => $email('admin_email'),
+            'from_name'                => mb_substr(str_replace(['"', '<', '>'], '', self::post_text('from_name', 100)), 0, 100),
+            'from_email'               => $email('from_email'),
+            'default_duration'         => $int('default_duration', 60, 5, 1440),
+            'default_buffer'           => $int('default_buffer', 15, 0, 480),
+            'default_timezone'         => in_array($timezone, timezone_identifiers_list(), true) ? $timezone : 'Europe/Berlin',
+            'default_currency'         => in_array($currency, ['EUR', 'CHF', 'USD', 'GBP'], true) ? $currency : 'EUR',
+            'booking_advance_min'      => (string) $advanceMin,
+            'booking_advance_max'      => (string) $advanceMax,
+            'booking_min_notice_hours' => $int('booking_min_notice_hours', 0, 0, 720),
+            'booking_daily_limit'      => $int('booking_daily_limit', 0, 0, 1000),
+            'booking_rate_limit'       => $int('booking_rate_limit', 10, 0, 1000),
+            'cancellation_hours'       => $int('cancellation_hours', 24, 0, 720),
+            'allow_customer_cancel'    => $check('allow_customer_cancel'),
+            'auto_confirm'             => $check('auto_confirm'),
+            'send_reminders'           => $check('send_reminders'),
+            'reminder_hours'           => $int('reminder_hours', 24, 1, 168),
+            'primary_color_custom'     => $check('primary_color_custom'),
+            'primary_color'            => preg_match('/^#[0-9a-fA-F]{6}$/', $color) === 1 ? strtolower($color) : '#3b82f6',
+            'retention_days'           => $int('retention_days', 0, 0, 3650),
+        ];
+
+        CMS_Booking_Settings::save($values);
+        self::redirect_with('settings', [], 'success', 'Einstellungen gespeichert.');
+    }
+
+    public function render_settings_page(): void
+    {
+        $error     = $this->postError;
+        $csrfToken = self::generate_nonce('booking_settings');
+        $settings  = CMS_Booking_Settings::all();
+        // Nach einem Validierungsfehler die eingegebenen Werte erneut anzeigen.
+        if ($error !== '' && self::is_post()) {
+            foreach (array_keys(CMS_Booking_Settings::defaults()) as $key) {
+                if (isset($_POST[$key]) && is_scalar($_POST[$key])) {
+                    $settings[$key] = mb_substr((string) $_POST[$key], 0, 255);
+                }
             }
         }
 

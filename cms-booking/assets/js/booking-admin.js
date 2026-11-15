@@ -1,56 +1,26 @@
 /**
- * CMS Booking – Admin JavaScript
- * Modale, Bestätigungs-Dialoge, Interaktionen
+ * CMS Booking – Admin JavaScript (CSP-konform, ohne Inline-Handler)
+ *
+ *   data-booking-autosubmit            Filter-Select sendet das Formular bei Änderung
+ *   data-booking-color-preview="id"    Farbwert in ein Textfeld spiegeln
+ *   data-booking-bulk-form             Sammelaktionen: Alle-auswählen, Zähler, Button-Sperre
+ *
+ * Bestätigungen laufen über das Core-Attribut data-cms-confirm (cms-inline-actions.js).
  *
  * @package CMS_Booking
  */
 (function () {
     'use strict';
 
-    document.addEventListener('DOMContentLoaded', init);
-
     function init() {
-        initDeleteConfirmation();
-        initStatusActions();
-        initDeclarativeUi();
-    }
-
-    /* =================================================================== */
-    /*  CSP-konforme UI-Helfer (ersetzen Inline-Skripte/-Handler)          */
-    /*    data-booking-modal-open / -close="id", data-booking-autosubmit,  */
-    /*    data-booking-color-preview="previewId"                            */
-    /* =================================================================== */
-
-    function initDeclarativeUi() {
-        document.addEventListener('click', function (event) {
-            var target = event.target instanceof Element ? event.target : null;
-            if (!target) {
-                return;
-            }
-
-            var opener = target.closest('[data-booking-modal-open]');
-            if (opener) {
-                event.preventDefault();
-                toggleModal(opener.getAttribute('data-booking-modal-open'), true);
-                return;
-            }
-
-            var closer = target.closest('[data-booking-modal-close]');
-            if (closer) {
-                event.preventDefault();
-                toggleModal(closer.getAttribute('data-booking-modal-close'), false);
-                return;
-            }
-
-            if (target.classList.contains('modal') && target.id && target.hasAttribute('data-booking-modal')) {
-                toggleModal(target.id, false);
-            }
-        });
-
         document.querySelectorAll('[data-booking-autosubmit]').forEach(function (field) {
             field.addEventListener('change', function () {
                 if (field.form) {
-                    field.form.submit();
+                    if (typeof field.form.requestSubmit === 'function') {
+                        field.form.requestSubmit();
+                    } else {
+                        field.form.submit();
+                    }
                 }
             });
         });
@@ -64,136 +34,47 @@
                 preview.value = input.value;
             });
         });
+
+        document.querySelectorAll('form[data-booking-bulk-form]').forEach(initBulkForm);
     }
 
-    function toggleModal(id, show) {
-        var modal = id ? document.getElementById(id) : null;
-        if (modal) {
-            modal.style.display = show ? 'flex' : 'none';
+    function initBulkForm(form) {
+        var all = form.querySelector('[data-booking-check-all]');
+        var boxes = Array.prototype.slice.call(form.querySelectorAll('[data-booking-check]'));
+        var counter = form.querySelector('[data-booking-selected-count]');
+        var submit = form.querySelector('[data-booking-bulk-submit]');
+        var select = form.querySelector('select[name="bulk_action"]');
+
+        function update() {
+            var selected = boxes.filter(function (box) { return box.checked; }).length;
+            if (counter) {
+                counter.textContent = selected > 0 ? selected + ' ausgewählt' : '';
+            }
+            if (submit) {
+                submit.disabled = selected === 0 || !select || select.value === '';
+            }
+            if (all) {
+                all.checked = selected > 0 && selected === boxes.length;
+                all.indeterminate = selected > 0 && selected < boxes.length;
+            }
         }
-    }
 
-    /* =================================================================== */
-    /*  Lösch-Bestätigung (kein window.confirm!)                            */
-    /* =================================================================== */
-
-    function initDeleteConfirmation() {
-        document.querySelectorAll('form').forEach(function (form) {
-            var actionInput = form.querySelector('input[value="delete"]');
-            if (!actionInput) return;
-
-            form.addEventListener('submit', function (e) {
-                e.preventDefault();
-                showConfirmModal(
-                    'Wirklich löschen?',
-                    'Dieser Vorgang kann nicht rückgängig gemacht werden.',
-                    function () { form.submit(); }
-                );
+        if (all) {
+            all.addEventListener('change', function () {
+                boxes.forEach(function (box) { box.checked = all.checked; });
+                update();
             });
-        });
-    }
-
-    /* =================================================================== */
-    /*  Status-Aktionen (confirm, cancel, complete)                         */
-    /* =================================================================== */
-
-    function initStatusActions() {
-        document.querySelectorAll('[data-booking-action]').forEach(function (btn) {
-            btn.addEventListener('click', function (e) {
-                e.preventDefault();
-                var action = this.dataset.bookingAction;
-                var form = this.closest('form');
-
-                var messages = {
-                    'confirm':  'Buchung bestätigen?',
-                    'cancel':   'Buchung stornieren?',
-                    'complete': 'Buchung als abgeschlossen markieren?',
-                    'no_show':  'Als Nicht-Erschienen markieren?'
-                };
-
-                showConfirmModal(
-                    messages[action] || 'Aktion ausführen?',
-                    'Bitte bestätigen Sie die Aktion.',
-                    function () { form.submit(); }
-                );
-            });
-        });
-    }
-
-    /* =================================================================== */
-    /*  Bestätigungs-Modal                                                  */
-    /* =================================================================== */
-
-    var modalEl = null;
-
-    function showConfirmModal(title, message, onConfirm) {
-        if (modalEl) {
-            modalEl.remove();
         }
-
-        modalEl = document.createElement('div');
-        modalEl.className = 'modal';
-        modalEl.classList.add('booking-confirm-modal');
-
-        var content = document.createElement('div');
-        content.className = 'modal-content booking-confirm-modal__content';
-
-        var header = document.createElement('div');
-        header.className = 'modal-header';
-        var heading = document.createElement('h3');
-        heading.textContent = title;
-        var closeHeader = document.createElement('button');
-        closeHeader.type = 'button';
-        closeHeader.className = 'modal-close';
-        closeHeader.dataset.modalClose = '';
-        closeHeader.setAttribute('aria-label', 'Dialog schließen');
-        closeHeader.textContent = '×';
-        header.append(heading, closeHeader);
-
-        var body = document.createElement('div');
-        body.className = 'modal-body';
-        var text = document.createElement('p');
-        text.textContent = message;
-        body.appendChild(text);
-
-        var footer = document.createElement('div');
-        footer.className = 'modal-footer';
-        var cancelButton = document.createElement('button');
-        cancelButton.type = 'button';
-        cancelButton.className = 'btn btn-secondary';
-        cancelButton.dataset.modalClose = '';
-        cancelButton.textContent = 'Abbrechen';
-        var confirmButton = document.createElement('button');
-        confirmButton.type = 'button';
-        confirmButton.className = 'btn btn-danger';
-        confirmButton.dataset.modalConfirm = '';
-        confirmButton.textContent = 'Bestätigen';
-        footer.append(cancelButton, confirmButton);
-
-        content.append(header, body, footer);
-        modalEl.appendChild(content);
-
-        document.body.appendChild(modalEl);
-
-        modalEl.querySelectorAll('[data-modal-close]').forEach(function (btn) {
-            btn.addEventListener('click', function () { closeConfirm(); });
-        });
-
-        modalEl.querySelector('[data-modal-confirm]').addEventListener('click', function () {
-            closeConfirm();
-            if (typeof onConfirm === 'function') onConfirm();
-        });
-
-        modalEl.addEventListener('click', function (e) {
-            if (e.target === modalEl) closeConfirm();
-        });
-    }
-
-    function closeConfirm() {
-        if (modalEl) {
-            modalEl.remove();
-            modalEl = null;
+        boxes.forEach(function (box) { box.addEventListener('change', update); });
+        if (select) {
+            select.addEventListener('change', update);
         }
+        update();
     }
 
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 })();

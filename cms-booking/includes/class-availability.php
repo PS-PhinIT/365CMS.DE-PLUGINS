@@ -22,6 +22,10 @@ final class CMS_Booking_Availability
     private array $overrideCache = [];
     /** @var array<string, array<int, string>> */
     private array $slotCache = [];
+    /** @var array<string, list<array{start: string, end: string}>> provider|date => gebuchte Zeiträume */
+    private array $bookedCache = [];
+
+    private const COLUMNS = 'id, provider_id, day_of_week, specific_date, start_time, end_time, is_blocked';
 
     public static function instance(): self
     {
@@ -63,10 +67,13 @@ final class CMS_Booking_Availability
     /**
      * Slot löschen.
      */
-    public function delete(int $id): bool
+    public function delete(int $id, int $expectedProviderId = 0): bool
     {
         $db   = \CMS\Database::instance();
         $providerId = $this->provider_id_by_availability_id($id);
+        if ($expectedProviderId > 0 && $providerId !== $expectedProviderId) {
+            return false;
+        }
         $stmt = $db->prepare("DELETE FROM {$db->getPrefix()}booking_availability WHERE id = ?");
         $stmt->execute([$id]);
         if ($providerId > 0) {
@@ -101,6 +108,9 @@ final class CMS_Booking_Availability
         $this->delete_weekly($providerId);
 
         foreach ($weekly as $slot) {
+            if (!is_array($slot) || !isset($slot['day_of_week'], $slot['start_time'], $slot['end_time'])) {
+                continue;
+            }
             $this->create([
                 'provider_id' => $providerId,
                 'day_of_week' => (int) $slot['day_of_week'],
@@ -122,7 +132,7 @@ final class CMS_Booking_Availability
 
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
-            "SELECT * FROM {$db->getPrefix()}booking_availability
+            'SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_availability
              WHERE provider_id = ? AND specific_date IS NULL AND is_blocked = 0
              ORDER BY day_of_week ASC, start_time ASC"
         );
@@ -144,7 +154,7 @@ final class CMS_Booking_Availability
 
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
-            "SELECT * FROM {$db->getPrefix()}booking_availability
+            'SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_availability
              WHERE provider_id = ? AND specific_date BETWEEN ? AND ?
              ORDER BY specific_date ASC, start_time ASC"
         );
@@ -152,6 +162,56 @@ final class CMS_Booking_Availability
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $this->overrideCache[$cacheKey] = $rows;
         return $rows;
+    }
+
+    /**
+     * Datums-Einträge ab heute (Admin-Liste).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function get_upcoming_overrides(int $providerId, int $limit = 100): array
+    {
+        $db   = \CMS\Database::instance();
+        $stmt = $db->prepare(
+            'SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_availability
+             WHERE provider_id = ? AND specific_date IS NOT NULL AND specific_date >= CURDATE()
+             ORDER BY specific_date ASC, start_time ASC
+             LIMIT " . max(1, min(500, $limit))
+        );
+        $stmt->execute([$providerId]);
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Lädt Datums-Ausnahmen und gebuchte Zeiträume eines Zeitraums mit je einer Abfrage vor,
+     * damit die Slot-Berechnung über viele Tage ohne N+1-Abfragen auskommt.
+     */
+    public function preload_range(int $providerId, string $from, string $to): void
+    {
+        $overrides = $this->get_date_overrides($providerId, $from, $to);
+        $byDate = [];
+        foreach ($overrides as $row) {
+            $byDate[(string) $row['specific_date']][] = $row;
+        }
+
+        $booked = class_exists('CMS_Booking_Bookings')
+            ? CMS_Booking_Bookings::instance()->get_booked_ranges_between($providerId, $from, $to)
+            : [];
+
+        try {
+            $cursor = new \DateTimeImmutable($from);
+            $end    = new \DateTimeImmutable($to);
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        while ($cursor <= $end) {
+            $date = $cursor->format('Y-m-d');
+            $this->overrideCache[$providerId . '|' . $date . '|' . $date] = $byDate[$date] ?? [];
+            $this->bookedCache[$providerId . '|' . $date] = $booked[$date] ?? [];
+            $cursor = $cursor->modify('+1 day');
+        }
     }
 
     /**
@@ -192,6 +252,10 @@ final class CMS_Booking_Availability
             return $this->slotCache[$slotCacheKey];
         }
 
+        if (!CMS_Booking_Bookings::is_date($date) || $durationMin <= 0) {
+            return [];
+        }
+
         // 1. Wochentag bestimmen (0=Mo … 6=So)
         $ts  = strtotime($date);
         $dow = ((int) date('N', $ts)) - 1; // 1=Mo → 0
@@ -202,8 +266,8 @@ final class CMS_Booking_Availability
         foreach ($weekly as $slot) {
             if ((int) $slot['day_of_week'] === $dow) {
                 $ranges[] = [
-                    'start' => $slot['start_time'],
-                    'end'   => $slot['end_time'],
+                    'start' => substr((string) $slot['start_time'], 0, 5),
+                    'end'   => substr((string) $slot['end_time'], 0, 5),
                 ];
             }
         }
@@ -213,22 +277,23 @@ final class CMS_Booking_Availability
         foreach ($overrides as $ov) {
             if ((int) $ov['is_blocked'] === 1) {
                 // Range entfernen / einschränken
-                $ranges = $this->subtract_range($ranges, $ov['start_time'], $ov['end_time']);
+                $ranges = $this->subtract_range($ranges, substr((string) $ov['start_time'], 0, 5), substr((string) $ov['end_time'], 0, 5));
             } else {
                 // Zusätzliche Verfügbarkeit
                 $ranges[] = [
-                    'start' => $ov['start_time'],
-                    'end'   => $ov['end_time'],
+                    'start' => substr((string) $ov['start_time'], 0, 5),
+                    'end'   => substr((string) $ov['end_time'], 0, 5),
                 ];
             }
         }
 
         // 4. Bereits gebuchte Zeiten subtrahieren
-        if (class_exists('CMS_Booking_Bookings')) {
-            $booked = CMS_Booking_Bookings::instance()->get_booked_ranges($providerId, $date);
-            foreach ($booked as $b) {
-                $ranges = $this->subtract_range($ranges, $b['start'], $b['end']);
-            }
+        $bookedKey = $providerId . '|' . $date;
+        if (!isset($this->bookedCache[$bookedKey]) && class_exists('CMS_Booking_Bookings')) {
+            $this->bookedCache[$bookedKey] = CMS_Booking_Bookings::instance()->get_booked_ranges($providerId, $date);
+        }
+        foreach ($this->bookedCache[$bookedKey] ?? [] as $b) {
+            $ranges = $this->subtract_range($ranges, $b['start'], $b['end']);
         }
 
         // 5. Slots generieren
@@ -268,21 +333,31 @@ final class CMS_Booking_Availability
     /**
      * Nächste verfügbare Tage (für Kalender).
      *
+     * Ausnahmen und Buchungen werden für den gesamten Zeitraum vorab geladen (2 statt 2 × $days Abfragen).
+     *
+     * @param  int $startOffsetDays Erster Tag relativ zu heute (Mindest-Vorlauf)
      * @return array  ['2026-02-01', '2026-02-02', …]
      */
-    public function get_available_dates(int $providerId, int $durationMin = 60, int $days = 30): array
+    public function get_available_dates(int $providerId, int $durationMin = 60, int $days = 30, int $bufferMin = 0, int $startOffsetDays = 0): array
     {
-        $dates = [];
-        $start = new \DateTime('today');
-        $end   = (new \DateTime('today'))->modify("+{$days} days");
+        $days  = max(0, min(366, $days));
+        $start = (new \DateTimeImmutable('today'))->modify('+' . max(0, $startOffsetDays) . ' days');
+        $end   = (new \DateTimeImmutable('today'))->modify("+{$days} days");
+        if ($start > $end) {
+            return [];
+        }
 
-        while ($start <= $end) {
-            $date  = $start->format('Y-m-d');
-            $slots = $this->get_available_slots($providerId, $date, $durationMin, 0);
+        $this->preload_range($providerId, $start->format('Y-m-d'), $end->format('Y-m-d'));
+
+        $dates  = [];
+        $cursor = $start;
+        while ($cursor <= $end) {
+            $date  = $cursor->format('Y-m-d');
+            $slots = $this->get_available_slots($providerId, $date, $durationMin, $bufferMin);
             if (!empty($slots)) {
                 $dates[] = $date;
             }
-            $start->modify('+1 day');
+            $cursor = $cursor->modify('+1 day');
         }
 
         return $dates;
@@ -359,12 +434,18 @@ final class CMS_Booking_Availability
             $this->weeklyCache = [];
             $this->overrideCache = [];
             $this->slotCache = [];
+            $this->bookedCache = [];
             return;
         }
 
         unset($this->weeklyCache[$providerId]);
 
         $prefix = $providerId . '|';
+        foreach (array_keys($this->bookedCache) as $key) {
+            if (strpos($key, $prefix) === 0) {
+                unset($this->bookedCache[$key]);
+            }
+        }
         foreach (array_keys($this->overrideCache) as $key) {
             if (strpos($key, $prefix) === 0) {
                 unset($this->overrideCache[$key]);

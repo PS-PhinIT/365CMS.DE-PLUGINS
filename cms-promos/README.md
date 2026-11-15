@@ -11,6 +11,26 @@ Promo- und Kampagnen-Plugin für 365CMS mit Platzierungen, CTA-Elementen, Ziel-U
 - Öffentliche Übersicht über `/promos`
 - Admin-Dashboard mit Statistik- und Verwaltungsseiten
 
+## Anforderungen
+
+- 365CMS 4.0.0 oder neuer
+- PHP 8.4.1 oder neuer
+- MySQL/MariaDB mit InnoDB, utf8mb4
+
+## Admin
+
+Menü **365CMS | Promos** unter `/admin/plugins/promos-dashboard`:
+
+- `promos-dashboard` – Übersicht mit Schnellaktionen, System-Check und letzten Änderungen
+- `promos-items` – Promos (Suche, Filter, Sammelaktionen, CSV-Export)
+- `promos-placements` – Platzierungen und Theme-Hooks
+- `promos-settings` – Archiv, Standardtexte, Klick-Export, Löschfrist, JSON-Export/-Import
+
+## Integrationen
+
+- Sitemap (`/promos`), Seitensuche (`_type` = `promos`), Datenaufbewahrung (`cms_promos.expired_promos`), Systemhinweise
+- Hook `cms_promos_click_export` mit Klick-Payload (ohne personenbezogene Daten), optional Webhook
+
 ## Sicherheitsstatus (2026-04-04)
 
 - Snyk-Code-Audit für `cms-promos` abgeschlossen, aktuell ohne offene Findings.

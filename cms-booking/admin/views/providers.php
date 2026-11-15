@@ -1,122 +1,115 @@
-<?php declare(strict_types=1); if (!defined('ABSPATH')) exit; ?>
-
-<!-- Page Header -->
+<?php
+/**
+ * Anbieter – Header → Filter → Sammelaktionen/Tabelle → Paginierung
+ *
+ * @var list<array<string, mixed>> $items
+ * @var array<string, array>       $types
+ * @var array<string, string>      $query
+ * @var string $csrfToken, $error, $status, $search
+ * @var int    $page, $pages, $total
+ */
+declare(strict_types=1);
+if (!defined('ABSPATH')) exit;
+$e = static fn (mixed $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+$statusNames = ['active' => 'Aktiv', 'inactive' => 'Inaktiv', 'pending' => 'Ausstehend'];
+?>
 <div class="admin-page-header">
     <div>
-        <h2>Anbieter verwalten</h2>
-        <p>Buchbare Anbieter aus allen integrierten Plugins</p>
+        <h2>Anbieter</h2>
+        <p>Buchbare Personen und Unternehmen – manuell oder aus integrierten Plugins (<?php echo (int) $total; ?>).</p>
+    </div>
+    <div class="header-actions">
+        <a class="btn btn-primary" href="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('providers', ['view' => 'edit'])); ?>"><i class="ti ti-user-plus" aria-hidden="true"></i> Anbieter anlegen</a>
     </div>
 </div>
 
-<!-- Alerts -->
-<?php if (!empty($success)): ?>
-<div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div>
-<?php endif; ?>
-<?php if (!empty($error)): ?>
-<div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
-<?php endif; ?>
+<?php self::render_alerts($error); ?>
 
-<!-- Filter -->
-<div class="admin-card">
-    <form method="GET" style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;">
-        <div class="form-group" style="margin:0;min-width:150px;">
-            <label class="form-label">Status</label>
-            <select name="status" class="form-control" data-booking-autosubmit>
-                <option value="">Alle</option>
-                <option value="active"   <?php echo $status === 'active'   ? 'selected' : ''; ?>>Aktiv</option>
-                <option value="inactive" <?php echo $status === 'inactive' ? 'selected' : ''; ?>>Inaktiv</option>
-            </select>
-        </div>
+<form method="get" action="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('providers')); ?>" class="admin-card booking-admin-toolbar" role="search">
+    <div class="form-group">
+        <label class="form-label" for="provider-filter-status">Status</label>
+        <select id="provider-filter-status" name="status" class="form-control" data-booking-autosubmit>
+            <option value="">Alle</option>
+            <?php foreach ($statusNames as $key => $label): ?>
+            <option value="<?php echo $e($key); ?>" <?php echo $status === $key ? 'selected' : ''; ?>><?php echo $e($label); ?></option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <div class="form-group booking-admin-toolbar__grow">
+        <label class="form-label" for="provider-filter-q">Suche</label>
+        <input id="provider-filter-q" type="search" name="q" class="form-control" placeholder="Name, E-Mail, Slug" value="<?php echo $e($search); ?>">
+    </div>
+    <div class="booking-admin-toolbar__actions">
+        <button type="submit" class="btn btn-secondary"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>
+        <a class="btn btn-link" href="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('providers')); ?>">Zurücksetzen</a>
+    </div>
+</form>
 
-        <div class="form-group" style="margin:0;flex:1;min-width:200px;">
-            <label class="form-label">Suche</label>
-            <input type="text" name="q" class="form-control" placeholder="Name, E-Mail, Slug …"
-                   value="<?php echo htmlspecialchars($search); ?>">
-        </div>
-
-        <button type="submit" class="btn btn-secondary btn-sm">Filtern</button>
-    </form>
-</div>
-
-<!-- Tabelle -->
 <div class="admin-card">
     <?php if (empty($items)): ?>
-        <div class="empty-state">
-            <p style="font-size:2.5rem;margin:0;"></p>
-            <p><strong>Keine Anbieter gefunden</strong></p>
-            <p class="text-muted">Anbieter werden automatisch aus integrierten Plugins synchronisiert.</p>
-        </div>
+        <p class="booking-admin-empty">Keine Anbieter gefunden. Legen Sie einen Anbieter an oder aktivieren Sie ein integriertes Plugin.</p>
     <?php else: ?>
+    <form method="post" action="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('providers', $query + ['paged' => $page])); ?>" data-booking-bulk-form>
+        <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+        <input type="hidden" name="status_filter" value="<?php echo $e($status); ?>">
+        <input type="hidden" name="q_filter" value="<?php echo $e($search); ?>">
+        <div class="booking-admin-bulkbar">
+            <label class="visually-hidden" for="provider-bulk-action">Sammelaktion</label>
+            <select id="provider-bulk-action" name="bulk_action" class="form-control">
+                <option value="">Sammelaktion wählen …</option>
+                <option value="activate">Aktivieren</option>
+                <option value="deactivate">Deaktivieren</option>
+                <option value="delete">Löschen (inkl. Leistungen und Buchungen)</option>
+            </select>
+            <button type="submit" name="apply_bulk" value="1" class="btn btn-secondary" data-booking-bulk-submit
+                    data-cms-confirm="Sammelaktion auf alle ausgewählten Anbieter anwenden? Beim Löschen werden auch Leistungen und Buchungen entfernt.">Anwenden</button>
+            <span class="booking-admin-muted" data-booking-selected-count aria-live="polite"></span>
+        </div>
         <div class="users-table-container">
             <table class="users-table">
                 <thead>
                     <tr>
-                        <th>Anbieter</th>
-                        <th>Plugin</th>
-                        <th>Slug</th>
-                        <th>E-Mail</th>
-                        <th>Status</th>
-                        <th>Aktionen</th>
+                        <th scope="col" class="booking-admin-col-check"><input type="checkbox" data-booking-check-all aria-label="Alle auswählen"></th>
+                        <th scope="col">Anbieter</th>
+                        <th scope="col">Herkunft</th>
+                        <th scope="col">E-Mail</th>
+                        <th scope="col">Status</th>
+                        <th scope="col"><span class="visually-hidden">Aktionen</span></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($items as $item): ?>
+                    <?php
+                    $id = (int) $item['id'];
+                    $source = (string) $item['source_plugin'];
+                    $isManual = $source === CMS_Booking_Providers::SOURCE_MANUAL;
+                    $typeLabel = $isManual ? 'Manuell' : (string) ($types[$source]['label'] ?? $source);
+                    $itemStatus = (string) $item['status'];
+                    ?>
                     <tr>
+                        <td class="booking-admin-col-check"><input type="checkbox" name="ids[]" value="<?php echo $id; ?>" data-booking-check aria-label="<?php echo $e($item['display_name']); ?> auswählen"></td>
                         <td>
-                            <strong><?php echo htmlspecialchars($item['display_name']); ?></strong>
-                            <?php if (!empty($item['bio'])): ?>
-                            <div style="color:#64748b;font-size:.8rem;max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                <?php echo htmlspecialchars(mb_substr(strip_tags($item['bio']), 0, 80)); ?>
-                            </div>
-                            <?php endif; ?>
+                            <a href="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('providers', ['view' => 'edit', 'id' => $id])); ?>"><strong><?php echo $e($item['display_name']); ?></strong></a>
+                            <div class="booking-admin-muted"><code>/booking/<?php echo $e($item['slug']); ?></code></div>
                         </td>
+                        <td><?php echo $e($typeLabel); ?></td>
+                        <td><?php echo $e($item['email'] ?? '—'); ?></td>
+                        <td><span class="status-badge <?php echo $e($itemStatus === 'active' ? 'active' : 'inactive'); ?>"><?php echo $e($statusNames[$itemStatus] ?? $itemStatus); ?></span></td>
                         <td>
-                            <?php
-                            $typeInfo = $types[$item['source_plugin']] ?? null;
-                            $icon     = $typeInfo['icon'] ?? '📋';
-                            $label    = $typeInfo['label'] ?? $item['source_plugin'];
-                            ?>
-                            <span title="<?php echo htmlspecialchars($item['source_plugin']); ?>">
-                                <?php echo htmlspecialchars((string) $icon, ENT_QUOTES, 'UTF-8'); ?> <?php echo htmlspecialchars((string) $label, ENT_QUOTES, 'UTF-8'); ?>
-                            </span>
-                        </td>
-                        <td><code style="font-size:.82rem;"><?php echo htmlspecialchars($item['slug']); ?></code></td>
-                        <td><?php echo htmlspecialchars($item['email'] ?? '—'); ?></td>
-                        <td>
-                            <span class="status-badge <?php echo htmlspecialchars($item['status'] === 'active' ? 'active' : 'inactive', ENT_QUOTES, 'UTF-8'); ?>">
-                                <?php echo $item['status'] === 'active' ? 'Aktiv' : 'Inaktiv'; ?>
-                            </span>
-                        </td>
-                        <td>
-                            <div style="display:flex;gap:.4rem;flex-wrap:wrap;">
-                                <!-- Sync -->
-                                <form method="POST" style="margin:0;">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
-                                    <input type="hidden" name="provider_id" value="<?php echo (int) $item['id']; ?>">
-                                    <input type="hidden" name="provider_action" value="sync">
-                                    <button type="submit" class="btn btn-sm btn-secondary" title="Synchronisieren"><i class="ti ti-refresh" aria-hidden="true"></i></button>
-                                </form>
-
-                                <!-- Status -->
-                                <?php if ($item['status'] === 'active'): ?>
-                                <form method="POST" style="margin:0;">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
-                                    <input type="hidden" name="provider_id" value="<?php echo (int) $item['id']; ?>">
-                                    <input type="hidden" name="provider_action" value="deactivate">
-                                    <button type="submit" class="btn btn-sm btn-secondary" title="Deaktivieren"><i class="ti ti-player-pause" aria-hidden="true"></i></button>
-                                </form>
-                                <?php else: ?>
-                                <form method="POST" style="margin:0;">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
-                                    <input type="hidden" name="provider_id" value="<?php echo (int) $item['id']; ?>">
-                                    <input type="hidden" name="provider_action" value="activate">
-                                    <button type="submit" class="btn btn-sm btn-primary" title="Aktivieren">▶</button>
-                                </form>
+                            <div class="booking-admin-actions">
+                                <a class="btn btn-sm btn-secondary" title="Bearbeiten" href="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('providers', ['view' => 'edit', 'id' => $id])); ?>"><i class="ti ti-pencil" aria-hidden="true"></i><span class="visually-hidden">Bearbeiten</span></a>
+                                <a class="btn btn-sm btn-secondary" title="Verfügbarkeit" href="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('providers', ['view' => 'availability', 'id' => $id])); ?>"><i class="ti ti-calendar-time" aria-hidden="true"></i><span class="visually-hidden">Verfügbarkeit</span></a>
+                                <?php if (!$isManual && CMS_Booking_Integration::is_registered($source)): ?>
+                                <button type="submit" name="row_action" value="sync:<?php echo $id; ?>" class="btn btn-sm btn-secondary" title="Synchronisieren"><i class="ti ti-refresh" aria-hidden="true"></i><span class="visually-hidden">Synchronisieren</span></button>
                                 <?php endif; ?>
-
-                                <!-- Booking-Seite öffnen -->
-                                <a href="/booking/<?php echo htmlspecialchars($item['slug']); ?>"
-                                              target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-secondary" title="Buchungsseite"><i class="ti ti-external-link" aria-hidden="true"></i></a>
+                                <?php if ($itemStatus === 'active'): ?>
+                                <button type="submit" name="row_action" value="deactivate:<?php echo $id; ?>" class="btn btn-sm btn-secondary" title="Deaktivieren"><i class="ti ti-player-pause" aria-hidden="true"></i><span class="visually-hidden">Deaktivieren</span></button>
+                                <?php else: ?>
+                                <button type="submit" name="row_action" value="activate:<?php echo $id; ?>" class="btn btn-sm btn-secondary" title="Aktivieren"><i class="ti ti-player-play" aria-hidden="true"></i><span class="visually-hidden">Aktivieren</span></button>
+                                <?php endif; ?>
+                                <a class="btn btn-sm btn-secondary" title="Buchungsseite" href="/booking/<?php echo $e(rawurlencode((string) $item['slug'])); ?>" target="_blank" rel="noopener noreferrer"><i class="ti ti-external-link" aria-hidden="true"></i><span class="visually-hidden">Buchungsseite</span></a>
+                                <button type="submit" name="row_action" value="delete:<?php echo $id; ?>" class="btn btn-sm btn-danger" title="Löschen"
+                                        data-cms-confirm="Anbieter „<?php echo $e($item['display_name']); ?>“ samt Leistungen, Verfügbarkeiten und Buchungen löschen?"><i class="ti ti-trash" aria-hidden="true"></i><span class="visually-hidden">Löschen</span></button>
                             </div>
                         </td>
                     </tr>
@@ -124,19 +117,7 @@
                 </tbody>
             </table>
         </div>
-
-        <?php if ($pages > 1): ?>
-        <div class="pagination" style="display:flex;gap:.5rem;justify-content:center;margin-top:1.5rem;">
-            <?php if ($page > 1): ?>
-                <a href="<?php echo htmlspecialchars(CMS_Booking_Admin_Pages::admin_url('providers', ['paged' => (int) ($page - 1), 'status' => $status, 'q' => $search]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-secondary btn-sm">← Zurück</a>
-            <?php endif; ?>
-            <span style="padding:.375rem .875rem;color:#64748b;font-size:.875rem;">
-                Seite <?php echo (int) $page; ?> von <?php echo (int) $pages; ?>
-            </span>
-            <?php if ($page < $pages): ?>
-                <a href="<?php echo htmlspecialchars(CMS_Booking_Admin_Pages::admin_url('providers', ['paged' => (int) ($page + 1), 'status' => $status, 'q' => $search]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-secondary btn-sm">Weiter →</a>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
+    </form>
+    <?php self::render_pagination('providers', $query, $page, $pages); ?>
     <?php endif; ?>
 </div>

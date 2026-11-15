@@ -1,4 +1,6 @@
-:root {
+/* CMS Promos – öffentliche Ausgabe (Archiv /promos und Theme-Hook-Zonen). Tokens nur im Plugin-Scope. */
+.promos-archive,
+.promos-hook-zone {
     --pr-primary: var(--phinit-color-accent, #ea580c);
     --pr-primary-dark: var(--phinit-color-accent, #c2410c);
     --pr-accent: var(--phinit-color-surface-alt, #fff7ed);
@@ -82,6 +84,39 @@
 .promos-placement-link:hover,
 .promos-card:hover {
     border-color: var(--pr-primary);
+}
+
+.promos-placement-link,
+.promos-card,
+.promos-hook-card {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.promos-placement-link.is-active,
+.promos-card--featured {
+    border-color: var(--pr-primary);
+}
+
+.promos-placement-link__text {
+    display: block;
+    margin-top: .25rem;
+    color: var(--pr-muted);
+    font-size: .9rem;
+}
+
+.promos-card__image {
+    display: block;
+    width: 100%;
+    height: 180px;
+    margin-bottom: .9rem;
+    object-fit: cover;
+    border-radius: calc(var(--pr-radius) - 2px);
+}
+
+.promos-card:target {
+    outline: 2px solid var(--pr-primary);
+    outline-offset: 2px;
 }
 
 .promos-card__eyebrow {

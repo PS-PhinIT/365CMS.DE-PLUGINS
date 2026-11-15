@@ -1,8 +1,8 @@
 # CMS Booking – Universelles Buchungssystem
 
-> **Version:** 3.0.6
+> **Version:** 4.0.0
 > **Autor:** 365 Network  
-> **Abhängigkeiten:** 365CMS Core ≥ 2.0  
+> **Anforderungen:** 365CMS 4.0.0 oder neuer, PHP 8.4.1 oder neuer  
 > **Optionale Integration:** cms-contact, cms-experts, cms-speakers, cms-events, cms-companies
 
 ---
@@ -34,7 +34,8 @@ cms-booking/
 ├── CHANGELOG.md
 ├── README.md
 ├── includes/
-│   ├── class-installer.php      ← DB-Migration (6 Tabellen)
+│   ├── class-settings.php       ← Einstellungen (ein Query pro Request)
+│   ├── class-installer.php      ← DB-Migration (6 Tabellen, Schema-Version 3)
 │   ├── class-providers.php      ← Anbieter-CRUD + Upsert
 │   ├── class-services.php       ← Leistungen-CRUD
 │   ├── class-availability.php   ← Wochenplan, Overrides, Slot-Engine
@@ -42,7 +43,10 @@ cms-booking/
 │   ├── class-notifications.php  ← E-Mail-Templates
 │   ├── class-calendar-export.php← iCal + Google-Kalender
 │   ├── class-integration.php    ← Provider-Type-Registry + Buttons
-│   └── class-frontend.php       ← Routen und Frontend-Rendering
+│   ├── class-privacy.php        ← DSGVO-Auskunft/-Löschung, Löschfrist
+│   ├── class-public-index.php   ← Sitemap- und Sucheinträge
+│   ├── class-frontend.php       ← Routen und Frontend-Rendering
+│   └── plugin-workspace.php     ← Rückfall des Core-Layout-Partials
 ├── admin/
 │   ├── class-admin-menu.php     ← Admin-Menü (5 Einträge)
 │   ├── class-admin-pages.php    ← Trait-Loader
@@ -53,10 +57,9 @@ cms-booking/
 │   │   ├── trait-page-services.php
 │   │   └── trait-page-settings.php
 │   └── views/
-│       ├── dashboard.php
-│       ├── bookings.php
-│       ├── providers.php
-│       ├── services.php
+│       ├── dashboard.php, bookings.php, booking-detail.php
+│       ├── providers.php, provider-edit.php, provider-availability.php
+│       ├── services.php, service-edit.php
 │       └── settings.php
 ├── templates/
 │   ├── page-provider.php        ← Provider-Übersicht
@@ -75,10 +78,10 @@ cms-booking/
 
 1. Plugin-Ordner `cms-booking/` nach `CMS/plugins/` kopieren
 2. Im Admin unter **Plugins** das Plugin **CMS Booking** aktivieren
-3. Unter **Plugins → Buchungen → Einstellungen** die Grundkonfiguration vornehmen
-4. Anbieter werden automatisch aus verknüpften Plugins synchronisiert oder können manuell angelegt werden
-5. Leistungen je Anbieter erstellen (Dauer, Preis, Ort-Typ)
-6. Verfügbarkeiten über Wochenplan definieren
+3. Unter **365CMS | Buchungen → Einstellungen** (`/admin/plugins/booking/settings`) die Grundkonfiguration vornehmen
+4. Anbieter manuell anlegen (`/admin/plugins/booking/providers?view=edit`) oder aus verknüpften Plugins synchronisieren
+5. Wochenplan und Ausnahmen je Anbieter festlegen (Anbieter → Verfügbarkeit)
+6. Leistungen je Anbieter erstellen (Dauer, Puffer, Preis, Ort, Buchungsart)
 
 ## Integration eigener Plugins
 
@@ -87,7 +90,7 @@ cms-booking/
 CMS\Hooks::addAction('booking_register_providers', function () {
     CMS_Booking_Integration::register_provider_type('mein-plugin', [
         'label'          => 'Mein Typ',
-        'icon'           => '🔧',
+        'icon'           => 'ti ti-tool',
         'source_table'   => 'meine_tabelle',
         'name_column'    => 'name',
         'email_column'   => 'email',
@@ -104,9 +107,20 @@ CMS\Hooks::addAction('booking_register_providers', function () {
 |---|---|---|
 | `/booking/{provider-slug}` | GET | Provider-Übersicht mit Service-Liste |
 | `/booking/{provider-slug}/{service-slug}` | GET/POST | Buchungsformular |
-| `/booking/confirm/{booking-id}` | GET | Bestätigungsseite |
-| `/booking/ical/{booking-id}` | GET | iCal-Download |
+| `/booking/confirm/{booking-id}?token=…` | GET | Bestätigungsseite (Token, noindex) |
+| `/booking/ical/{booking-id}?token=…` | GET | iCal-Download (Token) |
+| `/booking/cancel/{booking-id}?token=…` | POST | Selbst-Stornierung (Token + CSRF, Frist) |
 | `/api/booking/slots/{provider-id}/{date}` | GET | Verfügbare Zeitfenster (JSON) |
+
+## Admin-Seiten
+
+| Seite | URL |
+|---|---|
+| Übersicht | `/admin/plugins/booking` |
+| Buchungen (Filter, Sammelaktionen, CSV, Detail) | `/admin/plugins/booking/bookings` |
+| Anbieter (Anlegen, Verfügbarkeit) | `/admin/plugins/booking/providers` |
+| Leistungen | `/admin/plugins/booking/services` |
+| Einstellungen | `/admin/plugins/booking/settings` |
 
 ## Sicherheitsstatus (2026-04-04)
 
