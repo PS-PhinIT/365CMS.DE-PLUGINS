@@ -1,5 +1,14 @@
 # Changelog – 365CMS | Experts & Companies
 
+## 2.0.2 – 2026-11-15
+
+Kompatibilitäts-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft gegen den aktuellen Core-`main`.
+
+### Behoben
+
+- **DB-PLG-02 – Deinstallation lief nie:** Die Hauptdatei hieß `cms-365NETexpertsandcompanie.php`, der Slug ist `cms-365netexpertsandcompanie`. Beim Löschen sucht der Core exakt `<slug>.php`; auf Linux (Groß-/Kleinschreibung) fand er die Datei nicht, rief `cms_365netexpertsandcompanie_uninstall()` nicht auf und die drei Tabellen blieben bestehen (Test: Löschen über die Plugin-Verwaltung). Die Datei heißt jetzt `cms-365netexpertsandcompanie.php`; das Löschen entfernt Tabellen und Option.
+- **DB-PLG-01:** Vor der ersten Installation wurde die noch fehlende Tabelle `365net_excomp_settings` abgefragt; der Core protokollierte einen SQL-Fehler. Die Schema-Version steht jetzt in der Autoload-Option `cms_365netexpertsandcompanie_db_version` (`OptionStore`); ohne Option und ohne Tabelle liefert `getSettings()` die Standardwerte ohne Abfrage.
+
 ## 2.0.1 – 2026-11-15
 
 Sicherheits-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`): Plugin erstmals auf einer echten 365CMS-4.0.0-Installation aktiviert und geprüft (Admin-Seiten, öffentliche Seiten, XSS-, CSRF-, Rechte- und Upload-Tests).

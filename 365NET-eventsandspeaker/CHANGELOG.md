@@ -1,5 +1,17 @@
 # 365CMS | Events & Speaker – Changelog
 
+## 4.0.1 – 2026-11-15
+
+Kompatibilitäts-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft gegen den aktuellen Core-`main`.
+
+### Behoben
+
+- **DB-PLG-01:** Vor der ersten Installation fragte die Schema-Prüfung die noch fehlende Tabelle `365net_event_settings` ab; der Core protokollierte dabei einen SQL-Fehler. Die installierte Schema-Version steht jetzt in der Autoload-Option `cms_365neteventsandspeaker_db_version` (`OptionStore`, keine eigene Abfrage je Anfrage); die Tabelle wird nur gelesen, wenn sie existiert. Bestehende Installationen übernehmen die Version beim nächsten Aufruf, die Deinstallation entfernt die Option.
+
+### Hinweis zur Installation
+
+- Lebenszyklus-Callbacks (`cms_365neteventsandspeaker_activate/_deactivate/_uninstall`) ruft der Core nur auf, wenn der Plugin-Ordner wie der Slug heißt (`plugins/cms-365neteventsandspeaker/`), so wie es die Marketplace-Installation anlegt. Bei einer Kopie des Repository-Ordners `365NET-eventsandspeaker/` lautet der Slug `365net-eventsandspeaker`; dafür kann es keinen gültigen PHP-Funktionsnamen geben (FUN-PLG-02).
+
 ## 4.0.0 – 2026-11-14
 
 ### Layout

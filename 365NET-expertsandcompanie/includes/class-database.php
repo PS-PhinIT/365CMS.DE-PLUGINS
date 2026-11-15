@@ -20,6 +20,9 @@ final class CMS_365NET_Experts_And_Companie_Database
     private static ?self $instance = null;
 
     public const SCHEMA_VERSION = '2.0.0';
+
+    /** Core-Option mit der installierten Schema-Version (Autoload, keine Abfrage je Anfrage). */
+    public const SCHEMA_OPTION = 'cms_365netexpertsandcompanie_db_version';
     private const TABLE_EXPERTS = '365net_excomp_experts';
     private const TABLE_COMPANIES = '365net_excomp_companies';
     private const TABLE_SETTINGS = '365net_excomp_settings';
@@ -91,13 +94,56 @@ final class CMS_365NET_Experts_And_Companie_Database
         $this->seedDefaults($forceSeed);
         $this->syncExistingSpeakerLinks();
         $this->saveSetting('schema_version', self::SCHEMA_VERSION);
+        self::storeSchemaOption(self::SCHEMA_VERSION);
     }
 
     /** true, wenn Tabellen fehlen oder die gespeicherte Schema-Version nicht passt (eine gebündelte Abfrage je Anfrage). */
     public function needsSchemaUpgrade(): bool
     {
-        return ($this->getSettings()['schema_version'] ?? '') !== self::SCHEMA_VERSION;
+        if (self::storedSchemaOption() === self::SCHEMA_VERSION) {
+            return false;
+        }
+        $current = ($this->getSettings()['schema_version'] ?? '') === self::SCHEMA_VERSION;
+        if ($current) {
+            // Bestehende Installationen (vor 2.0.1): Version einmalig in die Autoload-Option übernehmen.
+            self::storeSchemaOption(self::SCHEMA_VERSION);
+        }
+
+        return !$current;
     }
+
+    /** Schema-Version aus den Autoload-Optionen des Cores (OptionStore, keine eigene Abfrage). */
+    private static function storedSchemaOption(): string
+    {
+        try {
+            if (class_exists('CMS\\Services\\OptionStore')) {
+                return (string) CMS\Services\OptionStore::getInstance()->get(self::SCHEMA_OPTION, '');
+            }
+        } catch (Throwable) {
+        }
+
+        return '';
+    }
+
+    private static function storeSchemaOption(string $version): void
+    {
+        try {
+            if (function_exists('update_option')) {
+                update_option(self::SCHEMA_OPTION, $version);
+            }
+        } catch (Throwable) {
+        }
+    }
+
+    private static function deleteSchemaOption(): void
+    {
+        try {
+            $db = CMS\Database::instance();
+            $db->prepare('DELETE FROM ' . $db->prefix() . 'settings WHERE option_name = ?')->execute([self::SCHEMA_OPTION]);
+        } catch (Throwable) {
+        }
+    }
+
 
     /** Für das Admin-Dashboard: Tabellen und Seeds auf dem Stand dieses Plugins? */
     public function isSchemaCurrent(): bool
@@ -123,6 +169,7 @@ final class CMS_365NET_Experts_And_Companie_Database
         foreach ([self::TABLE_EXPERTS, self::TABLE_COMPANIES, self::TABLE_SETTINGS] as $table) {
             $pdo->exec('DROP TABLE IF EXISTS `' . $db->prefix() . $table . '`');
         }
+        self::deleteSchemaOption();
         $this->settingsCache = null;
         $this->tableExistsCache = [];
         $this->tableColumnsCache = [];
@@ -156,6 +203,10 @@ final class CMS_365NET_Experts_And_Companie_Database
         $defaults = self::defaultSettings();
 
         $db = CMS\Database::instance();
+        // Vor der ersten Installation fehlt die Tabelle: Standardwerte ohne Abfrage (sonst protokolliert der Core einen SQL-Fehler).
+        if (self::storedSchemaOption() === '' && !$this->tableExists(self::TABLE_SETTINGS)) {
+            return $defaults;
+        }
         try {
             $stmt = $db->prepare('SELECT setting_key, setting_value FROM ' . $db->prefix() . self::TABLE_SETTINGS);
             $stmt->execute([]);

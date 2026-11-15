@@ -24,6 +24,9 @@ final class CMS_365NET_Events_Database
     /** Einstellungen, die nicht über das allgemeine Einstellungsformular geschrieben werden. */
     private const INTERNAL_SETTING_KEYS = ['schema_version', 'google_api_key', 'google_cse_id', 'speaker_backfill_cursor'];
 
+    /** Core-Option mit der installierten Schema-Version (Autoload, keine Abfrage je Anfrage). */
+    public const SCHEMA_OPTION = 'cms_365neteventsandspeaker_db_version';
+
     /** Slug des Nachbar-Plugins „365NET Experts & Companies“ (Verknüpfung nur, wenn aktiv). */
     private const EXCOMP_PLUGIN_SLUG = 'cms-365netexpertsandcompanie';
 
@@ -85,6 +88,7 @@ final class CMS_365NET_Events_Database
         $this->purgeNonPersonSpeakers();
         $this->autoLinkExistingRecords();
         $this->saveSetting('schema_version', self::SCHEMA_VERSION);
+        self::storeSchemaOption(self::SCHEMA_VERSION);
     }
 
     /**
@@ -93,15 +97,61 @@ final class CMS_365NET_Events_Database
      */
     public function isSchemaCurrent(): bool
     {
+        if (self::storedSchemaOption() === self::SCHEMA_VERSION) {
+            return true;
+        }
+
         try {
             $db = CMS\Database::instance();
+            // Vor der ersten Installation fehlt die Tabelle: nicht abfragen (sonst protokolliert der Core einen SQL-Fehler).
+            if (!$db->tableExists($db->prefix() . '365net_event_settings')) {
+                return false;
+            }
             $stmt = $db->prepare("SELECT setting_value FROM {$db->prefix()}365net_event_settings WHERE setting_key = 'schema_version' LIMIT 1");
             $stmt->execute([]);
             $row = $stmt->fetch();
 
-            return $row !== false && $row !== null && (string) ($row->setting_value ?? '') === self::SCHEMA_VERSION;
+            $current = $row !== false && $row !== null && (string) ($row->setting_value ?? '') === self::SCHEMA_VERSION;
+            if ($current) {
+                // Bestehende Installationen (vor 4.0.1): Version einmalig in die Autoload-Option übernehmen.
+                self::storeSchemaOption(self::SCHEMA_VERSION);
+            }
+
+            return $current;
         } catch (Throwable) {
             return false;
+        }
+    }
+
+    /** Schema-Version aus den Autoload-Optionen des Cores (OptionStore, keine eigene Abfrage). */
+    private static function storedSchemaOption(): string
+    {
+        try {
+            if (class_exists('CMS\\Services\\OptionStore')) {
+                return (string) CMS\Services\OptionStore::getInstance()->get(self::SCHEMA_OPTION, '');
+            }
+        } catch (Throwable) {
+        }
+
+        return '';
+    }
+
+    private static function storeSchemaOption(string $version): void
+    {
+        try {
+            if (function_exists('update_option')) {
+                update_option(self::SCHEMA_OPTION, $version);
+            }
+        } catch (Throwable) {
+        }
+    }
+
+    private static function deleteSchemaOption(): void
+    {
+        try {
+            $db = CMS\Database::instance();
+            $db->prepare('DELETE FROM ' . $db->prefix() . 'settings WHERE option_name = ?')->execute([self::SCHEMA_OPTION]);
+        } catch (Throwable) {
         }
     }
 
@@ -306,6 +356,7 @@ final class CMS_365NET_Events_Database
         foreach (self::TABLES as $table) {
             $pdo->exec('DROP TABLE IF EXISTS `' . $db->prefix() . $table . '`');
         }
+        self::deleteSchemaOption();
         $this->settingsCache = null;
         $this->tableExistsCache = [];
         $this->tableColumnsCache = [];
