@@ -307,6 +307,9 @@ final class CMS_Projects_Admin
 
         $success = !empty($result['success']);
         $this->storeNotice($success, (string) ($result['message'] ?? ''));
+        if ($success && in_array($action, ['save_project', 'delete_project'], true)) {
+            $this->invalidateSitemaps();
+        }
 
         if ($action === 'delete_project' && $success) {
             $this->redirect('cms-projects-projects');
@@ -324,6 +327,18 @@ final class CMS_Projects_Admin
             $query['task_id'] = (int) $_POST['task_id'];
         }
         $this->redirect('cms-projects-projects', $query);
+    }
+
+    /** Gespeichertes Sitemap-Bundle verwerfen, damit plugins.xml öffentliche Änderungen sofort zeigt. */
+    private function invalidateSitemaps(): void
+    {
+        if (!class_exists('CMS\\Services\\SEOService')) {
+            return;
+        }
+        try {
+            \CMS\Services\SEOService::getInstance()->invalidateSavedSitemaps();
+        } catch (\Throwable) {
+        }
     }
 
     /**
