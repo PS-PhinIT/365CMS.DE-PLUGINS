@@ -2,7 +2,7 @@
 
 > Weitere Dokumente: [DATABASE.md](DATABASE.md) · [HOOKS.md](HOOKS.md) · [API.md](API.md) · [Changelog](../CHANGELOG.md)
 
-> **Plugin:** `cms-promos` · **Version:** 4.0.0 · **Stand:** 2026-11-14
+> **Plugin:** `cms-promos` · **Version:** 4.0.1 · **Stand:** 2026-11-15
 > **Voraussetzungen:** 365CMS 4.0.0 (Plugin-Layout-Vertrag), PHP 8.4.1
 
 ## 1. Admin-Oberfläche

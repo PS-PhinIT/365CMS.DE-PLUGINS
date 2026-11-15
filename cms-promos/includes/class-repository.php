@@ -273,7 +273,7 @@ final class CMS_Promos_Repository
                 return ['success' => false, 'error' => 'Bitte einen Platzierungsnamen angeben.'];
             }
 
-            $slug = $this->ensure_unique_placement_slug($this->slugify($post['slug'] ?? $name), $id);
+            $slug = $this->ensure_unique_placement_slug($this->slugify(trim((string) ($post['slug'] ?? '')) !== '' ? (string) $post['slug'] : $name), $id);
             $status = ($post['status'] ?? 'active') === 'inactive' ? 'inactive' : 'active';
             $themeHook = $this->normalize_theme_hook($post['theme_hook'] ?? 'manual');
             $values = [$name, $slug, $this->clean_textarea($post['description'] ?? ''), $status, $themeHook, max(-100, min(1000, (int) ($post['hook_priority'] ?? 10))), max(1, min(24, (int) ($post['max_items'] ?? 3)))];
@@ -448,7 +448,7 @@ final class CMS_Promos_Repository
                 return ['success' => false, 'error' => 'Bitte einen Promo-Titel angeben.'];
             }
 
-            $slug = $this->ensure_unique_promo_slug($this->slugify($post['slug'] ?? $title), $id);
+            $slug = $this->ensure_unique_promo_slug($this->slugify(trim((string) ($post['slug'] ?? '')) !== '' ? (string) $post['slug'] : $title), $id);
             $status = (string) ($post['status'] ?? 'draft');
             if (!in_array($status, ['draft', 'active', 'paused', 'archived'], true)) {
                 $status = 'draft';
@@ -879,7 +879,8 @@ final class CMS_Promos_Repository
 
     private function slugify(string $value): string
     {
-        $slug = strtolower(trim(strip_tags($value)));
+        $slug = mb_strtolower(trim(strip_tags($value)), 'UTF-8');
+        $slug = strtr($slug, ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss']);
         $slug = preg_replace('/[^a-z0-9\-]+/', '-', $slug) ?? '';
         return mb_substr(trim($slug, '-') ?: 'promo', 0, 120);
     }

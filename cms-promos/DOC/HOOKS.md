@@ -9,7 +9,7 @@
 | `register_routes` | Action | `/promos`, `/promos/placement/:slug`, `/promo/click/:slug` (+ `/en/…`) |
 | `head` | Action | öffentliches CSS (nur Promo-Routen oder aktive Hook-Platzierungen) |
 | `body_start`, `after_header`, `home_content`, `before_footer` | Action | automatische Ausspielung der Platzierungen |
-| `cms_sitemap_entries` | Filter | `/promos`, `/en/promos` |
+| `cms_sitemap_entries` | Filter | `/promos`, `/en/promos`; nach Speichern/Löschen von Promos und Platzierungen wird das gespeicherte Sitemap-Bundle verworfen (`SEOService::invalidateSavedSitemaps()`) |
 
 Außerdem: `AdminNoticeService::registerCheck('cms_promos_expired', …)`.
 

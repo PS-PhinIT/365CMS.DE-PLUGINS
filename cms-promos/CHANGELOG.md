@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.0.1 - 2026-11-15
+
+Fixes aus dem Integrationstest gegen eine echte 365CMS-4.0.0-Installation (MariaDB, Router, CSP).
+
+### Behoben
+
+- Leerer Slug: Promos und Platzierungen erhielten immer den Slug `promo` (mit Zählersuffix), weil ein leeres Formularfeld den Titel-Fallback übersprang. Der Slug wird jetzt aus Titel bzw. Name abgeleitet.
+- Umlaute im Slug werden transliteriert (`ä` → `ae`, `ß` → `ss` …) statt durch Bindestriche ersetzt.
+- `plugins.xml`: Der Core speichert das Sitemap-Bundle als Datei und verwirft es nur bei Seiten-/Beitragsänderungen. Nach Speichern/Löschen von Promos und Platzierungen ruft das Plugin jetzt `SEOService::invalidateSavedSitemaps()` auf.
+
 ## 4.0.0 - 2026-11-14
 
 ### Kompatibilität
