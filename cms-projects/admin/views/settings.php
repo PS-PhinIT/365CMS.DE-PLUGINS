@@ -1,10 +1,14 @@
 <?php
 /**
- * Einstellungen: Aufbewahrung des Audit-Logs, Sitemap und Suche.
+ * Einstellungen von CMS Projects.
  *
- * @var callable $e
- * @var array{audit_retention_days:int,sitemap_enabled:bool,search_enabled:bool} $settings
+ * @var int $retentionDays
  * @var int $auditCount
+ * @var int $auditDue
+ * @var string $schemaVersion
+ * @var string $csrfToken
+ *
+ * @package CMS_Projects
  */
 
 declare(strict_types=1);
@@ -13,27 +17,43 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-echo $this->pageHeader('Einstellungen', 'Aufbewahrung des Audit-Logs sowie Einbindung öffentlicher Projekte in Sitemap und Seitensuche.');
+$e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 ?>
-<section class="admin-card cp-admin-section">
-    <form method="post" action="<?php echo $e($this->url(self::PAGE_SETTINGS)); ?>" class="cp-form">
-        <?php echo $this->hiddenFields('save_settings'); ?>
-        <fieldset class="cp-form-section">
-            <legend class="cp-form-section__title">Audit-Log</legend>
-            <label>
-                <span class="form-label">Aufbewahrungsfrist in Tagen</span>
-                <input type="number" class="form-control cp-input-narrow" name="audit_retention_days" min="0" max="3650" value="<?php echo (int) $settings['audit_retention_days']; ?>">
-                <small class="cp-field-hint">0 = unbegrenzt. Ältere Einträge löscht der tägliche Lauf der Datenaufbewahrung (System → Datenaufbewahrung). Aktuell gespeichert: <?php echo (int) $auditCount; ?> Einträge.</small>
-            </label>
-        </fieldset>
-        <fieldset class="cp-form-section">
-            <legend class="cp-form-section__title">Öffentliche Projekte</legend>
-            <label class="form-check"><input type="checkbox" class="form-check-input" name="sitemap_enabled" value="1"<?php echo $settings['sitemap_enabled'] ? ' checked' : ''; ?>><span class="form-check-label">In der Sitemap melden (/projects und /projects/&lt;slug&gt;)</span></label>
-            <label class="form-check"><input type="checkbox" class="form-check-input" name="search_enabled" value="1"<?php echo $settings['search_enabled'] ? ' checked' : ''; ?>><span class="form-check-label">In der Seitensuche (/search) finden</span></label>
-            <small class="cp-field-hint">Berücksichtigt werden nur aktive Projekte mit Sichtbarkeit „Öffentlich“.</small>
-        </fieldset>
-        <div class="cp-form-actions">
-            <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Einstellungen speichern</button>
+<div class="admin-page-header">
+    <div>
+        <h2>Einstellungen</h2>
+        <p>Löschfrist des Audit-Protokolls und Datenbank-Wartung.</p>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="cp-panel-header"><h3>Audit-Protokoll</h3></div>
+    <p class="cp-muted">Das Protokoll speichert den Benutzernamen je Änderung. Die Frist gilt auch für <em>System › Datenaufbewahrung</em> (Regel „Projekte: Audit-Protokoll“), die der tägliche Cron ausführt. Aktuell <?php echo number_format($auditCount, 0, ',', '.'); ?> Einträge, davon <?php echo number_format($auditDue, 0, ',', '.'); ?> älter als die Frist.</p>
+    <form method="post" class="admin-form cp-inline-form-row">
+        <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+        <input type="hidden" name="cms_projects_action" value="save_settings">
+        <div class="form-group">
+            <label class="form-label" for="cp-retention">Aufbewahrung (Tage)</label>
+            <input id="cp-retention" class="form-control" type="number" name="audit_retention_days" min="0" max="3650" value="<?php echo $retentionDays; ?>">
+            <div class="form-hint">0 = unbegrenzt aufbewahren (nicht empfohlen).</div>
         </div>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button>
     </form>
-</section>
+    <?php if ($retentionDays > 0 && $auditDue > 0): ?>
+        <form method="post" data-cms-confirm="<?php echo $e(sprintf('%d Audit-Einträge älter als %d Tage jetzt löschen?', $auditDue, $retentionDays)); ?>">
+            <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+            <input type="hidden" name="cms_projects_action" value="prune_audit">
+            <button type="submit" class="btn btn-outline-danger"><i class="ti ti-trash" aria-hidden="true"></i> Fällige Einträge jetzt löschen</button>
+        </form>
+    <?php endif; ?>
+</div>
+
+<div class="admin-card">
+    <div class="cp-panel-header"><h3>Datenbank</h3></div>
+    <p class="cp-muted">Installierte Schema-Version: <strong><?php echo $e($schemaVersion !== '' ? $schemaVersion : 'unbekannt'); ?></strong> (erwartet <?php echo $e(CMS_Projects_Service::DB_VERSION); ?>). Die Prüfung legt fehlende Tabellen und Indizes an; vorhandene Daten bleiben unverändert.</p>
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+        <input type="hidden" name="cms_projects_action" value="repair_schema">
+        <button type="submit" class="btn btn-outline-secondary"><i class="ti ti-database-cog" aria-hidden="true"></i> Tabellen prüfen &amp; reparieren</button>
+    </form>
+</div>

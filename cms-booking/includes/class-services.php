@@ -24,12 +24,6 @@ final class CMS_Booking_Services
 
     private function __construct() {}
 
-    /** Alle Spalten der Leistungs-Tabelle (explizit statt SELECT *). */
-    private const COLUMNS = 'id, provider_id, title, slug, description, duration_min, buffer_min, max_bookings, price_cents,
-        location_type, meeting_url, booking_type, contact_template, status, sort_order, settings_json, created_at, updated_at';
-
-    public const STATUSES = ['active', 'inactive'];
-
     /* ================================================================== */
     /*  CRUD                                                               */
     /* ================================================================== */
@@ -119,7 +113,7 @@ final class CMS_Booking_Services
     public function get(int $id): ?array
     {
         $db   = \CMS\Database::instance();
-        $stmt = $db->prepare('SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_services WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, provider_id, title, slug, description, duration_min, buffer_min, max_bookings, price_cents, location_type, meeting_url, booking_type, contact_template, status, sort_order, settings_json, created_at, updated_at FROM {$db->getPrefix()}booking_services WHERE id = ?");
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return $row ?: null;
@@ -129,7 +123,7 @@ final class CMS_Booking_Services
     {
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
-            'SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_services WHERE provider_id = ? AND slug = ?"
+            "SELECT id, provider_id, title, slug, description, duration_min, buffer_min, max_bookings, price_cents, location_type, meeting_url, booking_type, contact_template, status, sort_order, settings_json, created_at, updated_at FROM {$db->getPrefix()}booking_services WHERE provider_id = ? AND slug = ?"
         );
         $stmt->execute([$providerId, $slug]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -142,7 +136,7 @@ final class CMS_Booking_Services
     public function get_by_provider(int $providerId, string $status = 'active'): array
     {
         $db  = \CMS\Database::instance();
-        $sql = 'SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_services WHERE provider_id = ?";
+        $sql = "SELECT id, provider_id, title, slug, description, duration_min, buffer_min, max_bookings, price_cents, location_type, meeting_url, booking_type, contact_template, status, sort_order, settings_json, created_at, updated_at FROM {$db->getPrefix()}booking_services WHERE provider_id = ?";
         $params = [$providerId];
 
         if ($status !== '') {
@@ -153,160 +147,74 @@ final class CMS_Booking_Services
 
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-    }
-
-    /**
-     * @return array{0: string, 1: list<mixed>}
-     */
-    private function build_filter_sql(string $search, int $providerId, string $status): array
-    {
-        $sql    = ' WHERE 1=1';
-        $params = [];
-        $search = trim($search);
-        if ($search !== '') {
-            $like = '%' . addcslashes($search, '%_\\') . '%';
-            $sql .= ' AND (s.title LIKE ? OR bp.display_name LIKE ?)';
-            array_push($params, $like, $like);
-        }
-        if ($providerId > 0) {
-            $sql     .= ' AND s.provider_id = ?';
-            $params[] = $providerId;
-        }
-        if ($status !== '' && in_array($status, self::STATUSES, true)) {
-            $sql     .= ' AND s.status = ?';
-            $params[] = $status;
-        }
-
-        return [$sql, $params];
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /**
      * Alle Services (paginiert, Admin).
      */
-    public function get_all(int $offset = 0, int $limit = 20, string $search = '', int $providerId = 0, string $status = ''): array
+    public function get_all(int $offset = 0, int $limit = 20, string $search = ''): array
     {
         $db  = \CMS\Database::instance();
         $p   = $db->getPrefix();
-        [$where, $params] = $this->build_filter_sql($search, $providerId, $status);
+        $sql = "SELECT s.id, s.provider_id, s.title, s.slug, s.description, s.duration_min, s.buffer_min, s.max_bookings, s.price_cents, s.location_type, s.meeting_url, s.booking_type, s.contact_template, s.status, s.sort_order, s.settings_json, s.created_at, s.updated_at, bp.display_name AS provider_name
+                FROM {$p}booking_services s
+                LEFT JOIN {$p}booking_providers bp ON bp.id = s.provider_id
+                WHERE 1=1";
+        $params = [];
 
-        $stmt = $db->prepare(
-            "SELECT s.id, s.provider_id, s.title, s.slug, s.description, s.duration_min, s.buffer_min, s.price_cents,
-                    s.location_type, s.booking_type, s.status, s.sort_order, bp.display_name AS provider_name,
-                    bp.slug AS provider_slug, bp.currency AS provider_currency
-             FROM {$p}booking_services s
-             LEFT JOIN {$p}booking_providers bp ON bp.id = s.provider_id{$where}
-             ORDER BY bp.display_name ASC, s.sort_order ASC, s.title ASC
-             LIMIT " . max(1, min(1000, $limit)) . ' OFFSET ' . max(0, $offset)
-        );
+        if ($search !== '') {
+            $sql    .= ' AND (s.title LIKE ? OR bp.display_name LIKE ?)';
+            $like     = "%{$search}%";
+            $params[] = $like;
+            $params[] = $like;
+        }
+
+        $sql .= ' ORDER BY bp.display_name ASC, s.sort_order ASC LIMIT ? OFFSET ?';
+        $params[] = $limit;
+        $params[] = $offset;
+
+        $stmt = $db->prepare($sql);
         $stmt->execute($params);
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
-    public function count(string $search = '', int $providerId = 0, string $status = ''): int
+    public function count(string $search = ''): int
     {
         $db  = \CMS\Database::instance();
         $p   = $db->getPrefix();
-        [$where, $params] = $this->build_filter_sql($search, $providerId, $status);
+        $sql = "SELECT COUNT(*) FROM {$p}booking_services s
+                LEFT JOIN {$p}booking_providers bp ON bp.id = s.provider_id
+                WHERE 1=1";
+        $params = [];
 
-        $stmt = $db->prepare(
-            "SELECT COUNT(*) FROM {$p}booking_services s
-             LEFT JOIN {$p}booking_providers bp ON bp.id = s.provider_id{$where}"
-        );
+        if ($search !== '') {
+            $sql    .= ' AND (s.title LIKE ? OR bp.display_name LIKE ?)';
+            $like     = "%{$search}%";
+            $params[] = $like;
+            $params[] = $like;
+        }
+
+        $stmt = $db->prepare($sql);
         $stmt->execute($params);
         return (int) $stmt->fetchColumn();
     }
 
     public function delete(int $id): bool
     {
-        return $this->delete_many([$id]) > 0;
-    }
-
-    /**
-     * Leistungen löschen; Buchungen bleiben erhalten (service_id = NULL, wie FK ON DELETE SET NULL).
-     *
-     * @param list<int> $ids
-     */
-    public function delete_many(array $ids): int
-    {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $id): bool => $id > 0)));
-        if ($ids === []) {
-            return 0;
-        }
-
-        $db = \CMS\Database::instance();
-        $p  = $db->getPrefix();
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $db->prepare("UPDATE {$p}bookings SET service_id = NULL WHERE service_id IN ({$placeholders})")->execute($ids);
-        $stmt = $db->prepare("DELETE FROM {$p}booking_services WHERE id IN ({$placeholders})");
-        $stmt->execute($ids);
-
-        return $stmt->rowCount();
-    }
-
-    /**
-     * @param list<int> $ids
-     */
-    public function set_status_many(array $ids, string $status): int
-    {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $id): bool => $id > 0)));
-        if ($ids === [] || !in_array($status, self::STATUSES, true)) {
-            return 0;
-        }
-        $db = \CMS\Database::instance();
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $stmt = $db->prepare("UPDATE {$db->getPrefix()}booking_services SET status = ? WHERE id IN ({$placeholders})");
-        $stmt->execute(array_merge([$status], $ids));
-
-        return $stmt->rowCount();
-    }
-
-    /**
-     * Öffentliche Leistungen aktiver Anbieter, deren Titel/Beschreibung/Anbietername alle Wörter enthalten.
-     *
-     * @param list<string> $words
-     * @return list<array<string, mixed>>
-     */
-    public function search_public(array $words, int $limit = 10): array
-    {
-        $words = array_values(array_filter(array_map('trim', $words), static fn (string $w): bool => $w !== ''));
-        if ($words === []) {
-            return [];
-        }
-
-        $db = \CMS\Database::instance();
-        $p  = $db->getPrefix();
-        $conditions = [];
-        $params = [];
-        foreach (array_slice($words, 0, 8) as $word) {
-            $like = '%' . addcslashes($word, '%_\\') . '%';
-            $conditions[] = '(s.title LIKE ? OR s.description LIKE ? OR bp.display_name LIKE ?)';
-            array_push($params, $like, $like, $like);
-        }
-
-        $stmt = $db->prepare(
-            "SELECT s.id, s.title, s.slug, s.description, s.updated_at, bp.display_name AS provider_name, bp.slug AS provider_slug
-             FROM {$p}booking_services s
-             INNER JOIN {$p}booking_providers bp ON bp.id = s.provider_id AND bp.status = 'active'
-             WHERE s.status = 'active' AND " . implode(' AND ', $conditions) . '
-             ORDER BY s.updated_at DESC
-             LIMIT ' . max(1, min(50, $limit))
-        );
-        $stmt->execute($params);
-
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        $db   = \CMS\Database::instance();
+        $stmt = $db->prepare("DELETE FROM {$db->getPrefix()}booking_services WHERE id = ?");
+        $stmt->execute([$id]);
+        return $stmt->rowCount() > 0;
     }
 
     /**
      * Preisformatierung.
      */
-    public static function format_price(int $cents, string $currency = ''): string
+    public static function format_price(int $cents, string $currency = 'EUR'): string
     {
         if ($cents === 0) {
             return 'Kostenlos';
-        }
-        if ($currency === '' || preg_match('/^[A-Z]{3}$/', $currency) !== 1) {
-            $currency = class_exists('CMS_Booking_Settings') ? CMS_Booking_Settings::currency() : 'EUR';
         }
         $amount = number_format($cents / 100, 2, ',', '.');
         return "{$amount} {$currency}";
@@ -363,11 +271,6 @@ final class CMS_Booking_Services
             }
             $slug = "{$base}-{$i}";
             $i++;
-            if ($i > 500) {
-                // Schutz vor Endlosschleife: zufälliges Suffix ist praktisch kollisionsfrei.
-                $slug = $base . '-' . bin2hex(random_bytes(3));
-                break;
-            }
         }
 
         return $slug;

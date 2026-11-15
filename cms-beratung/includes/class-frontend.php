@@ -102,6 +102,10 @@ final class CMS_Beratung_Frontend
         }
     }
 
+    /**
+     * Parametrisierte Routen statt einer Route je Landingpage: bisher wurden bei jedem Request alle
+     * Landingpages inkl. JSON-Spalten geladen, nur um Routen zu registrieren.
+     */
     private function register_routes(?\CMS\Router $router = null): void
     {
         if ($this->routesRegistered || !class_exists('CMS\\Router')) {
@@ -109,55 +113,88 @@ final class CMS_Beratung_Frontend
         }
         $this->routesRegistered = true;
         $router = $router instanceof \CMS\Router ? $router : \CMS\Router::instance();
-        foreach (CMS_Beratung_Storage::instance()->all_landingpages() as $row) {
-            if (($row['status'] ?? '') !== 'published') {
-                continue;
-            }
-            $slug = trim((string) ($row['slug'] ?? ''), '/');
-            if ($slug === '') {
-                continue;
-            }
-            foreach (['/beratung/' . $slug, '/de/beratung/' . $slug, '/en/beratung/' . $slug] as $route) {
-                $router->addRoute('GET', $route, function () use ($slug): void {
-                    $this->render_page($slug);
-                });
-                $router->addRoute('POST', $route, function () use ($slug): void {
-                    $this->render_page($slug);
-                });
-            }
 
-            $hero = json_decode((string) ($row['hero_json'] ?? '{}'), true);
-            $hero = is_array($hero) ? $hero : [];
-            $standaloneSlug = trim((string) ($hero['standalone_header_slug'] ?? ''), '/');
-            if (empty($hero['standalone_header_enabled']) || $standaloneSlug === '' || $standaloneSlug === $slug) {
-                continue;
-            }
-            foreach (['/beratung/' . $standaloneSlug, '/de/beratung/' . $standaloneSlug, '/en/beratung/' . $standaloneSlug] as $route) {
-                $router->addRoute('GET', $route, function () use ($slug): void {
-                    $this->render_page($slug, true);
-                });
-                $router->addRoute('POST', $route, function () use ($slug): void {
-                    $this->render_page($slug, true);
+        foreach (['/beratung/:slug', '/de/beratung/:slug', '/en/beratung/:slug'] as $route) {
+            foreach (['GET', 'POST'] as $method) {
+                $router->addRoute($method, $route, function (string $slug = ''): void {
+                    $this->dispatch_slug($slug);
                 });
             }
         }
+
+        // Admin-Vorschau (auch Entwürfe) über die normale Theme-Pipeline (CSP-Nonce, Inline-Style-Rewriter).
+        $router->addRoute('GET', '/beratung-vorschau/:id', function (string $id = ''): void {
+            $this->render_preview((int) $id);
+        });
+    }
+
+    private function dispatch_slug(string $slug): void
+    {
+        $slug = strtolower(trim($slug, '/'));
+        $match = CMS_Beratung_Storage::instance()->resolve_public_slug($slug);
+        if ($match === null) {
+            $this->render_not_found();
+        }
+
+        $this->render_page($match['slug'], $match['standalone']);
+    }
+
+    private function render_not_found(): never
+    {
+        http_response_code(404);
+        if (class_exists('CMS\\Router') && method_exists(\CMS\Router::instance(), 'render404')) {
+            \CMS\Router::instance()->render404();
+        } else {
+            echo 'Landingpage nicht gefunden.';
+        }
+        exit;
+    }
+
+    private function render_preview(int $id): void
+    {
+        if (!class_exists('CMS\\Auth') || !\CMS\Auth::instance()->isAdmin()) {
+            $this->render_not_found();
+        }
+
+        $page = CMS_Beratung_Storage::instance()->get_landingpage($id);
+        if ($page === null) {
+            $this->render_not_found();
+        }
+
+        if (!headers_sent()) {
+            header('Cache-Control: no-store, private');
+            header('X-Robots-Tag: noindex, nofollow');
+        }
+        $page['noindex'] = 1;
+        $page['nofollow'] = 1;
+        $page['is_preview'] = 1;
+        $page['show_header'] = 1;
+        $page['show_footer'] = 1;
+        $this->currentPage = $page;
+
+        if (class_exists('CMS\\ThemeManager')) {
+            \CMS\ThemeManager::instance()->getHeader(['title' => 'Vorschau: ' . (string) ($page['public_title'] ?? 'CMS Beratung')]);
+        }
+        echo '<div class="cms-beratung-previewbar" role="status">Vorschau (' . htmlspecialchars((string) ($page['status'] ?? 'draft'), ENT_QUOTES, 'UTF-8') . ') · nur für Administratoren sichtbar · Formulare werden nicht gesendet</div>';
+        CMS_Beratung_Renderer::render($page, ['success' => false, 'message' => '', 'errors' => [], 'values' => []]);
+        $this->enqueue_public_scripts();
+        if (class_exists('CMS\\ThemeManager')) {
+            \CMS\ThemeManager::instance()->getFooter();
+        }
+        exit;
     }
 
     private function render_page(string $slug, bool $standaloneVariant = false): void
     {
         $page = CMS_Beratung_Storage::instance()->get_landingpage_by_slug($slug, true);
         if ($page === null) {
-            http_response_code(404);
-            echo 'Landingpage nicht gefunden.';
-            exit;
+            $this->render_not_found();
         }
 
         $hero = is_array($page['hero'] ?? null) ? $page['hero'] : [];
         if ($standaloneVariant) {
             if (empty($hero['standalone_header_enabled'])) {
-                http_response_code(404);
-                echo 'Standalone Publicsite nicht aktiviert.';
-                exit;
+                $this->render_not_found();
             }
             $page['show_header'] = 0;
             $page['show_footer'] = 0;
@@ -232,27 +269,17 @@ final class CMS_Beratung_Frontend
         if (preg_match('#^(?:[a-z]{2}/)?beratung/([a-z0-9_-]+)$#', $path, $matches) !== 1) {
             return null;
         }
-        $requestSlug = (string) $matches[1];
-        $this->currentPage = CMS_Beratung_Storage::instance()->get_landingpage_by_slug($requestSlug, true);
-        if ($this->currentPage === null) {
-            foreach (CMS_Beratung_Storage::instance()->all_landingpages() as $row) {
-                if (($row['status'] ?? '') !== 'published') {
-                    continue;
-                }
-                $hero = json_decode((string) ($row['hero_json'] ?? '{}'), true);
-                if (!is_array($hero) || empty($hero['standalone_header_enabled']) || (string) ($hero['standalone_header_slug'] ?? '') !== $requestSlug) {
-                    continue;
-                }
-                $page = CMS_Beratung_Storage::instance()->get_landingpage_by_slug((string) ($row['slug'] ?? ''), true);
-                if ($page !== null) {
-                    $page['show_header'] = 0;
-                    $page['show_footer'] = 0;
-                    $page['is_standalone_variant'] = 1;
-                    $this->currentPage = $page;
-                }
-                break;
-            }
+        $match = CMS_Beratung_Storage::instance()->resolve_public_slug((string) $matches[1]);
+        if ($match === null) {
+            return null;
         }
+        $page = CMS_Beratung_Storage::instance()->get_landingpage_by_slug($match['slug'], true);
+        if ($page !== null && $match['standalone']) {
+            $page['show_header'] = 0;
+            $page['show_footer'] = 0;
+            $page['is_standalone_variant'] = 1;
+        }
+        $this->currentPage = $page;
         return $this->currentPage;
     }
 }

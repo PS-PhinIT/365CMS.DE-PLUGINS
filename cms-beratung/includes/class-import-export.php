@@ -89,7 +89,7 @@ final class CMS_Beratung_Import_Export
             'tenant_id' => !empty($data['tenant_id']) ? (int) $data['tenant_id'] : null,
             'internal_title' => self::limit(CMS_Beratung_Settings::text((string) ($data['internal_title'] ?? 'Neue Beratungs Landingpage')), 255),
             'public_title' => self::limit(CMS_Beratung_Settings::text((string) ($data['public_title'] ?? $data['internal_title'] ?? 'Beratung')), 255),
-            'slug' => CMS_Beratung_Settings::slug((string) ($data['slug'] ?? ''), 'beratung'),
+            'slug' => CMS_Beratung_Settings::slug((string) ($data['slug'] ?? ''), ''),
             'meta_title' => self::limit(CMS_Beratung_Settings::text((string) ($data['meta_title'] ?? '')), 255),
             'meta_description' => self::limit(CMS_Beratung_Settings::text((string) ($data['meta_description'] ?? '')), 500),
             'focus_keyword' => self::limit(CMS_Beratung_Settings::text((string) ($data['focus_keyword'] ?? '')), 160),

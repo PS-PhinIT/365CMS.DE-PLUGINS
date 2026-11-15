@@ -218,7 +218,8 @@ final class CMS_Beratung_Settings
 
     public static function slug(string $value, string $fallback = 'beratung'): string
     {
-        $slug = strtolower(trim((string) preg_replace('/[^a-z0-9_-]+/i', '-', strip_tags($value)), '-'));
+        $value = strtr(mb_strtolower(strip_tags($value), 'UTF-8'), ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss']);
+        $slug = trim((string) preg_replace('/[^a-z0-9_-]+/', '-', $value), '-');
         return $slug !== '' ? self::limit($slug, 160) : $fallback;
     }
 

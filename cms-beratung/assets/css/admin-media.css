@@ -10,10 +10,10 @@
 }
 
 .beratung-media-btn {
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  background: #ffffff;
-  color: #0f172a;
+  border: 1px solid var(--cms-plugin-border);
+  border-radius:var(--cms-plugin-radius);
+  background: var(--cms-plugin-surface);
+  color: var(--cms-plugin-text);
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
@@ -24,9 +24,9 @@
 
 .beratung-media-btn:hover,
 .beratung-media-btn:focus-visible {
-  border-color: #2563eb;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border-color: var(--cms-plugin-primary);
+  background: var(--cms-plugin-primary-soft);
+  color: var(--cms-plugin-primary);
   outline: none;
 }
 
@@ -37,17 +37,17 @@
 
 .beratung-media-btn.is-danger:hover,
 .beratung-media-btn.is-danger:focus-visible {
-  border-color: #dc2626;
-  background: #fef2f2;
-  color: #b91c1c;
+  border-color: var(--tblr-danger);
+  background: var(--cms-plugin-surface-soft);
+  color: var(--tblr-danger);
 }
 
 .beratung-media-preview {
   align-items: center;
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 4px;
-  color: #64748b;
+  background: var(--cms-plugin-surface-soft);
+  border: 1px dashed var(--cms-plugin-border);
+  border-radius:var(--cms-plugin-radius);
+  color: var(--cms-plugin-muted);
   display: flex;
   font-size: 12px;
   justify-content: center;
@@ -62,7 +62,7 @@
 }
 
 .beratung-media-preview img {
-  border-radius: 4px;
+  border-radius:var(--cms-plugin-radius);
   display: block;
   max-height: 140px;
   max-width: 100%;
@@ -70,7 +70,7 @@
 }
 
 .beratung-media-note {
-  color: #64748b;
+  color: var(--cms-plugin-muted);
   display: block;
   font-size: 11px;
   margin-top: 6px;
@@ -78,7 +78,7 @@
 
 .beratung-media-modal {
   align-items: center;
-  background: rgba(15, 23, 42, .58);
+  background: var(--cms-plugin-border-soft);
   bottom: 0;
   display: none;
   justify-content: center;
@@ -95,9 +95,9 @@
 }
 
 .beratung-media-modal__panel {
-  background: #ffffff;
-  border-radius: 6px;
-  box-shadow: 0 24px 70px rgba(15, 23, 42, .28);
+  background: var(--cms-plugin-surface);
+  border-radius:var(--cms-plugin-radius);
+  box-shadow:var(--cms-plugin-shadow);
   max-height: min(760px, 92vh);
   max-width: 1040px;
   overflow: hidden;
@@ -107,7 +107,7 @@
 .beratung-media-modal__head,
 .beratung-media-modal__toolbar {
   align-items: center;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--cms-plugin-border-soft);
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -122,17 +122,17 @@
 
 .beratung-media-modal__head p,
 .beratung-media-modal__status {
-  color: #64748b;
+  color: var(--cms-plugin-muted);
   font-size: 12px;
   margin: 4px 0 0;
 }
 
 .beratung-media-modal__close {
   align-items: center;
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  color: #0f172a;
+  background: var(--cms-plugin-surface-soft);
+  border: 1px solid var(--cms-plugin-border);
+  border-radius:var(--cms-plugin-radius);
+  color: var(--cms-plugin-text);
   cursor: pointer;
   display: inline-flex;
   font-size: 20px;
@@ -142,8 +142,8 @@
 }
 
 .beratung-media-modal__toolbar input {
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
+  border: 1px solid var(--cms-plugin-border);
+  border-radius:var(--cms-plugin-radius);
   font: inherit;
   max-width: 520px;
   padding: 10px 12px;
@@ -163,9 +163,9 @@
 }
 
 .beratung-media-item {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  background: var(--cms-plugin-surface);
+  border: 1px solid var(--cms-plugin-border-soft);
+  border-radius:var(--cms-plugin-radius);
   cursor: pointer;
   overflow: hidden;
   padding: 0;
@@ -175,8 +175,8 @@
 
 .beratung-media-item:hover,
 .beratung-media-item:focus-visible {
-  border-color: #2563eb;
-  box-shadow: 0 12px 30px rgba(37, 99, 235, .14);
+  border-color: var(--cms-plugin-primary);
+  box-shadow:var(--cms-plugin-shadow);
   outline: none;
   transform: translateY(-1px);
 }
@@ -184,7 +184,7 @@
 .beratung-media-item__image {
   align-items: center;
   aspect-ratio: 4 / 3;
-  background: #f1f5f9;
+  background: var(--cms-plugin-surface-soft);
   display: flex;
   justify-content: center;
   overflow: hidden;
@@ -201,7 +201,7 @@
 }
 
 .beratung-media-item__name {
-  color: #0f172a;
+  color: var(--cms-plugin-text);
   display: block;
   font-size: 12px;
   font-weight: 700;
@@ -211,7 +211,7 @@
 }
 
 .beratung-media-item__path {
-  color: #64748b;
+  color: var(--cms-plugin-muted);
   display: block;
   font-size: 11px;
   margin-top: 4px;
@@ -219,10 +219,10 @@
 }
 
 .beratung-media-empty {
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 6px;
-  color: #64748b;
+  background: var(--cms-plugin-surface-soft);
+  border: 1px dashed var(--cms-plugin-border);
+  border-radius:var(--cms-plugin-radius);
+  color: var(--cms-plugin-muted);
   padding: 18px;
   text-align: center;
 }

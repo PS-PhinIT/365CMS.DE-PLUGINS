@@ -1,8 +1,7 @@
 <?php
 /**
- * Admin-Seiten (Layout-Vertrag 4.0.0): Übersicht, Promos, Platzierungen, Einstellungen.
- *
- * Der AdminRouter liefert Shell, Sidebar und Header; die Callbacks geben nur Inhalt aus.
+ * Admin-Seiten von CMS Promos im einheitlichen 365CMS-4.0.0-Plugin-Layout
+ * (Split-Header mit KPI-Karten, linkes Plugin-Menü, Inhaltsspalte).
  *
  * @package CMS_Promos
  */
@@ -13,662 +12,430 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-use CMS\Auth;
 use CMS\Security;
 
 final class CMS_Promos_Admin_Pages
 {
     public const ROOT_SLUG = 'promos-dashboard';
-    private const DEFAULT_PAGE = 'promos-dashboard';
-
-    /** Unterseiten-Slug → Render-Methode. Slugs bleiben aus 3.x erhalten (Lesezeichen, Formularziele). */
-    private const PAGES = [
-        'promos-dashboard' => 'render_dashboard',
-        'promos-items' => 'render_promos',
-        'promos-placements' => 'render_placements',
-        'promos-settings' => 'render_settings',
-    ];
-
+    public const CAPABILITY = 'manage_options';
     private const CSRF_ACTION = 'promos_admin';
-    private const EXPORT_CSRF_ACTION = 'promos_export';
-    private const NOTICE_KEY = 'cms_promos_admin_notice';
-    private const PER_PAGE = 25;
-    private const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+    private const EXPORT_ACTION = 'promos_export';
+    private const NOTICE_KEY = 'promos_admin_notice';
 
-    /** Erlaubte Listen-Parameter, die nach Aktionen erhalten bleiben. */
-    private const LIST_QUERY_KEYS = ['q', 'status', 'placement', 'sort', 'p', 'hook'];
-
-    /** @var array{type:string,message:string}|null Meldung ohne Redirect (Validierungsfehler im Formular) */
-    private static ?array $inlineNotice = null;
-    /** @var array<string,mixed>|null zuletzt abgeschickte Formularwerte nach einem Validierungsfehler */
-    private static ?array $formData = null;
-    /** @var array<string,int>|null */
-    private static ?array $stats = null;
-
-    // ── Dispatcher ──────────────────────────────────────────────────────────
+    /** @var array<string,array{label:string,icon:string,callback:string}> */
+    private const PAGES = [
+        'promos-dashboard' => ['label' => 'Übersicht', 'icon' => 'ti ti-layout-dashboard', 'callback' => 'render_dashboard'],
+        'promos-items' => ['label' => 'Promos', 'icon' => 'ti ti-speakerphone', 'callback' => 'render_promos'],
+        'promos-placements' => ['label' => 'Platzierungen', 'icon' => 'ti ti-layout-board', 'callback' => 'render_placements'],
+        'promos-settings' => ['label' => 'Einstellungen', 'icon' => 'ti ti-settings', 'callback' => 'render_settings'],
+    ];
 
     public static function render_page_dispatcher(): void
     {
-        $method = self::PAGES[self::current_page()] ?? self::PAGES[self::DEFAULT_PAGE];
-        self::$method();
+        $page = self::current_page();
+        $callback = [self::class, self::PAGES[$page]['callback']];
+        if (is_callable($callback)) {
+            call_user_func($callback);
+        }
     }
 
     public static function render_dashboard(): void
     {
-        self::boot('promos-dashboard');
-        $repository = CMS_Promos_Repository::instance();
-        $stats = self::stats();
-        $settings = $repository->get_settings();
-        $placements = $repository->get_placements();
-        $recent = $repository->get_recent_promos(8);
-        $tablesExist = CMS_Promos_Installer::tables_exist();
-        $notice = self::pull_notice();
+        self::render_page('promos-dashboard', static function (CMS_Promos_Repository $repository): void {
+            $stats = $repository->get_dashboard_stats();
+            $settings = $repository->get_settings();
+            $placements = $repository->get_placements();
+            $expired = $repository->count_expired_active();
+            $hookPlacements = count(array_filter($placements, static fn (array $p): bool => ($p['status'] ?? '') === 'active' && ($p['theme_hook'] ?? 'manual') !== 'manual'));
+            $schemaOk = CMS_Promos_Installer::installed_version() === CMS_PROMOS_DB_VERSION;
+            $exportEnabled = ($settings['click_export_enabled'] ?? '0') === '1';
 
-        self::open('promos-dashboard');
-        include CMS_PROMOS_PLUGIN_DIR . 'admin/views/page-dashboard.php';
-        self::close();
+            $activity = [];
+            foreach ($repository->get_recent_promos(6) as $item) {
+                $impressions = (int) ($item['impression_count'] ?? 0);
+                $clicks = (int) ($item['click_count'] ?? 0);
+                $activity[] = [
+                    'title' => (string) $item['title'],
+                    'url' => self::page_url('promos-items', ['edit' => (int) $item['id']]),
+                    'meta' => trim(($item['placement_name'] ?? '') !== '' ? (string) $item['placement_name'] . ' · ' : '')
+                        . number_format($impressions, 0, ',', '.') . ' Impressions · ' . number_format($clicks, 0, ',', '.') . ' Klicks · ' . self::format_date((string) ($item['updated_at'] ?? '')),
+                    'badge' => $repository->status_label((string) ($item['status'] ?? 'draft')),
+                    'tone' => self::status_tone((string) ($item['status'] ?? 'draft')),
+                ];
+            }
+
+            echo cms_plugin_dashboard([
+                'intro' => 'Kampagnen, CTA-Kacheln und Banner zentral pflegen und automatisch in Theme-Hooks ausspielen.',
+                'actions' => [
+                    ['label' => 'Neue Promo', 'url' => self::page_url('promos-items', ['action' => 'new']), 'icon' => 'ti ti-plus', 'primary' => true, 'description' => 'Teaser, Ziel-URL, Laufzeit und Platzierung festlegen.'],
+                    ['label' => 'Neue Platzierung', 'url' => self::page_url('promos-placements', ['action' => 'new']), 'icon' => 'ti ti-layout-board-split', 'description' => 'Fläche anlegen und an einen Theme-Hook koppeln.'],
+                    ['label' => 'Leistung als CSV', 'url' => self::export_url('csv'), 'icon' => 'ti ti-file-spreadsheet', 'description' => 'Impressions, Klicks und Klickrate exportieren.'],
+                    ['label' => 'Öffentliches Archiv', 'url' => '/promos', 'icon' => 'ti ti-world', 'external' => true, 'description' => 'Aktive Promos auf /promos ansehen.'],
+                ],
+                'checks' => [
+                    ['label' => 'Datenbank-Schema', 'status' => $schemaOk ? 'ok' : 'warning', 'value' => $schemaOk ? 'v' . CMS_PROMOS_DB_VERSION : 'Migration ausstehend', 'hint' => 'Tabellen promos, promo_placements und promo_settings.'],
+                    ['label' => 'Platzierungen mit Theme-Hook', 'status' => $hookPlacements > 0 ? 'ok' : 'info', 'value' => $hookPlacements, 'hint' => $hookPlacements > 0 ? 'Aktive Promos erscheinen automatisch im Theme.' : 'Promos erscheinen nur im Archiv /promos.', 'url' => self::page_url('promos-placements')],
+                    ['label' => 'Abgelaufene aktive Promos', 'status' => $expired > 0 ? 'warning' : 'ok', 'value' => $expired, 'hint' => $expired > 0 ? 'Enddatum überschritten – archivieren oder verlängern.' : 'Alle aktiven Promos liegen in ihrer Laufzeit.', 'url' => self::page_url('promos-items', ['status' => 'expired'])],
+                    ['label' => 'Klick-Export (Webhook)', 'status' => $exportEnabled ? 'ok' : 'muted', 'value' => $exportEnabled ? 'aktiv' : 'aus', 'hint' => 'Hook cms_promos_click_export ist immer verfügbar.', 'url' => self::page_url('promos-settings')],
+                    ['label' => 'Gesamtleistung', 'status' => 'info', 'value' => number_format((int) $stats['clicks'], 0, ',', '.') . ' / ' . number_format((int) $stats['impressions'], 0, ',', '.'), 'hint' => 'Klicks / Impressions seit dem letzten Zurücksetzen.'],
+                ],
+                'activity' => [
+                    'heading' => 'Zuletzt bearbeitet',
+                    'items' => $activity,
+                    'empty' => 'Noch keine Promos angelegt.',
+                    'more_url' => self::page_url('promos-items'),
+                    'more_label' => 'Alle Promos',
+                ],
+            ]);
+        });
     }
 
     public static function render_promos(): void
     {
-        self::boot('promos-items');
-        $repository = CMS_Promos_Repository::instance();
-        $placements = $repository->get_placements();
-        $notice = self::pull_notice();
-        $csrfToken = Security::instance()->generateToken(self::CSRF_ACTION);
-        $exportToken = Security::instance()->generateToken(self::EXPORT_CSRF_ACTION);
-        $statusLabels = CMS_Promos_Repository::STATUS_LABELS;
-
-        $editId = self::get_int($_GET, 'edit');
-        $isForm = $editId > 0 || (string) ($_GET['action'] ?? '') === 'new' || self::$formData !== null;
-        if ($isForm) {
+        self::render_page('promos-items', static function (CMS_Promos_Repository $repository): void {
+            $editId = self::request_int($_GET, 'edit');
             $promo = $editId > 0 ? $repository->get_promo($editId) : null;
-            if ($editId > 0 && $promo === null && self::$formData === null) {
-                $notice = ['type' => 'error', 'message' => 'Die Promo wurde nicht gefunden.'];
-                $isForm = false;
-            }
-            if (self::$formData !== null) {
-                $promo = array_merge($promo ?? [], self::$formData, [
-                    'id' => self::get_int(self::$formData, 'promo_id'),
-                    'is_featured' => isset(self::$formData['is_featured']) ? 1 : 0,
-                ]);
-            }
+            $showForm = $promo !== null || (string) ($_GET['action'] ?? '') === 'new';
+            $filters = [
+                'status' => self::request_key($_GET, 'status'),
+                'q' => trim(mb_substr((string) ($_GET['q'] ?? ''), 0, 100)),
+                'placement' => self::request_int($_GET, 'placement'),
+            ];
+            $promos = $showForm ? [] : $repository->find_promos($filters['status'], $filters['q'], $filters['placement']);
+            $placements = $repository->get_placements();
             $settings = $repository->get_settings();
-        }
+            $csrfToken = Security::instance()->generateToken(self::CSRF_ACTION);
+            $statusLabels = CMS_Promos_Repository::STATUS_LABELS;
 
-        if (!$isForm) {
-            $filters = self::promo_filters();
-            $list = $repository->list_promos($filters, max(1, self::get_int($_GET, 'p')), self::PER_PAGE);
-        }
-
-        self::open('promos-items');
-        include CMS_PROMOS_PLUGIN_DIR . 'admin/views/page-promos.php';
-        self::close();
+            include CMS_PROMOS_PLUGIN_DIR . 'admin/views/page-promos.php';
+            self::enqueue_script('promos-admin.js');
+        });
     }
 
     public static function render_placements(): void
     {
-        self::boot('promos-placements');
-        $repository = CMS_Promos_Repository::instance();
-        $hookOptions = $repository->get_theme_hook_options();
-        $notice = self::pull_notice();
-        $csrfToken = Security::instance()->generateToken(self::CSRF_ACTION);
-
-        $editId = self::get_int($_GET, 'edit');
-        $isForm = $editId > 0 || (string) ($_GET['action'] ?? '') === 'new' || self::$formData !== null;
-        if ($isForm) {
+        self::render_page('promos-placements', static function (CMS_Promos_Repository $repository): void {
+            $editId = self::request_int($_GET, 'edit');
             $placement = $editId > 0 ? $repository->get_placement($editId) : null;
-            if ($editId > 0 && $placement === null && self::$formData === null) {
-                $notice = ['type' => 'error', 'message' => 'Die Platzierung wurde nicht gefunden.'];
-                $isForm = false;
-            }
-            if (self::$formData !== null) {
-                $placement = array_merge($placement ?? [], self::$formData, ['id' => self::get_int(self::$formData, 'placement_id')]);
-            }
-        }
+            $showForm = $placement !== null || (string) ($_GET['action'] ?? '') === 'new';
+            $placements = $repository->get_placements();
+            $hookOptions = $repository->get_theme_hook_options();
+            $csrfToken = Security::instance()->generateToken(self::CSRF_ACTION);
 
-        if (!$isForm) {
-            $filters = [
-                'q' => self::get_string($_GET, 'q', 120),
-                'status' => in_array((string) ($_GET['status'] ?? ''), ['active', 'inactive'], true) ? (string) $_GET['status'] : '',
-                'hook' => array_key_exists((string) ($_GET['hook'] ?? ''), $hookOptions) ? (string) $_GET['hook'] : '',
-            ];
-            $placements = $repository->filter_placements($filters);
-        }
-
-        self::open('promos-placements');
-        include CMS_PROMOS_PLUGIN_DIR . 'admin/views/page-placements.php';
-        self::close();
+            include CMS_PROMOS_PLUGIN_DIR . 'admin/views/page-placements.php';
+        });
     }
 
     public static function render_settings(): void
     {
-        self::boot('promos-settings');
-        $repository = CMS_Promos_Repository::instance();
-        $settings = $repository->get_settings();
-        if (self::$formData !== null) {
-            // Nicht angehakte Checkboxen fehlen im POST → ausdrücklich auf „aus“ setzen.
-            $settings = array_merge($settings, self::$formData, [
-                'archive_indexable' => isset(self::$formData['archive_indexable']) ? '1' : '0',
-                'click_export_enabled' => isset(self::$formData['click_export_enabled']) ? '1' : '0',
-            ]);
-        }
-        $notice = self::pull_notice();
-        $csrfToken = Security::instance()->generateToken(self::CSRF_ACTION);
-        $exportToken = Security::instance()->generateToken(self::EXPORT_CSRF_ACTION);
-        $retentionDays = max(0, (int) ($settings['retention_days'] ?? 0));
-        $retentionDue = $repository->count_retention_due($retentionDays);
-        $maxImportMb = (int) (self::MAX_IMPORT_BYTES / 1024 / 1024);
-        $webhookStored = $repository->has_webhook_url();
-        $webhookEncrypted = $repository->is_webhook_encrypted();
-        // Secret nie ins Formular zurückgeben (auch nicht nach einem Validierungsfehler).
-        unset($settings['click_export_webhook_url']);
+        self::render_page('promos-settings', static function (CMS_Promos_Repository $repository): void {
+            $settings = $repository->get_settings();
+            $csrfToken = Security::instance()->generateToken(self::CSRF_ACTION);
 
-        self::open('promos-settings');
-        include CMS_PROMOS_PLUGIN_DIR . 'admin/views/page-settings.php';
-        self::close();
+            include CMS_PROMOS_PLUGIN_DIR . 'admin/views/page-settings.php';
+        });
     }
 
-    // ── Layout ──────────────────────────────────────────────────────────────
-
-    private static function boot(string $page): void
+    /**
+     * Gemeinsamer Rahmen: Rechte, POST/Export, Layout-Vertrag (Kopfzeile + Menü), Flash-Meldung, Inhalt.
+     *
+     * @param callable(CMS_Promos_Repository):void $renderer
+     */
+    private static function render_page(string $slug, callable $renderer): void
     {
         self::check_access();
-        self::handle_post($page);
-    }
+        self::handle_export();
+        self::handle_post();
+        self::ensure_workspace_helpers();
 
-    private static function load_workspace(): void
-    {
-        if (!function_exists('cms_plugin_workspace_open')) {
-            $core = ABSPATH . 'admin/partials/plugin-workspace.php';
-            if (is_file($core)) {
-                require_once $core;
-            }
-        }
-        if (!function_exists('cms_plugin_workspace_open')) {
-            require_once CMS_PROMOS_PLUGIN_DIR . 'includes/plugin-workspace.php';
-            // Rückfall-CSS nur, wenn der Core das Layout nicht liefert.
-            echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_PROMOS_PLUGIN_URL . 'assets/css/cms-plugin-workspace.css?v=' . CMS_PROMOS_VERSION, ENT_QUOTES, 'UTF-8') . '">';
-        }
-    }
+        $repository = CMS_Promos_Repository::instance();
+        $stats = $repository->get_dashboard_stats();
+        $live = $repository->count_live_promos();
+        $impressions = (int) $stats['impressions'];
+        $ctr = $impressions > 0 ? round((int) $stats['clicks'] / $impressions * 100, 1) : 0.0;
 
-    private static function open(string $active): void
-    {
-        self::load_workspace();
-        self::enqueue_admin_assets();
-
-        $stats = self::stats();
-        $schemaOk = CMS_Promos_Installer::is_schema_current();
-        $ctr = $stats['impressions'] > 0 ? round($stats['clicks'] / $stats['impressions'] * 100, 1) : 0.0;
+        self::enqueue_style('promos-admin.css');
 
         echo cms_plugin_workspace_open([
             'plugin' => self::ROOT_SLUG,
             'title' => '365CMS | Promos',
             'icon' => 'ti ti-speakerphone',
             'version' => CMS_PROMOS_VERSION,
-            'status' => $schemaOk ? ['label' => 'Aktiv', 'tone' => 'success'] : ['label' => 'Datenbank prüfen', 'tone' => 'warning'],
-            'description' => 'Banner, Teaser und CTA-Flächen mit Platzierungen, Laufzeiten und Klick-Tracking.',
+            'status' => $live > 0 ? ['label' => $live . ' live', 'tone' => 'success'] : ['label' => 'Keine Promo live', 'tone' => 'muted'],
+            'description' => 'Banner, Teaser und CTA-Kacheln mit Laufzeit, Platzierung und Klick-Tracking.',
             'stats' => [
-                ['label' => 'Promos gesamt', 'value' => $stats['promos'], 'icon' => 'ti ti-speakerphone', 'url' => self::url('promos-items')],
-                ['label' => 'Laufen gerade', 'value' => $stats['live_promos'], 'icon' => 'ti ti-player-play', 'tone' => 'success', 'url' => self::url('promos-items', ['status' => 'live'])],
-                ['label' => 'Impressions', 'value' => $stats['impressions'], 'icon' => 'ti ti-eye'],
-                ['label' => 'Klicks', 'value' => $stats['clicks'], 'icon' => 'ti ti-click', 'hint' => 'Klickrate: ' . number_format($ctr, 1, ',', '.') . ' %'],
+                ['label' => 'Promos gesamt', 'value' => (int) $stats['promos'], 'icon' => 'ti ti-speakerphone', 'url' => self::page_url('promos-items')],
+                ['label' => 'Aktuell live', 'value' => $live, 'icon' => 'ti ti-broadcast', 'tone' => $live > 0 ? 'success' : 'muted', 'url' => self::page_url('promos-items', ['status' => 'live'])],
+                ['label' => 'Impressions', 'value' => $impressions, 'icon' => 'ti ti-eye'],
+                ['label' => 'Klickrate', 'value' => number_format($ctr, 1, ',', '.') . ' %', 'icon' => 'ti ti-click', 'hint' => number_format((int) $stats['clicks'], 0, ',', '.') . ' Klicks'],
             ],
-            'nav' => [
-                ['slug' => 'promos-dashboard', 'label' => 'Übersicht', 'icon' => 'ti ti-layout-dashboard', 'url' => self::url('promos-dashboard'), 'active' => $active === 'promos-dashboard'],
-                ['slug' => 'promos-items', 'label' => 'Promos', 'icon' => 'ti ti-speakerphone', 'url' => self::url('promos-items'), 'active' => $active === 'promos-items',
-                    'badge' => $stats['expired_active'], 'badge_tone' => 'warning'],
-                ['slug' => 'promos-placements', 'label' => 'Platzierungen', 'icon' => 'ti ti-layout-grid', 'url' => self::url('promos-placements'), 'active' => $active === 'promos-placements',
-                    'badge' => $stats['placements']],
-                ['slug' => 'promos-settings', 'label' => 'Einstellungen', 'icon' => 'ti ti-settings', 'url' => self::url('promos-settings'), 'active' => $active === 'promos-settings'],
-            ],
+            'nav' => self::nav_items($slug, (int) $stats['promos'], (int) $stats['placements'], $repository->count_expired_active()),
             'nav_explicit' => true,
         ]);
-    }
 
-    private static function close(): void
-    {
+        self::render_notice();
+        $renderer($repository);
+
         echo cms_plugin_workspace_close();
     }
 
-    private static function enqueue_admin_assets(): void
-    {
-        static $loaded = false;
-        if ($loaded) {
-            return;
-        }
-        $loaded = true;
-
-        echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_PROMOS_PLUGIN_URL . 'assets/css/promos-admin.css?v=' . CMS_PROMOS_VERSION, ENT_QUOTES, 'UTF-8') . '">' . "\n";
-        echo '<script src="' . htmlspecialchars(CMS_PROMOS_PLUGIN_URL . 'assets/js/promos-admin.js?v=' . CMS_PROMOS_VERSION, ENT_QUOTES, 'UTF-8') . '" defer></script>' . "\n";
-    }
-
     /**
-     * @return array<string,int>
+     * @return list<array<string,mixed>>
      */
-    private static function stats(): array
+    private static function nav_items(string $active, int $promoCount, int $placementCount, int $expired): array
     {
-        return self::$stats ??= CMS_Promos_Repository::instance()->get_dashboard_stats();
+        $badges = [
+            'promos-items' => $expired > 0 ? ['badge' => $expired, 'badge_tone' => 'warning'] : ['badge' => $promoCount],
+            'promos-placements' => ['badge' => $placementCount],
+        ];
+        $items = [];
+        foreach (self::PAGES as $slug => $page) {
+            $items[] = [
+                'slug' => $slug,
+                'label' => $page['label'],
+                'icon' => $page['icon'],
+                'url' => self::page_url($slug),
+                'active' => $slug === $active,
+            ] + ($badges[$slug] ?? []);
+        }
+
+        return $items;
     }
 
-    // ── POST-Verarbeitung ───────────────────────────────────────────────────
-
-    private static function handle_post(string $page): void
+    private static function handle_post(): void
     {
         if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
             return;
         }
 
-        $action = (string) preg_replace('/[^a-z0-9_]/', '', strtolower((string) ($_POST['action'] ?? '')));
-        $security = Security::instance();
+        if (!Security::instance()->verifyToken((string) ($_POST['csrf_token'] ?? ''), self::CSRF_ACTION)) {
+            self::store_notice(false, 'Sicherheitsprüfung fehlgeschlagen. Bitte erneut versuchen.');
+            self::redirect(self::current_page());
+        }
+
         $repository = CMS_Promos_Repository::instance();
+        $action = self::request_key($_POST, 'action');
+        $promoId = self::request_int($_POST, 'promo_id');
+        $placementId = self::request_int($_POST, 'placement_id');
 
-        // Downloads: wiederverwendbares Token, damit die Seite nach dem Download weiter bedienbar bleibt.
-        if ($action === 'export_csv' || $action === 'export_json') {
-            if (!$security->verifyPersistentToken((string) ($_POST['export_token'] ?? ''), self::EXPORT_CSRF_ACTION)) {
-                self::finish($page, false, 'Sicherheitsprüfung fehlgeschlagen. Bitte die Seite neu laden.');
-            }
-            $action === 'export_csv' ? self::send_csv_export($repository) : self::send_json_export($repository);
+        $result = match ($action) {
+            'save_promo' => $repository->save_promo($_POST),
+            'delete_promo' => $repository->delete_promo($promoId),
+            'duplicate_promo' => $repository->duplicate_promo($promoId),
+            'reset_promo_stats' => $repository->reset_stats($promoId),
+            'reset_all_stats' => $repository->reset_stats(0),
+            'save_placement' => $repository->save_placement($_POST),
+            'delete_placement' => $repository->delete_placement($placementId),
+            'save_settings' => $repository->save_settings($_POST),
+            'reset_settings' => $repository->reset_settings(),
+            default => ['success' => false, 'error' => 'Unbekannte Aktion.'],
+        };
+
+        $success = (bool) ($result['success'] ?? false);
+        self::store_notice($success, (string) ($result['message'] ?? $result['error'] ?? ''));
+        if ($success && in_array($action, ['save_promo', 'delete_promo', 'save_placement', 'delete_placement'], true)) {
+            self::invalidate_sitemaps();
         }
 
-        if (!$security->verifyToken((string) ($_POST['csrf_token'] ?? ''), self::CSRF_ACTION)) {
-            self::finish($page, false, 'Sicherheitsprüfung fehlgeschlagen. Bitte erneut versuchen.');
-        }
-
-        $singleDelete = self::get_int($_POST, 'single_delete');
-
-        switch ($action) {
-            case 'save_promo':
-                $result = $repository->save_promo($_POST);
-                if (!$result['success']) {
-                    self::keep_form($result);
-                    return;
-                }
-                self::finish('promos-items', true, (string) ($result['message'] ?? ''), ['edit' => (int) ($result['id'] ?? 0)]);
-                // no break – finish() beendet den Request
-
-            case 'bulk_promos':
-                $result = $singleDelete > 0
-                    ? $repository->delete_promo($singleDelete)
-                    : $repository->bulk_promos((string) ($_POST['bulk_action'] ?? ''), self::post_ids());
-                self::finish('promos-items', $result['success'], self::result_message($result), self::return_query());
-                // no break
-
-            case 'save_placement':
-                $result = $repository->save_placement($_POST);
-                if (!$result['success']) {
-                    self::keep_form($result);
-                    return;
-                }
-                self::finish('promos-placements', true, (string) ($result['message'] ?? ''), ['edit' => (int) ($result['id'] ?? 0)]);
-                // no break
-
-            case 'bulk_placements':
-                $result = $singleDelete > 0
-                    ? $repository->delete_placement($singleDelete)
-                    : $repository->bulk_placements((string) ($_POST['bulk_action'] ?? ''), self::post_ids());
-                self::finish('promos-placements', $result['success'], self::result_message($result), self::return_query());
-                // no break
-
-            case 'save_settings':
-                $result = $repository->save_settings($_POST);
-                if (!$result['success']) {
-                    self::keep_form($result);
-                    return;
-                }
-                self::$stats = null;
-                self::finish('promos-settings', true, (string) ($result['message'] ?? ''));
-                // no break
-
-            case 'import_json':
-                $result = self::handle_import($repository);
-                self::finish('promos-settings', $result['success'], self::result_message($result));
-                // no break
-
-            case 'run_retention':
-                $days = $repository->get_retention_days();
-                if ($days <= 0) {
-                    self::finish('promos-settings', false, 'Es ist keine Löschfrist eingestellt.');
-                }
-                $deleted = $repository->prune_retention($days);
-                self::finish('promos-settings', true, sprintf('%d abgelaufene/archivierte Promo(s) gelöscht.', $deleted));
-                // no break
-
-            default:
-                self::finish($page, false, 'Unbekannte Aktion.');
-        }
-    }
-
-    /**
-     * @param array<string,mixed> $result
-     */
-    private static function keep_form(array $result): void
-    {
-        $data = [];
-        foreach ($_POST as $key => $value) {
-            if (is_string($key) && is_scalar($value) && !in_array($key, ['csrf_token', 'export_token', 'action', 'click_export_webhook_url'], true)) {
-                $data[$key] = (string) $value;
-            }
-        }
-        self::$formData = $data;
-        self::$inlineNotice = ['type' => 'error', 'message' => self::result_message($result)];
-    }
-
-    /**
-     * @param array<string,mixed> $result
-     */
-    private static function result_message(array $result): string
-    {
-        return (string) ($result['message'] ?? $result['error'] ?? '');
-    }
-
-    /**
-     * @return list<int>
-     */
-    private static function post_ids(): array
-    {
-        $ids = $_POST['ids'] ?? [];
-        if (!is_array($ids)) {
-            return [];
-        }
-
-        return array_values(array_filter(array_map(static fn ($id): int => is_scalar($id) ? max(0, (int) $id) : 0, $ids)));
-    }
-
-    /**
-     * Listenfilter des Formulars (hidden `return_query`) nach der Aktion wiederherstellen – nur bekannte Schlüssel.
-     *
-     * @return array<string,string>
-     */
-    private static function return_query(): array
-    {
-        $raw = (string) ($_POST['return_query'] ?? '');
-        if ($raw === '' || strlen($raw) > 1000) {
-            return [];
-        }
-
-        parse_str($raw, $parsed);
+        // Nach Fehlern im Formular bleiben, nach Erfolg zur Liste (bzw. zur duplizierten Promo).
         $query = [];
-        foreach (self::LIST_QUERY_KEYS as $key) {
-            if (isset($parsed[$key]) && is_scalar($parsed[$key]) && (string) $parsed[$key] !== '') {
-                $query[$key] = mb_substr((string) $parsed[$key], 0, 120);
-            }
+        if ($action === 'duplicate_promo' && $success && !empty($result['id'])) {
+            $query['edit'] = (int) $result['id'];
+        } elseif (!$success && $action === 'save_promo') {
+            $query = $promoId > 0 ? ['edit' => $promoId] : ['action' => 'new'];
+        } elseif (!$success && $action === 'save_placement') {
+            $query = $placementId > 0 ? ['edit' => $placementId] : ['action' => 'new'];
         }
 
-        return $query;
+        self::redirect(self::current_page(), $query);
+    }
+
+    /** Gespeichertes Sitemap-Bundle verwerfen, damit plugins.xml öffentliche Änderungen sofort zeigt. */
+    private static function invalidate_sitemaps(): void
+    {
+        if (!class_exists('CMS\\Services\\SEOService')) {
+            return;
+        }
+        try {
+            \CMS\Services\SEOService::getInstance()->invalidateSavedSitemaps();
+        } catch (\Throwable) {
+        }
     }
 
     /**
-     * @return array{success:bool,message?:string,error?:string}
+     * CSV-/JSON-Export der Leistungsdaten (GET mit persistentem Token).
      */
-    private static function handle_import(CMS_Promos_Repository $repository): array
+    private static function handle_export(): void
     {
-        $file = $_FILES['import_file'] ?? null;
-        if (!is_array($file) || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-            return ['success' => false, 'error' => 'Bitte eine JSON-Datei auswählen.'];
-        }
-        if ((int) ($file['error'] ?? 0) !== UPLOAD_ERR_OK || !is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
-            return ['success' => false, 'error' => 'Der Upload ist fehlgeschlagen.'];
-        }
-        if ((int) ($file['size'] ?? 0) <= 0 || (int) $file['size'] > self::MAX_IMPORT_BYTES) {
-            return ['success' => false, 'error' => sprintf('Die Datei ist leer oder größer als %d MB.', (int) (self::MAX_IMPORT_BYTES / 1024 / 1024))];
-        }
-        if (strtolower(pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION)) !== 'json') {
-            return ['success' => false, 'error' => 'Nur .json-Dateien aus dem Promo-Export werden akzeptiert.'];
+        $format = self::request_key($_GET, 'export');
+        if ($format === '') {
+            return;
         }
 
-        $tmp = (string) $file['tmp_name'];
-        if (class_exists('finfo')) {
-            $mime = (string) (new \finfo(FILEINFO_MIME_TYPE))->file($tmp);
-            if (!in_array($mime, ['application/json', 'text/plain', 'text/json'], true)) {
-                return ['success' => false, 'error' => 'Der Dateityp wird nicht unterstützt (' . $mime . ').'];
-            }
+        if (!in_array($format, ['csv', 'json'], true)
+            || !Security::instance()->verifyPersistentToken((string) ($_GET['token'] ?? ''), self::EXPORT_ACTION)) {
+            self::store_notice(false, 'Export abgelehnt: ungültiges oder abgelaufenes Token.');
+            self::redirect(self::current_page());
         }
 
-        $raw = file_get_contents($tmp);
-        if (!is_string($raw)) {
-            return ['success' => false, 'error' => 'Die Datei konnte nicht gelesen werden.'];
+        $rows = CMS_Promos_Repository::instance()->get_export_rows();
+        $filename = 'promos-' . date('Y-m-d') . '.' . $format;
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
         }
-        $raw = (string) preg_replace('/^\xEF\xBB\xBF/', '', $raw);
+        header('Cache-Control: no-store, private');
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
 
-        try {
-            $data = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
-        } catch (\JsonException) {
-            return ['success' => false, 'error' => 'Die Datei enthält kein gültiges JSON.'];
+        if ($format === 'json') {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['exported_at' => date('c'), 'promos' => $rows], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG);
+            exit;
         }
-
-        return is_array($data) ? $repository->import_config($data) : ['success' => false, 'error' => 'Die Datei enthält kein gültiges JSON-Objekt.'];
-    }
-
-    private static function send_csv_export(CMS_Promos_Repository $repository): never
-    {
-        $rows = $repository->get_export_promos();
-        self::clear_output_buffers();
 
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="promos-' . gmdate('Y-m-d') . '.csv"');
-        header('Cache-Control: no-store, max-age=0');
-        header('X-Content-Type-Options: nosniff');
-
         $out = fopen('php://output', 'wb');
         if ($out === false) {
             exit;
         }
         fwrite($out, "\xEF\xBB\xBF");
-        $columns = [
-            'id' => 'ID', 'title' => 'Titel', 'slug' => 'Slug', 'status' => 'Status', 'placement_name' => 'Platzierung', 'target_url' => 'Ziel-URL',
-            'start_at' => 'Start', 'end_at' => 'Ende', 'priority' => 'Priorität', 'is_featured' => 'Featured', 'impression_count' => 'Impressions',
-            'click_count' => 'Klicks', 'utm_source' => 'UTM Source', 'utm_medium' => 'UTM Medium', 'utm_campaign' => 'UTM Campaign',
-            'updated_at' => 'Geändert',
-        ];
-        fputcsv($out, array_values($columns), ';', '"', '');
+        fputcsv($out, ['ID', 'Titel', 'Slug', 'Status', 'Platzierung', 'Ziel-URL', 'Start', 'Ende', 'Priorität', 'Featured', 'Impressions', 'Klicks', 'Klickrate %', 'Geändert'], ';', '"', '');
         foreach ($rows as $row) {
-            $line = [];
-            foreach (array_keys($columns) as $key) {
-                $line[] = self::csv_cell($row[$key] ?? '');
-            }
-            fputcsv($out, $line, ';', '"', '');
+            fputcsv($out, array_map(static fn (mixed $value): string => self::csv_safe((string) $value), array_values($row)), ';', '"', '');
         }
         fclose($out);
         exit;
     }
 
-    private static function send_json_export(CMS_Promos_Repository $repository): never
+    /** Formel-Injektion in Tabellenkalkulationen verhindern. */
+    private static function csv_safe(string $value): string
     {
-        $json = json_encode($repository->build_config_export(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        self::clear_output_buffers();
-
-        header('Content-Type: application/json; charset=utf-8');
-        header('Content-Disposition: attachment; filename="promos-config-' . gmdate('Y-m-d') . '.json"');
-        header('Cache-Control: no-store, max-age=0');
-        header('X-Content-Type-Options: nosniff');
-        echo is_string($json) ? $json : '{}';
-        exit;
+        return $value !== '' && in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true) && !is_numeric($value) ? "'" . $value : $value;
     }
 
-    /** Formel-Injection-Schutz: Zellen mit = + - @ Tab CR am Anfang werden mit ' entschärft. */
-    private static function csv_cell(mixed $value): string
+    public static function export_url(string $format): string
     {
-        $value = is_scalar($value) ? (string) $value : '';
-        if ($value !== '' && in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
-            return "'" . $value;
-        }
-
-        return $value;
-    }
-
-    private static function clear_output_buffers(): void
-    {
-        while (ob_get_level() > 0) {
-            @ob_end_clean();
-        }
-    }
-
-    // ── Zugriff, Meldungen, Redirects ───────────────────────────────────────
-
-    private static function check_access(): void
-    {
-        $allowed = class_exists('CMS\\Auth') && Auth::instance()->isAdmin();
-        if ($allowed && function_exists('current_user_can')) {
-            $allowed = (bool) current_user_can('manage_options');
-        }
-        if ($allowed) {
-            return;
-        }
-
-        self::clear_output_buffers();
-        header('Location: ' . rtrim((string) SITE_URL, '/') . '/', true, 303);
-        exit;
+        return self::page_url(self::ROOT_SLUG, [
+            'export' => $format,
+            'token' => Security::instance()->generateToken(self::EXPORT_ACTION),
+        ]);
     }
 
     /**
-     * Meldung merken und per 303 auf die eigene Unterseite zurückleiten (PRG). Die Admin-Session läuft
-     * im Admin immer; ohne Session wird ein fester Statuscode als Query-Parameter übergeben.
-     *
-     * @param array<string,int|string> $query
+     * @param array<string,scalar> $query
      */
-    private static function finish(string $page, bool $success, string $message, array $query = []): never
+    public static function page_url(string $slug, array $query = []): string
     {
-        $query = array_filter($query, static fn ($value): bool => $value !== '' && $value !== 0);
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION[self::NOTICE_KEY] = ['type' => $success ? 'success' : 'error', 'message' => mb_substr($message, 0, 500)];
-        } else {
-            $query['notice'] = $success ? 'done' : 'failed';
-        }
+        $slug = array_key_exists($slug, self::PAGES) ? $slug : self::ROOT_SLUG;
+        $url = '/admin/plugins/' . self::ROOT_SLUG . '/' . rawurlencode($slug);
 
-        $path = self::url(isset(self::PAGES[$page]) ? $page : self::DEFAULT_PAGE, $query);
-        $target = class_exists('CMS\\Security') ? Security::safeLocalPath($path, self::url(self::DEFAULT_PAGE)) : $path;
-
-        self::clear_output_buffers();
-        header('Location: ' . rtrim((string) SITE_URL, '/') . $target, true, 303);
-        exit;
+        return $query !== [] ? $url . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986) : $url;
     }
 
-    /**
-     * @return array{type:string,message:string}|null
-     */
-    private static function pull_notice(): ?array
+    public static function status_tone(string $status): string
     {
-        if (self::$inlineNotice !== null) {
-            return self::$inlineNotice;
-        }
-
-        if (session_status() === PHP_SESSION_ACTIVE && is_array($_SESSION[self::NOTICE_KEY] ?? null)) {
-            $notice = $_SESSION[self::NOTICE_KEY];
-            unset($_SESSION[self::NOTICE_KEY]);
-
-            return ['type' => ($notice['type'] ?? '') === 'success' ? 'success' : 'error', 'message' => (string) ($notice['message'] ?? '')];
-        }
-
-        return match ((string) ($_GET['notice'] ?? '')) {
-            'done' => ['type' => 'success', 'message' => 'Die Aktion wurde ausgeführt.'],
-            'failed' => ['type' => 'error', 'message' => 'Die Aktion konnte nicht ausgeführt werden.'],
-            default => null,
+        return match ($status) {
+            'active' => 'success',
+            'paused' => 'warning',
+            'archived' => 'muted',
+            default => 'info',
         };
     }
 
-    // ── URLs und Request-Helfer ─────────────────────────────────────────────
-
-    /**
-     * @param array<string,int|string> $query
-     */
-    public static function url(string $page, array $query = []): string
+    public static function format_date(string $value): string
     {
-        $page = isset(self::PAGES[$page]) ? $page : self::DEFAULT_PAGE;
-        $url = '/admin/plugins/' . self::ROOT_SLUG . '/' . $page;
-        $query = array_filter($query, static fn ($value): bool => $value !== '' && $value !== null);
+        $timestamp = $value !== '' ? strtotime($value) : false;
 
-        return $query !== [] ? $url . '?' . http_build_query($query) : $url;
+        return $timestamp !== false ? date('d.m.Y H:i', $timestamp) : '–';
     }
 
     private static function current_page(): string
     {
-        $page = strtolower(trim((string) (is_string($_GET['page'] ?? null) ? $_GET['page'] : '')));
-        if (isset(self::PAGES[$page])) {
-            return $page;
+        $page = strtolower(trim((string) ($_GET['page'] ?? self::ROOT_SLUG)));
+
+        return array_key_exists($page, self::PAGES) ? $page : self::ROOT_SLUG;
+    }
+
+    private static function ensure_workspace_helpers(): void
+    {
+        if (!function_exists('cms_plugin_workspace_open') && is_file(ABSPATH . 'admin/partials/plugin-workspace.php')) {
+            require_once ABSPATH . 'admin/partials/plugin-workspace.php';
+        }
+    }
+
+    private static function check_access(): void
+    {
+        if (!function_exists('current_user_can') || !current_user_can(self::CAPABILITY)) {
+            http_response_code(403);
+            header('Location: ' . Security::safeLocalPath('/admin', '/'), true, 303);
+            exit;
+        }
+    }
+
+    private static function enqueue_style(string $file): void
+    {
+        $path = CMS_PROMOS_PLUGIN_DIR . 'assets/css/' . $file;
+        if (is_file($path)) {
+            echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_PROMOS_PLUGIN_URL . 'assets/css/' . $file . '?v=' . (string) filemtime($path), ENT_QUOTES, 'UTF-8') . '">' . "\n";
+        }
+    }
+
+    private static function enqueue_script(string $file): void
+    {
+        $path = CMS_PROMOS_PLUGIN_DIR . 'assets/js/' . $file;
+        if (is_file($path)) {
+            echo '<script src="' . htmlspecialchars(CMS_PROMOS_PLUGIN_URL . 'assets/js/' . $file . '?v=' . (string) filemtime($path), ENT_QUOTES, 'UTF-8') . '" defer></script>' . "\n";
+        }
+    }
+
+    private static function store_notice(bool $success, string $message): void
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE && !headers_sent()) {
+            session_start();
+        }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION[self::NOTICE_KEY] = ['type' => $success ? 'success' : 'danger', 'message' => $message];
+        }
+    }
+
+    private static function render_notice(): void
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE || empty($_SESSION[self::NOTICE_KEY]) || !is_array($_SESSION[self::NOTICE_KEY])) {
+            return;
         }
 
-        $path = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) ?: '');
-        if (preg_match('#/admin/plugins/' . preg_quote(self::ROOT_SLUG, '#') . '/([a-z0-9_-]+)/?$#', $path, $m) === 1 && isset(self::PAGES[$m[1]])) {
-            return $m[1];
-        }
-
-        return self::DEFAULT_PAGE;
+        $notice = $_SESSION[self::NOTICE_KEY];
+        unset($_SESSION[self::NOTICE_KEY]);
+        $type = ($notice['type'] ?? '') === 'success' ? 'success' : 'danger';
+        echo '<div class="alert alert-' . $type . '" role="' . ($type === 'success' ? 'status' : 'alert') . '">'
+            . htmlspecialchars((string) ($notice['message'] ?? ''), ENT_QUOTES, 'UTF-8') . '</div>';
     }
 
     /**
-     * @return array{q:string,status:string,placement:string,sort:string}
+     * @param array<string,scalar> $query
      */
-    private static function promo_filters(): array
+    private static function redirect(string $slug, array $query = []): never
     {
-        $status = (string) ($_GET['status'] ?? '');
-        $placement = (string) ($_GET['placement'] ?? '');
-        $sort = (string) ($_GET['sort'] ?? '');
-
-        return [
-            'q' => self::get_string($_GET, 'q', 120),
-            'status' => isset(CMS_Promos_Repository::STATUS_LABELS[$status]) || in_array($status, ['live', 'expired'], true) ? $status : '',
-            'placement' => $placement === 'none' || (int) $placement > 0 ? ($placement === 'none' ? 'none' : (string) (int) $placement) : '',
-            'sort' => isset(CMS_Promos_Repository::PROMO_SORTS[$sort]) ? $sort : '',
-        ];
-    }
-
-    /**
-     * Aktuelle Listenparameter als Query-String (für `return_query` und Pagination).
-     *
-     * @param array<string,string> $filters
-     */
-    public static function list_query(array $filters, int $page = 0): string
-    {
-        $query = array_filter($filters, static fn ($value): bool => (string) $value !== '');
-        if ($page > 1) {
-            $query['p'] = (string) $page;
-        }
-
-        return http_build_query($query);
+        header('Location: ' . Security::safeLocalPath(self::page_url($slug, $query), self::page_url(self::ROOT_SLUG)), true, 303);
+        exit;
     }
 
     /**
      * @param array<string,mixed> $source
      */
-    private static function get_int(array $source, string $key): int
+    private static function request_int(array $source, string $key): int
     {
-        $value = $source[$key] ?? 0;
-
-        return is_scalar($value) ? max(0, (int) $value) : 0;
+        return isset($source[$key]) && is_scalar($source[$key]) ? max(0, (int) $source[$key]) : 0;
     }
 
     /**
      * @param array<string,mixed> $source
      */
-    private static function get_string(array $source, string $key, int $max): string
+    private static function request_key(array $source, string $key): string
     {
-        $value = $source[$key] ?? '';
+        $value = isset($source[$key]) && is_string($source[$key]) ? strtolower(trim($source[$key])) : '';
 
-        return is_scalar($value) ? mb_substr(trim(strip_tags((string) $value)), 0, $max) : '';
-    }
-
-    public static function status_tone(string $status, bool $live = false): string
-    {
-        if ($status === 'active') {
-            return $live ? 'green' : 'yellow';
-        }
-
-        return match ($status) {
-            'paused' => 'orange',
-            'archived' => 'secondary',
-            default => 'azure',
-        };
-    }
-
-    public static function format_datetime(?string $value): string
-    {
-        $value = trim((string) $value);
-        if ($value === '') {
-            return '';
-        }
-        $ts = strtotime($value);
-
-        return $ts !== false ? date('d.m.Y H:i', $ts) : '';
+        return (string) preg_replace('/[^a-z0-9_]+/', '', $value);
     }
 }

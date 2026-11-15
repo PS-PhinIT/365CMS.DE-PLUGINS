@@ -1,14 +1,14 @@
 <?php
 /**
- * Projektliste mit Filter, Sammelaktionen, Pagination und JSON-Import.
+ * Projektliste mit Filter-Toolbar.
  *
- * @var callable $e
- * @var array $filters
- * @var array $pageData
- * @var array $projectStatuses
- * @var array $projectVisibilities
- * @var array $statusTones
- * @var int $importMaxKb
+ * @var list<array<string,mixed>> $projects
+ * @var array{status:string,visibility:string,q:string} $filters
+ * @var array<string,string> $projectStatuses
+ * @var array<string,string> $projectVisibilities
+ * @var string $csrfToken
+ *
+ * @package CMS_Projects
  */
 
 declare(strict_types=1);
@@ -17,128 +17,91 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-echo $this->pageHeader('Projekte', 'Projekte anlegen, filtern und gesammelt bearbeiten.', [
-    ['label' => 'Neues Projekt', 'url' => $this->url(self::PAGE_PROJECTS, ['action' => 'new']), 'icon' => 'ti ti-plus', 'primary' => true],
-]);
+$e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+$listUrl = CMS_Projects_Admin::pageUrl('cms-projects-projects');
+$filtered = $filters['status'] !== '' || $filters['visibility'] !== '' || $filters['q'] !== '';
 ?>
-<form method="get" action="<?php echo $e($this->url(self::PAGE_PROJECTS)); ?>" class="cp-toolbar toolbar">
-    <label class="cp-toolbar__field cp-toolbar__field--grow">
-        <span class="form-label">Suche</span>
-        <input type="search" class="form-control" name="q" maxlength="100" value="<?php echo $e($filters['q']); ?>" placeholder="Name, Slug oder Owner">
-    </label>
-    <label class="cp-toolbar__field">
-        <span class="form-label">Status</span>
-        <select class="form-select" name="status">
+<div class="admin-page-header">
+    <div>
+        <h2>Projekte</h2>
+        <p>Projekt-Dashboards mit Boards, Widgets und Tickets. Sichtbarkeit steuert Member- und Public-Ausgabe.</p>
+    </div>
+    <div class="header-actions">
+        <a class="btn btn-primary" href="<?php echo $e(CMS_Projects_Admin::pageUrl('cms-projects-projects', ['action' => 'new'])); ?>"><i class="ti ti-plus" aria-hidden="true"></i> Neues Projekt</a>
+    </div>
+</div>
+
+<form method="get" action="<?php echo $e($listUrl); ?>" class="cp-toolbar" role="search" aria-label="Projekte filtern">
+    <div class="cp-toolbar__field">
+        <label class="form-label" for="cp-filter-q">Suche</label>
+        <input id="cp-filter-q" type="search" name="q" class="form-control" value="<?php echo $e($filters['q']); ?>" placeholder="Name, Slug oder Owner">
+    </div>
+    <div class="cp-toolbar__field">
+        <label class="form-label" for="cp-filter-status">Status</label>
+        <select id="cp-filter-status" name="status" class="form-select">
             <option value="">Alle</option>
             <?php foreach ($projectStatuses as $key => $label): ?>
-                <option value="<?php echo $e($key); ?>"<?php echo $filters['status'] === $key ? ' selected' : ''; ?>><?php echo $e($label); ?></option>
+                <option value="<?php echo $e($key); ?>" <?php echo $filters['status'] === $key ? 'selected' : ''; ?>><?php echo $e($label); ?></option>
             <?php endforeach; ?>
         </select>
-    </label>
-    <label class="cp-toolbar__field">
-        <span class="form-label">Sichtbarkeit</span>
-        <select class="form-select" name="visibility">
+    </div>
+    <div class="cp-toolbar__field">
+        <label class="form-label" for="cp-filter-visibility">Sichtbarkeit</label>
+        <select id="cp-filter-visibility" name="visibility" class="form-select">
             <option value="">Alle</option>
             <?php foreach ($projectVisibilities as $key => $label): ?>
-                <option value="<?php echo $e($key); ?>"<?php echo $filters['visibility'] === $key ? ' selected' : ''; ?>><?php echo $e($label); ?></option>
+                <option value="<?php echo $e($key); ?>" <?php echo $filters['visibility'] === $key ? 'selected' : ''; ?>><?php echo $e($label); ?></option>
             <?php endforeach; ?>
         </select>
-    </label>
+    </div>
     <div class="cp-toolbar__actions">
-        <button type="submit" class="btn btn-outline-secondary"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>
-        <?php if ($filters['q'] !== '' || $filters['status'] !== '' || $filters['visibility'] !== ''): ?>
-            <a class="btn btn-link" href="<?php echo $e($this->url(self::PAGE_PROJECTS)); ?>">Zurücksetzen</a>
-        <?php endif; ?>
+        <button type="submit" class="btn btn-secondary"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>
+        <?php if ($filtered): ?><a class="btn btn-link" href="<?php echo $e($listUrl); ?>">Zurücksetzen</a><?php endif; ?>
     </div>
 </form>
 
-<section class="admin-card cp-admin-section">
-    <?php if ($pageData['items'] === []): ?>
-        <p class="cms-plugin-empty">
-            <?php echo $pageData['total'] === 0 && $filters['q'] === '' && $filters['status'] === '' && $filters['visibility'] === ''
-                ? 'Noch keine Projekte angelegt.'
-                : 'Keine Projekte für diesen Filter gefunden.'; ?>
-        </p>
+<div class="admin-card">
+    <?php if ($projects === []): ?>
+        <div class="empty-state">
+            <p><strong><?php echo $filtered ? 'Keine Projekte für diesen Filter' : 'Noch keine Projekte angelegt'; ?></strong></p>
+            <p class="cp-muted">Ein Projekt bündelt Boards, Tickets und Widgets für Member- und Public-Dashboards.</p>
+        </div>
     <?php else: ?>
-        <form method="post" action="<?php echo $e($this->url(self::PAGE_PROJECTS)); ?>" data-cms-confirm="Sammelaktion auf die ausgewählten Projekte anwenden? Beim Löschen werden auch Boards, Widgets und Tickets entfernt.">
-            <?php echo $this->hiddenFields('bulk_projects'); ?>
-            <?php foreach (['q', 'status', 'visibility'] as $key): ?>
-                <input type="hidden" name="return_<?php echo $e($key); ?>" value="<?php echo $e($filters[$key]); ?>">
-            <?php endforeach; ?>
-            <input type="hidden" name="return_paged" value="<?php echo (int) $pageData['page']; ?>">
-            <div class="cp-bulkbar">
-                <label class="cp-toolbar__field">
-                    <span class="visually-hidden">Sammelaktion</span>
-                    <select class="form-select" name="bulk_operation" required>
-                        <option value="">Sammelaktion wählen</option>
-                        <?php foreach ($projectStatuses as $key => $label): ?>
-                            <option value="status:<?php echo $e($key); ?>">Status: <?php echo $e($label); ?></option>
-                        <?php endforeach; ?>
-                        <option value="delete">Löschen</option>
-                    </select>
-                </label>
-                <button type="submit" class="btn btn-outline-secondary">Anwenden</button>
-            </div>
-            <div class="users-table-container">
-                <table class="users-table">
-                    <thead>
-                        <tr>
-                            <th class="cp-col-check"><input type="checkbox" class="form-check-input" data-cp-check-all aria-label="Alle auswählen"></th>
-                            <th>Name</th>
-                            <th>Status</th>
-                            <th>Sichtbarkeit</th>
-                            <th>Boards</th>
-                            <th>Widgets</th>
-                            <th>Tickets</th>
-                            <th>Aktualisiert</th>
-                            <th>Aktionen</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($pageData['items'] as $project): ?>
-                            <?php $id = (int) $project['id']; ?>
-                            <tr>
-                                <td class="cp-col-check"><input type="checkbox" class="form-check-input" name="ids[]" value="<?php echo $id; ?>" aria-label="Projekt auswählen"></td>
-                                <td>
-                                    <a href="<?php echo $e($this->url(self::PAGE_PROJECTS, ['project_id' => $id])); ?>"><strong><?php echo $e($project['name']); ?></strong></a>
-                                    <div class="cp-muted"><code><?php echo $e($project['slug']); ?></code></div>
-                                </td>
-                                <td><span class="cp-badge cp-badge--<?php echo $e($statusTones[$project['status']] ?? 'muted'); ?>"><?php echo $e($projectStatuses[$project['status']] ?? $project['status']); ?></span></td>
-                                <td><?php echo $e($projectVisibilities[$project['visibility']] ?? $project['visibility']); ?></td>
-                                <td><a href="<?php echo $e($this->url(self::PAGE_BOARDS, ['project_id' => $id])); ?>"><?php echo (int) $project['board_count']; ?></a></td>
-                                <td><a href="<?php echo $e($this->url(self::PAGE_WIDGETS, ['project_id' => $id])); ?>"><?php echo (int) $project['widget_count']; ?></a></td>
-                                <td><a href="<?php echo $e($this->url(self::PAGE_TASKS, ['project_id' => $id])); ?>"><?php echo (int) $project['task_count']; ?></a></td>
-                                <td><?php echo $e($this->formatDateTime((string) $project['updated_at'])); ?></td>
-                                <td class="cp-row-actions">
-                                    <a class="btn btn-sm btn-outline-secondary" href="<?php echo $e($this->url(self::PAGE_PROJECTS, ['project_id' => $id])); ?>" title="Bearbeiten"><i class="ti ti-pencil" aria-hidden="true"></i><span class="visually-hidden">Bearbeiten</span></a>
-                                    <?php if ($project['visibility'] !== 'private'): ?>
-                                        <a class="btn btn-sm btn-outline-secondary" href="<?php echo $e($project['preview_links']['member']); ?>" target="_blank" rel="noopener noreferrer" title="Mitgliederansicht"><i class="ti ti-users" aria-hidden="true"></i><span class="visually-hidden">Mitgliederansicht</span></a>
-                                    <?php endif; ?>
-                                    <?php if ($project['visibility'] === 'public' && $project['status'] === 'active'): ?>
-                                        <a class="btn btn-sm btn-outline-secondary" href="<?php echo $e($project['preview_links']['public']); ?>" target="_blank" rel="noopener noreferrer" title="Öffentliche Seite"><i class="ti ti-world" aria-hidden="true"></i><span class="visually-hidden">Öffentliche Seite</span></a>
-                                    <?php endif; ?>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </form>
-        <?php echo $this->pagination($pageData, self::PAGE_PROJECTS, $filters); ?>
+        <div class="users-table-container">
+            <table class="users-table">
+                <thead><tr><th scope="col">Projekt</th><th scope="col">Status</th><th scope="col">Sichtbarkeit</th><th scope="col" class="cp-num">Boards</th><th scope="col" class="cp-num">Widgets</th><th scope="col" class="cp-num">Tickets</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead>
+                <tbody>
+                <?php foreach ($projects as $project): ?>
+                    <?php $id = (int) $project['id']; ?>
+                    <tr>
+                        <td>
+                            <?php echo CMS_Projects_Service::accentSwatch($project, 'cp-swatch'); ?>
+                            <a class="cp-admin-link" href="<?php echo $e(CMS_Projects_Admin::projectUrl($id)); ?>"><?php echo $e($project['name']); ?></a>
+                            <div class="cp-muted"><?php echo $e($project['slug']); ?><?php echo ($project['owner_name'] ?? '') !== '' ? ' · ' . $e($project['owner_name']) : ''; ?></div>
+                        </td>
+                        <td><span class="cp-badge cp-badge--<?php echo $e($project['status']); ?>"><?php echo $e($projectStatuses[$project['status']] ?? $project['status']); ?></span></td>
+                        <td><?php echo $e($projectVisibilities[$project['visibility']] ?? $project['visibility']); ?></td>
+                        <td class="cp-num"><a href="<?php echo $e(CMS_Projects_Admin::projectUrl($id, 'boards')); ?>"><?php echo (int) ($project['board_count'] ?? 0); ?></a></td>
+                        <td class="cp-num"><a href="<?php echo $e(CMS_Projects_Admin::projectUrl($id, 'widgets')); ?>"><?php echo (int) ($project['widget_count'] ?? 0); ?></a></td>
+                        <td class="cp-num"><a href="<?php echo $e(CMS_Projects_Admin::projectUrl($id, 'tasks')); ?>"><?php echo (int) ($project['task_count'] ?? 0); ?></a></td>
+                        <td>
+                            <div class="cp-action-group">
+                                <a class="btn btn-sm btn-outline-secondary" href="<?php echo $e(CMS_Projects_Admin::projectUrl($id)); ?>" title="Bearbeiten"><i class="ti ti-pencil" aria-hidden="true"></i><span class="visually-hidden">Bearbeiten</span></a>
+                                <?php if (($project['visibility'] ?? '') === 'public'): ?>
+                                    <a class="btn btn-sm btn-outline-secondary" href="<?php echo $e($project['preview_links']['public'] ?? '/projects'); ?>" target="_blank" rel="noopener noreferrer" title="Öffentlich ansehen"><i class="ti ti-external-link" aria-hidden="true"></i><span class="visually-hidden">Öffentlich ansehen (neuer Tab)</span></a>
+                                <?php endif; ?>
+                                <form method="post" data-cms-confirm="Projekt „<?php echo $e($project['name']); ?>“ inkl. aller Boards, Widgets und Tickets endgültig löschen?">
+                                    <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+                                    <input type="hidden" name="cms_projects_action" value="delete_project">
+                                    <input type="hidden" name="project_id" value="<?php echo $id; ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Löschen"><i class="ti ti-trash" aria-hidden="true"></i><span class="visually-hidden">Löschen</span></button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     <?php endif; ?>
-</section>
-
-<section class="admin-card cp-admin-section">
-    <div class="cp-panel-header">
-        <h3>Projekt importieren</h3>
-        <p>JSON-Export eines Projekts (inkl. Boards, Widgets, Tickets) einlesen. Importierte Projekte starten als Entwurf.</p>
-    </div>
-    <form method="post" action="<?php echo $e($this->url(self::PAGE_PROJECTS)); ?>" enctype="multipart/form-data" class="cp-inline-upload">
-        <?php echo $this->hiddenFields('import_project'); ?>
-        <label class="cp-toolbar__field cp-toolbar__field--grow">
-            <span class="form-label">Exportdatei (.json, max. <?php echo (int) $importMaxKb; ?> KB)</span>
-            <input type="file" class="form-control" name="import_file" accept=".json,application/json" required>
-        </label>
-        <button type="submit" class="btn btn-outline-secondary"><i class="ti ti-upload" aria-hidden="true"></i> Importieren</button>
-    </form>
-</section>
+</div>

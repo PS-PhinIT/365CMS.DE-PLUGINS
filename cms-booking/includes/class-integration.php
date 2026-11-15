@@ -10,7 +10,7 @@
  *   CMS\Hooks::addAction('booking_register_providers', function () {
  *       CMS_Booking_Integration::register_provider_type('cms-experts', [
  *           'label'          => 'Experten',
- *           'icon'           => 'ti ti-user-star',
+ *           'icon'           => '👨‍💼',
  *           'source_table'   => 'experts',
  *           'name_column'    => 'name',
  *           'email_column'   => 'email',
@@ -66,7 +66,7 @@ final class CMS_Booking_Integration
      * @param  string  $pluginSlug     Plugin-Slug (z. B. 'cms-experts')
      * @param  array   $config         Konfiguration
      *    - label           string  Anzeigename (z. B. "Experten")
-     *    - icon            string  Tabler-Icon-Klasse (z. B. 'ti ti-user')
+     *    - icon            string  Emoji-Icon
      *    - source_table    string  DB-Tabellenname ohne Prefix (z. B. "experts")
      *    - name_column     string  Spalte für Anzeigename
      *    - email_column    string  Spalte für E-Mail
@@ -83,7 +83,7 @@ final class CMS_Booking_Integration
 
         $defaults = [
             'label'            => $pluginSlug,
-            'icon'             => 'ti ti-user',
+            'icon'             => '📋',
             'source_table'     => '',
             'name_column'      => 'name',
             'email_column'     => 'email',
@@ -142,7 +142,7 @@ final class CMS_Booking_Integration
         if ($pm->isPluginActive('cms-experts')) {
             self::register_provider_type('cms-experts', [
                 'label'            => 'Experten',
-                'icon'             => 'ti ti-user-star',
+                'icon'             => '👨‍💼',
                 'source_table'     => 'experts',
                 'name_column'      => 'name',
                 'email_column'     => 'email',
@@ -155,7 +155,7 @@ final class CMS_Booking_Integration
         if ($pm->isPluginActive('cms-speakers')) {
             self::register_provider_type('cms-speakers', [
                 'label'            => 'Speaker',
-                'icon'             => 'ti ti-microphone',
+                'icon'             => '🎤',
                 'source_table'     => 'speakers',
                 'name_column'      => 'name',
                 'email_column'     => 'email',
@@ -168,7 +168,7 @@ final class CMS_Booking_Integration
         if ($pm->isPluginActive('cms-events')) {
             self::register_provider_type('cms-events', [
                 'label'            => 'Events',
-                'icon'             => 'ti ti-calendar-event',
+                'icon'             => '📅',
                 'source_table'     => 'events',
                 'name_column'      => 'title',
                 'email_column'     => 'contact_email',
@@ -181,7 +181,7 @@ final class CMS_Booking_Integration
         if ($pm->isPluginActive('cms-companies')) {
             self::register_provider_type('cms-companies', [
                 'label'            => 'Unternehmen',
-                'icon'             => 'ti ti-building',
+                'icon'             => '🏢',
                 'source_table'     => 'companies',
                 'name_column'      => 'name',
                 'email_column'     => 'email',
@@ -311,9 +311,9 @@ HTML;
 
         $db   = \CMS\Database::instance();
         $p    = $db->getPrefix();
-        $columns = array_values(array_unique(array_filter(['id', $nameColumn, $emailColumn, $userIdColumn], static fn (string $c): bool => $c !== '')));
-        $select  = implode(', ', array_map(static fn (string $c): string => '`' . $c . '`', $columns));
-        $stmt = $db->prepare("SELECT {$select} FROM `{$p}{$sourceTable}` WHERE id = ?");
+        // Nur die konfigurierten (validierten) Spalten lesen.
+        $columns = array_values(array_unique(array_filter([$nameColumn, $emailColumn, $userIdColumn], static fn (string $c): bool => $c !== '')));
+        $stmt = $db->prepare('SELECT `' . implode('`, `', $columns) . "` FROM {$p}{$sourceTable} WHERE id = ?");
         $stmt->execute([$sourceId]);
         $source = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -324,9 +324,9 @@ HTML;
         $data = array_merge([
             'source_plugin' => $pluginSlug,
             'source_id'     => $sourceId,
-            'display_name'  => (string) ($source[$nameColumn] ?? 'Unbekannt'),
-            'email'         => (string) ($source[$emailColumn] ?? ''),
-            'user_id'       => $userIdColumn !== '' && isset($source[$userIdColumn]) ? (int) $source[$userIdColumn] : null,
+            'display_name'  => $source[$nameColumn]    ?? 'Unbekannt',
+            'email'         => $source[$emailColumn]   ?? '',
+            'user_id'       => $userIdColumn !== '' ? ($source[$userIdColumn] ?? null) : null,
         ], $overrides);
 
         return CMS_Booking_Providers::instance()->upsert($data);

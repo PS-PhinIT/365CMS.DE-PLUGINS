@@ -1,54 +1,40 @@
 # Changelog
 
-## 4.0.0 – 2026-11-14
+## 4.0.1 - 2026-11-15
 
-### Layout
+Fixes aus dem Integrationstest gegen eine echte 365CMS-4.0.0-Installation (MariaDB, Router, CSP).
 
-- Alle Admin-Seiten nutzen den Plugin-Layout-Vertrag 4.0.0 (`cms_plugin_workspace_open()`/`_close()`): Kopfzeile mit Version, Status und vier Live-KPIs (Promos gesamt, laufende Promos, Impressions, Klicks mit Klickrate), linkes Plugin-Menü (Übersicht, Promos mit Warn-Badge für abgelaufene aktive Promos, Platzierungen, Einstellungen).
-- Eigene Sidebar `pr-admin-layout`/`pr-admin-submenu`, `pr-admin-shell`, Info-/Feature-Karten und doppelte KPI-Kacheln entfernt; `renderAdminLayoutStart()/End()` und das Laden von `admin/partials/admin-menu.php` bzw. `../shared/admin/plugin-admin-contract.php` entfallen.
-- Übersicht über `cms_plugin_dashboard()`: Schnellaktionen, System-Check (Tabellen, Schema-Version, Hook-Platzierungen, abgelaufene aktive Promos, Promos ohne Ziel-URL, Webhook, Löschfrist), zuletzt bearbeitete Promos; danach Platzierungstabelle.
-- Unterseiten einheitlich Header → Meldung → Toolbar/Filter → Tabelle; Formulare als eigene Ansicht (`?action=new`, `?edit=ID`) statt Liste und Formular nebeneinander.
-- `promos-admin.css` auf plugin-spezifische Bausteine reduziert (nur Tokens, Rundung ≤ 2px, unter `.cms-plugin-admin-content`); öffentliche CSS-Variablen nicht mehr global auf `:root`.
-- Menü-Icon `ti ti-speakerphone`; Rückfall-Layout `includes/plugin-workspace.php` + `assets/css/cms-plugin-workspace.css`.
+### Behoben
 
-### Kompatibilität 4.0.0
+- Leerer Slug: Promos und Platzierungen erhielten immer den Slug `promo` (mit Zählersuffix), weil ein leeres Formularfeld den Titel-Fallback übersprang. Der Slug wird jetzt aus Titel bzw. Name abgeleitet.
+- Umlaute im Slug werden transliteriert (`ä` → `ae`, `ß` → `ss` …) statt durch Bindestriche ersetzt.
+- `plugins.xml`: Der Core speichert das Sitemap-Bundle als Datei und verwirft es nur bei Seiten-/Beitragsänderungen. Nach Speichern/Löschen von Promos und Platzierungen ruft das Plugin jetzt `SEOService::invalidateSavedSitemaps()` auf.
 
-- Lifecycle-Funktionen `cms_promos_activate()`, `cms_promos_deactivate()`, `cms_promos_uninstall()`; die wirkungslose Registrierung auf den nicht existierenden Hook `plugin_uninstalled` entfernt, der `plugin_activated`-Listener ist durch `cms_promos_activate()` ersetzt. Deinstallation entfernt die drei Plugin-Tabellen und die Option `cms_promos_db_version`.
-- Migrationen laufen nur noch bei abweichender Schema-Version (Option `cms_promos_db_version`, gelesen über `OptionStore`), nicht mehr bei jedem Request.
-- Plugin-Header mit `Requires CMS`, `Requires at least`, `Requires PHP`; neue `plugin.json`.
-- Kein Zugriff mehr auf `../shared/public/plugin-public-i18n.php`; es werden die Core-Helfer `cms_plugin_public_*` mit eingebautem Rückfall genutzt.
-- Sitemap: `/promos` und `/en/promos` über `cms_sitemap_entries`, wenn Promos laufen und die Indexierung erlaubt ist.
-- Seitensuche: `search_results` liefert laufende Promos, die alle Suchwörter enthalten (Link auf die Karte im Archiv, `_type` = `promos`).
-- Datenaufbewahrung: Regel `cms_promos.expired_promos` (abgelaufene/archivierte Promos, Frist in den Einstellungen, Standard 0 = nie).
-- Systemhinweise: Warnung bei veraltetem Schema oder aktiviertem Klick-Export ohne Webhook-URL.
-- SEO-Meta (Titel, Beschreibung, Canonical, Robots) für das Archiv; Platzierungs-Unterseiten `noindex,follow`, unbekannte Platzierung liefert 404; Klick-URLs mit `X-Robots-Tag: noindex, nofollow`.
+## 4.0.0 - 2026-11-14
 
-### Fertiggestellt
+### Kompatibilität
 
-- Promo-Liste mit Suche, Status-Filter (inkl. „läuft gerade“, „abgelaufen“), Platzierungs-Filter, Sortierung, Pagination (25 je Seite) und Sammelaktionen (aktivieren, pausieren, archivieren, Entwurf, Zähler zurücksetzen, löschen).
-- Platzierungs-Liste mit Suche, Status-/Hook-Filter und Sammelaktionen (aktivieren, deaktivieren, löschen).
-- CSV-Export der Promos (UTF-8 mit BOM, `;`, Formel-Injection-Schutz) und JSON-Export/-Import der Konfiguration (Abgleich über Slug, Größen-/Endungs-/MIME-Prüfung, Ergebniszusammenfassung).
-- Validierungsfehler behalten die Formulareingaben; Löschen nur nach Bestätigung (`data-cms-confirm`).
-- Einstellung „Archiv indexieren“ und Löschfrist inklusive manueller Bereinigung.
-- Hook-Zonen außerhalb von `/promos` erhalten jetzt das öffentliche CSS (vorher nur auf `/promos`).
-- Bild-URL akzeptiert auch lokale Pfade (`/uploads/…`); Bilder werden auch im Archiv angezeigt.
+- Voraussetzung jetzt 365CMS 4.0.0 und PHP 8.4.1 (`Requires CMS`, `Requires PHP`, `update.json`).
+- Lebenszyklus-Callbacks `cms_promos_activate()`, `cms_promos_deactivate()`, `cms_promos_uninstall()` (Deinstallation entfernt Tabellen und Option).
+- Öffentliche Archivseiten werden über `cms_sitemap_entries` gemeldet; Archiv setzt Titel, Beschreibung und Canonical über `SEOService`.
+- Systemhinweis über `AdminNoticeService::registerCheck()`, wenn aktive Promos ihr Enddatum überschritten haben.
 
-### Sicherheit
+### Admin
 
-- Webhook-Aufruf über `CMS\Http\Client` (SSRF-Schutz, Timeouts) statt `curl_*`/`file_get_contents()`; `curl_close()` entfernt.
-- HTML-Zusatztext über einen Whitelist-Sanitizer: nur erlaubte Tags, alle Attribute außer geprüftem `href` werden verworfen (vorher Regex-Entfernung einzelner Attribute; `href` mit einfachen Anführungszeichen ging verloren).
-- Webhook-URL (kann ein Token enthalten) wird mit `CryptoService` verschlüsselt gespeichert (Kontext `settings`, Bindung `cms_promos.webhook_url`); Klartext-Altwerte bleiben lesbar und werden beim nächsten Speichern verschlüsselt. Das Formular zeigt die URL nie an (Platzhalter „gespeichert – leer lassen zum Beibehalten“, Checkbox „Webhook-URL entfernen“). Validierung beim Speichern, nicht im JSON-Export, Klick-Export ohne URL wird abgelehnt.
-- Admin-Aktionen prüfen Admin-Rolle, `manage_options` und CSRF; Exporte mit eigenem Persistent-Token; Redirects nur über `Security::safeLocalPath()` auf die eigene Unterseite.
-- Klicks auf Entwürfe liefern 404; Klicks und Impressions von Bots werden nicht gezählt.
+- Einheitliches 365CMS-Plugin-Layout (`cms_plugin_workspace_open()`): Kopfzeile mit Versions-/Status-Badge und vier KPI-Karten (Promos, live, Impressions, Klickrate), linkes Plugin-Menü mit Zähler-Badges, Übersicht mit Schnellaktionen, System-Check und zuletzt bearbeiteten Promos.
+- Promo-Liste mit Filter-Toolbar (Suche, Status inkl. „live“/„abgelaufen“, Platzierung); Formular als eigene Ansicht.
+- Neu: Promo duplizieren, Statistik je Promo bzw. gesamt zurücksetzen, Einstellungen zurücksetzen, Leistungs-Export als CSV (Excel-tauglich, Formel-Injektion entschärft) und JSON.
+- UTM-Builder zeigt die finale Ziel-URL als Vorschau mit Kopierfunktion, statt die gespeicherte Ziel-URL zu verändern.
+- Lösch- und Rücksetzaktionen mit Bestätigung (`data-cms-confirm`).
 
-### Performance
+### Sicherheit & Performance
 
-- Keine PHP-Session mehr bei jedem Request (`bootstrap_session()` entfernt); der Frequency-Cap nutzt nur eine bereits laufende Session, sonst das Cookie – öffentliche Seiten bleiben cachebar (Lazy Sessions des Core).
-- Ausspielung: eine Abfrage für alle aktiven Hook-Platzierungen und eine für deren laufende Promos (vorher je Hook und je Platzierung eine Abfrage); Impressions werden mit einer UPDATE-Anweisung am Request-Ende gezählt.
-- `SELECT *` durch explizite Spaltenlisten ersetzt; Promo-Zähler je Platzierung per Join statt korrelierter Unterabfrage.
-- Neue Indizes (Schema 1.2.0): `idx_status_window`, `idx_placement_status`, `idx_updated` auf `promos`, `idx_hook` auf `promo_placements`.
-- Einstellungen per `INSERT … ON DUPLICATE KEY UPDATE` in einer Anweisung; Seeds per `INSERT IGNORE`; eindeutige Slugs mit einer Abfrage.
-- Zähler-Updates verändern `updated_at` nicht mehr.
+- Klick-Webhook ausschließlich über `CMS\Http\Client` (SSRF-Schutz); veraltetes `curl_close()` entfernt.
+- Keine PHP-Session mehr für anonyme Besucher (Frequency-Cap nur per Cookie) – Seiten bleiben cachebar.
+- Klick-Route leitet nur aktive Promos in ihrer Laufzeit weiter, sendet `no-store`/`noindex`.
+- Schema-Prüfung nur bei geänderter DB-Version (bisher 15+ Abfragen pro Request); neue Indizes `idx_hook`, `idx_placement_status`, `idx_status_window`, `idx_priority`; Einstellungen per Upsert; keine `SELECT *`; korrelierte Zählabfragen ersetzt.
+- Öffentliches CSS nur auf `/promos` oder wenn eine Hook-Fläche tatsächlich Promos ausspielt (vorher fehlte es auf Seiten mit Hook-Promos).
+- Admin-CSS ausschließlich mit Core-Tokens (Light/Dark).
 
 ## 3.0.4 - 2026-09-30
 

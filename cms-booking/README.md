@@ -1,8 +1,8 @@
 # CMS Booking – Universelles Buchungssystem
 
-> **Version:** 4.0.0
+> **Version:** 3.0.6
 > **Autor:** 365 Network  
-> **Anforderungen:** 365CMS 4.0.0 oder neuer, PHP 8.4.1 oder neuer  
+> **Abhängigkeiten:** 365CMS Core ≥ 2.0  
 > **Optionale Integration:** cms-contact, cms-experts, cms-speakers, cms-events, cms-companies
 
 ---
@@ -34,8 +34,7 @@ cms-booking/
 ├── CHANGELOG.md
 ├── README.md
 ├── includes/
-│   ├── class-settings.php       ← Einstellungen (ein Query pro Request)
-│   ├── class-installer.php      ← DB-Migration (6 Tabellen, Schema-Version 3)
+│   ├── class-installer.php      ← DB-Migration (6 Tabellen)
 │   ├── class-providers.php      ← Anbieter-CRUD + Upsert
 │   ├── class-services.php       ← Leistungen-CRUD
 │   ├── class-availability.php   ← Wochenplan, Overrides, Slot-Engine
@@ -43,10 +42,7 @@ cms-booking/
 │   ├── class-notifications.php  ← E-Mail-Templates
 │   ├── class-calendar-export.php← iCal + Google-Kalender
 │   ├── class-integration.php    ← Provider-Type-Registry + Buttons
-│   ├── class-privacy.php        ← DSGVO-Auskunft/-Löschung, Löschfrist
-│   ├── class-public-index.php   ← Sitemap- und Sucheinträge
-│   ├── class-frontend.php       ← Routen und Frontend-Rendering
-│   └── plugin-workspace.php     ← Rückfall des Core-Layout-Partials
+│   └── class-frontend.php       ← Routen und Frontend-Rendering
 ├── admin/
 │   ├── class-admin-menu.php     ← Admin-Menü (5 Einträge)
 │   ├── class-admin-pages.php    ← Trait-Loader
@@ -57,9 +53,10 @@ cms-booking/
 │   │   ├── trait-page-services.php
 │   │   └── trait-page-settings.php
 │   └── views/
-│       ├── dashboard.php, bookings.php, booking-detail.php
-│       ├── providers.php, provider-edit.php, provider-availability.php
-│       ├── services.php, service-edit.php
+│       ├── dashboard.php
+│       ├── bookings.php
+│       ├── providers.php
+│       ├── services.php
 │       └── settings.php
 ├── templates/
 │   ├── page-provider.php        ← Provider-Übersicht
@@ -70,18 +67,17 @@ cms-booking/
     │   ├── booking-public.css
     │   └── booking-admin.css
     └── js/
-        ├── booking-public.js     ← Kalender, Slots, Stepper
-        └── booking-admin.js      ← Modale, Bestätigungen
+        └── booking-public.js     ← Kalender, Slots, Stepper
 ```
 
 ## Schnellstart
 
 1. Plugin-Ordner `cms-booking/` nach `CMS/plugins/` kopieren
 2. Im Admin unter **Plugins** das Plugin **CMS Booking** aktivieren
-3. Unter **365CMS | Buchungen → Einstellungen** (`/admin/plugins/booking/settings`) die Grundkonfiguration vornehmen
-4. Anbieter manuell anlegen (`/admin/plugins/booking/providers?view=edit`) oder aus verknüpften Plugins synchronisieren
-5. Wochenplan und Ausnahmen je Anbieter festlegen (Anbieter → Verfügbarkeit)
-6. Leistungen je Anbieter erstellen (Dauer, Puffer, Preis, Ort, Buchungsart)
+3. Unter **365CMS | Buchungen → Einstellungen** die Grundkonfiguration vornehmen
+4. Unter **Anbieter** einen Anbieter anlegen (oder aus verknüpften Plugins synchronisieren)
+5. Unter **Verfügbarkeit** Wochenplan und Abwesenheiten festlegen
+6. Unter **Leistungen** Angebote mit Dauer, Puffer, Preis und Buchungsart anlegen
 
 ## Integration eigener Plugins
 
@@ -90,7 +86,7 @@ cms-booking/
 CMS\Hooks::addAction('booking_register_providers', function () {
     CMS_Booking_Integration::register_provider_type('mein-plugin', [
         'label'          => 'Mein Typ',
-        'icon'           => 'ti ti-tool',
+        'icon'           => '🔧',
         'source_table'   => 'meine_tabelle',
         'name_column'    => 'name',
         'email_column'   => 'email',
@@ -107,26 +103,13 @@ CMS\Hooks::addAction('booking_register_providers', function () {
 |---|---|---|
 | `/booking/{provider-slug}` | GET | Provider-Übersicht mit Service-Liste |
 | `/booking/{provider-slug}/{service-slug}` | GET/POST | Buchungsformular |
-| `/booking/confirm/{booking-id}?token=…` | GET | Bestätigungsseite (Token, noindex) |
-| `/booking/ical/{booking-id}?token=…` | GET | iCal-Download (Token) |
-| `/booking/cancel/{booking-id}?token=…` | POST | Selbst-Stornierung (Token + CSRF, Frist) |
+| `/booking/confirm/{booking-id}` | GET | Bestätigungsseite |
+| `/booking/ical/{booking-id}` | GET | iCal-Download |
 | `/api/booking/slots/{provider-id}/{date}` | GET | Verfügbare Zeitfenster (JSON) |
 
-## Admin-Seiten
+## Weitere Dokumentation
 
-| Seite | URL |
-|---|---|
-| Übersicht | `/admin/plugins/booking` |
-| Buchungen (Filter, Sammelaktionen, CSV, Detail) | `/admin/plugins/booking/bookings` |
-| Anbieter (Anlegen, Verfügbarkeit) | `/admin/plugins/booking/providers` |
-| Leistungen | `/admin/plugins/booking/services` |
-| Einstellungen | `/admin/plugins/booking/settings` |
-
-## Sicherheitsstatus (2026-04-04)
-
-- Snyk-Code-Audit für `cms-booking` abgeschlossen, aktuell ohne offene Findings.
-- Die öffentliche Slot-Auswahl rendert Zeitfenster jetzt konsequent per DOM-API statt per `innerHTML`, wodurch DOM-XSS-Risiken aus Remote-Slotdaten reduziert wurden.
-- Die Buchungszusammenfassung nutzt im Frontend nur noch textbasierte Ausgabe für dynamische Inhalte.
+[DOC/README.md](DOC/README.md) · [DOC/DATABASE.md](DOC/DATABASE.md) · [DOC/HOOKS.md](DOC/HOOKS.md) · [DOC/API.md](DOC/API.md) · [CHANGELOG.md](CHANGELOG.md)
 
 ## Lizenz
 

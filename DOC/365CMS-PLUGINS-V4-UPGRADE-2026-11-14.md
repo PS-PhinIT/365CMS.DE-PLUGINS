@@ -1,5 +1,7 @@
 # 365CMS-Plugins – Upgrade auf 365CMS v4.0.0 (Inventar & Audit)
 
+> **Hinweis (15.11.2026, Merge mit `main`):** Für `cms-promos`, `cms-projects` und `cms-booking` gilt der Code aus PS-PhinIT/365CMS.DE-PLUGINS#9 und #10, der gegen eine echte 365CMS-4.0.0-Installation getestet ist. Die Beschreibungen dieser drei Plugins weiter unten beziehen sich auf die damit ersetzte Fassung aus PR #11. Maßgeblich ist `DOC/audit/PLUGINS-V4-UPGRADE-2026-11-14.md`. Aus PR #11 übernommen wurden der Katalog (`index.json`), die `plugin.json`-Dateien und die verschlüsselte Ablage der Promos-Webhook-URL über `CryptoService`.
+
 Stand: 14./15.11.2026 · Referenz: 365CMS-Core 4.0.0 (`CMS/admin/partials/plugin-workspace.php`, `CMS/core/Routing/AdminRouter.php`, `DOC/plugins/PLUGIN-DEVELOPMENT.md`) · Anforderungen aller Plugins: **365CMS ≥ 4.0.0, PHP ≥ 8.4.1**
 
 Ein Plugin wird erst abgehakt (`[x]`), wenn alle fünf Katalogpunkte umgesetzt sind und jede PHP-Datei des Plugins per `php -l` fehlerfrei geprüft wurde.
