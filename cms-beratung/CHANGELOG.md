@@ -2,6 +2,18 @@
 
 Ältere Versionen (bis 2.9.794) sind in `update.json` dokumentiert.
 
+## 3.0.1 – 2026-11-15
+
+Übernommen aus PR #12; geprüft gegen die 365CMS-4.0.0-Testinstallation.
+
+### Sicherheit & Datenschutz
+
+- **Kontaktformular:** Ratenbegrenzung (höchstens 5 Anfragen je 10 Minuten pro Sitzung und IP, Core-`Security::checkRateLimit()`/`checkDbRateLimit()`) und Core-Antispam (`AntispamService`, sofern im Core aktiviert).
+- **DSGVO-Auskunft:** Beim Abschließen einer Auskunft unter *Auskunft & Löschen* werden die Anfragen der Person (Abgleich über die E-Mail-Adresse) als JSON-Datei in die private Ablage geschrieben. Herunterladen und Löschen erfolgt unter *Formular-Anfragen*; nach 30 Tagen entfernt der tägliche Cron die Dateien.
+- **DSGVO-Löschung:** Die Anfragen der Person werden beim Ausführen eines Löschantrags entfernt.
+- **Selbstauskunft:** Die Anfragen erscheinen im Datenexport des Mitgliederbereichs.
+- Die gespeicherte IP-Adresse kommt jetzt aus `Security::getClientIp()` (berücksichtigt vertrauenswürdige Proxys) statt aus `REMOTE_ADDR`.
+
 ## 3.0.0 – 2026-11-15
 
 ### Behoben (Integrationstest)

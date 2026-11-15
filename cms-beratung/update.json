@@ -1,13 +1,14 @@
 {
   "slug": "cms-beratung",
   "name": "CMS Beratung",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "requires": "4.0.0",
   "tested": "4.0.0",
   "author": "365 Network",
   "description": "Spezialisierter 365CMS Landingpage Builder für Microsoft 365, Copilot, KI, Security, Compliance und IT Consulting Beratungsleistungen.",
   "download_url": "PLUGINS/cms-beratung/cms-beratung.zip",
   "changelog": {
+    "3.0.1": "Kontaktformular mit Ratenbegrenzung (5 Anfragen / 10 Minuten je Sitzung und IP) und Core-Antispam; DSGVO-Auskunft als JSON-Datei in der privaten Ablage (Download/Löschen unter Formular-Anfragen, Entfernung nach 30 Tagen), DSGVO-Löschung und Selbstauskunft für Formular-Anfragen; IP über Security::getClientIp().",
     "3.0.0": "Angleichung an 365CMS 4.0.0 – Admin im einheitlichen Plugin-Layout (KPI-Kopfzeile, linkes Menü Übersicht/Landingpages/Formular-Anfragen/M365 FAQs/Design-Presets/Globale Einstellungen/Import & Export/Hilfe, neues Dashboard mit Schnellaktionen, System-Check und neuesten Anfragen); Formular-Anfragen mit Filter, Detailansicht, Status, interner Notiz, Löschen, CSV-Export; eigene Design-Presets anlegen/bearbeiten/löschen und in die globalen Einstellungen übernehmen; JSON-Download im Export; Datenschutz-Einstellungen bearbeitbar und Löschfrist als Regel in System › Datenaufbewahrung (vorher nie ausgeführt); Vorschau über /beratung-vorschau/{id} statt verschachteltem HTML-Dokument; parametrisierte Routen statt Laden aller Landingpages bei jedem Request; Sitemap- und Suchintegration; Systemhinweis für neue Anfragen; Lebenszyklus-Callbacks; XSS-Fix im Builder (Bereichstitel), eine sanitisierte HTML-Senke (DOMPurify/Trusted Types), JSON_HEX_TAG, keine SELECT *, Admin-CSS nur mit Core-Tokens; Requires CMS 4.0.0 / PHP 8.4.1. Integrationstest-Fixes: Plugin bootete nicht (Klassen-Guard vor unbedingter Klassendeklaration), leerer Slug wird aus dem Titel abgeleitet und Umlaute transliteriert, Sitemap-Bundle wird nach Speichern/Statuswechsel/Löschen verworfen.",
     "2.9.794": "Fix PHP 8.5: Der Bild-Upload im Landingpage-Editor nutzte finfo_close(); der Deprecation-Hinweis landete bei aktivem display_errors vor der JSON-Antwort und ließ den Upload scheitern. Geprüft mit 365CMS 4.0.0: Landingpages anlegen, bearbeiten und speichern funktionieren (Fix für „Plugin-Adminseite nicht gefunden“ seit 2.9.792).",
     "2.9.793": "Admin-Seitenleiste: Der Menüeintrag heißt jetzt „365CMS | Beratung“ (bisher „Beratung“), damit die öffentlichen 365CMS-Plugins im Abschnitt „Plugin-Erweiterungen“ zusammen stehen.",

@@ -563,6 +563,25 @@ final class CMS_Beratung_Admin_Pages
                     $count = $storage->delete_submissions([$id]);
                     self::flash($count > 0, $count > 0 ? 'Anfrage gelöscht.' : 'Anfrage nicht gefunden.');
                     break;
+                case 'privacy_download':
+                    $path = CMS_Beratung_Privacy::export_path((string) ($_POST['file'] ?? ''));
+                    if ($path === null) {
+                        self::flash(false, 'Auskunftsdatei nicht gefunden.');
+                        break;
+                    }
+                    while (ob_get_level() > 0) {
+                        ob_end_clean();
+                    }
+                    header('Content-Type: application/json; charset=utf-8');
+                    header('Content-Disposition: attachment; filename="' . basename($path) . '"');
+                    header('Cache-Control: no-store, private');
+                    header('X-Content-Type-Options: nosniff');
+                    readfile($path);
+                    exit;
+                case 'privacy_delete':
+                    $ok = CMS_Beratung_Privacy::delete_export((string) ($_POST['file'] ?? ''));
+                    self::flash($ok, $ok ? 'Auskunftsdatei gelöscht.' : 'Auskunftsdatei nicht gefunden.');
+                    break;
                 case 'purge':
                     $days = max(1, (int) (CMS_Beratung_Settings::all()['retention_days'] ?? 180));
                     self::flash(true, sprintf('%d Anfrage(n) älter als %d Tage gelöscht.', $storage->purge_old_submissions($days), $days));
@@ -617,6 +636,7 @@ final class CMS_Beratung_Admin_Pages
             echo '<div class="admin-card">';
             if ($items === []) {
                 echo '<div class="empty-state"><p><strong>Keine Anfragen gefunden.</strong></p></div></div>';
+                self::render_privacy_exports($token);
                 return;
             }
             echo '<div class="users-table-container"><table class="users-table"><thead><tr><th scope="col">Datum</th><th scope="col">Absender</th><th scope="col">Thema</th><th scope="col">Landingpage</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead><tbody>';
@@ -632,7 +652,29 @@ final class CMS_Beratung_Admin_Pages
                     . '<form method="post" data-cms-confirm="Anfrage endgültig löschen?"><input type="hidden" name="csrf_token" value="' . self::esc($token) . '"><input type="hidden" name="beratung_admin_action" value="submission_action"><input type="hidden" name="submission_action" value="delete"><input type="hidden" name="submission_id" value="' . $sid . '"><button class="btn btn-sm btn-outline-danger" type="submit" title="Löschen"><i class="ti ti-trash" aria-hidden="true"></i><span class="visually-hidden">Löschen</span></button></form></div></td></tr>';
             }
             echo '</tbody></table></div></div>';
+            self::render_privacy_exports($token);
         });
+    }
+
+    /** DSGVO-Auskunftsdateien (entstehen beim Abschließen einer Auskunft unter Admin › DSGVO). */
+    private static function render_privacy_exports(string $token): void
+    {
+        $exports = CMS_Beratung_Privacy::exports();
+        echo '<section class="admin-card"><h3 class="beratung-panel-title">DSGVO-Auskunftsdateien</h3><p class="beratung-muted">Entstehen beim Abschließen einer DSGVO-Auskunft für Personen mit Anfragen (Abgleich über die E-Mail-Adresse) und werden nach '
+            . CMS_Beratung_Privacy::EXPORT_KEEP_DAYS . ' Tagen automatisch entfernt.</p>';
+        if ($exports === []) {
+            echo '<p class="beratung-muted">Keine Auskunftsdateien vorhanden.</p></section>';
+            return;
+        }
+        echo '<div class="users-table-container"><table class="users-table"><thead><tr><th scope="col">Datei</th><th scope="col">Erstellt</th><th scope="col">Größe</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead><tbody>';
+        foreach ($exports as $file) {
+            $hidden = '<input type="hidden" name="csrf_token" value="' . self::esc($token) . '"><input type="hidden" name="beratung_admin_action" value="submission_action"><input type="hidden" name="file" value="' . self::esc($file['name']) . '">';
+            echo '<tr><td><code>' . self::esc($file['name']) . '</code></td><td>' . self::esc(self::format_datetime($file['created_at'])) . '</td><td>' . self::esc(number_format($file['size'] / 1024, 1, ',', '.')) . ' KB</td><td><div class="beratung-row-actions">'
+                . '<form method="post">' . $hidden . '<input type="hidden" name="submission_action" value="privacy_download"><button type="submit" class="btn btn-sm btn-outline-secondary" title="Herunterladen"><i class="ti ti-download" aria-hidden="true"></i><span class="visually-hidden">Herunterladen</span></button></form>'
+                . '<form method="post" data-cms-confirm="Auskunftsdatei löschen?">' . $hidden . '<input type="hidden" name="submission_action" value="privacy_delete"><button type="submit" class="btn btn-sm btn-outline-danger" title="Löschen"><i class="ti ti-trash" aria-hidden="true"></i><span class="visually-hidden">Löschen</span></button></form>'
+                . '</div></td></tr>';
+        }
+        echo '</tbody></table></div></section>';
     }
 
     /**

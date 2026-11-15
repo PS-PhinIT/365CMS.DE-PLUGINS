@@ -450,7 +450,7 @@ final class CMS_Beratung_Storage
             !empty($data['consent']) ? 1 : 0,
             !empty($data['copy_to_sender']) ? 1 : 0,
             json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ($settings['store_ip_enabled'] ?? '0') === '1' ? substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45) : '',
+            ($settings['store_ip_enabled'] ?? '0') === '1' ? substr(CMS_Beratung_Forms::client_ip(), 0, 45) : '',
             ($settings['store_user_agent_enabled'] ?? '0') === '1' ? substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500) : '',
             !empty($data['is_spam']) ? 1 : 0,
         ]);
@@ -585,6 +585,31 @@ final class CMS_Beratung_Storage
      *
      * @return list<array<string,mixed>>
      */
+    /** @return list<array<string,mixed>> Anfragen einer Person (DSGVO-Auskunft), höchstens 1000. */
+    public function submissions_for_email(string $email): array
+    {
+        $email = trim($email);
+        if ($this->pdo === null || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return [];
+        }
+        $stmt = $this->pdo->prepare('SELECT ' . self::SUBMISSION_COLUMNS . ", l.public_title AS landingpage_title FROM {$this->prefix}beratung_form_submissions s LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id WHERE s.sender_email = ? ORDER BY s.created_at ASC, s.id ASC LIMIT 1000");
+        $stmt->execute([$email]);
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function delete_submissions_for_email(string $email): int
+    {
+        $email = trim($email);
+        if ($this->pdo === null || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return 0;
+        }
+        $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_form_submissions WHERE sender_email = ?");
+        $stmt->execute([$email]);
+
+        return $stmt->rowCount();
+    }
+
     public function find_submissions(string $status = '', int $landingpageId = 0, string $search = '', int $limit = 200, bool $includeSpam = false): array
     {
         if ($this->pdo === null) {

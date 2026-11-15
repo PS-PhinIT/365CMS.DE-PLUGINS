@@ -13,6 +13,9 @@
 | `body_class` | Filter | Klasse `cms-beratung-page` |
 | `cms_sitemap_entries` | Filter | veröffentlichte, indexierbare Landingpages; Speichern, Statuswechsel und Löschen verwerfen das gespeicherte Sitemap-Bundle (`SEOService::invalidateSavedSitemaps()`) |
 | `search_results` | Filter | Treffer vom Typ `beratung` |
+| `dsgvo_export_data`, `dsgvo_delete_data` (20) | Action | Auskunftsdatei schreiben bzw. Anfragen löschen (Abgleich über die E-Mail-Adresse) |
+| `cms_member_export_data` (20) | Filter | Anfragen in der Selbstauskunft (`beratung_anfragen`) |
+| `cms_cron_daily` (50) | Action | Auskunftsdateien älter als 30 Tage entfernen |
 
 Registrierungen: `DataRetentionService::registerRule('cms_beratung_submissions')`, `AdminNoticeService::registerCheck('cms_beratung_new_submissions')`.
 
