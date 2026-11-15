@@ -1,6 +1,6 @@
 # 365CMS | Experts & Companies
 
-Version: 2.0.1
+Version: 2.0.2
 
 Kombi-Plugin für Experts und Companies mit gemeinsamer Public-Übersicht, eigenen Verzeichnissen und Detailseiten.
 
@@ -28,7 +28,7 @@ Kombi-Plugin für Experts und Companies mit gemeinsamer Public-Übersicht, eigen
 
 ## Technische Struktur
 
-- `cms-365NETexpertsandcompanie.php` – Bootstrap, Frontend-Styles, Design-Variablen, Lifecycle-Funktionen
+- `cms-365netexpertsandcompanie.php` – Bootstrap, Frontend-Styles, Design-Variablen, Lifecycle-Funktionen
 - `includes/class-database.php` – Schema (Version in `365net_excomp_settings`), Seed, CRUD, Batch-Abfragen
 - `includes/class-admin.php` – Admin-Menü, Seiten-Controller; Views in `admin/views/`
 - `includes/class-post-type.php` – öffentliche Routen, Bild-Upload, Weiterleitungen alter Admin-Adressen

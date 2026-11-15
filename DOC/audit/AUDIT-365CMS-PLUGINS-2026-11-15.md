@@ -5,8 +5,8 @@
 
 | PR | Prüfbereich | Branch | Status |
 |---|---|---|---|
-| #1 | Sicherheit & bekannte Exploits | `claude/plugin-audit-security` | in Arbeit |
-| #2 | Core-Kompatibilität (4.0.0 / Core-`main`), Bugs, falsche Verweise | – | offen |
+| #1 | Sicherheit & bekannte Exploits | `claude/plugin-audit-security` | [x] gemergt (PS-PhinIT/365CMS.DE-PLUGINS#13) |
+| #2 | Core-Kompatibilität (4.0.0 / Core-`main`), Bugs, falsche Verweise | `claude/plugin-audit-compat` | in Arbeit |
 | #3 | Fehlende Funktionen & unvollständige Workflows | – | offen |
 | #4 | Einheitliches Admin-Design & Plugin-Dashboard | – | offen |
 | #5 | Speed, Datenbank-Schema & Best Practices | – | offen |
@@ -71,9 +71,45 @@ Schweregrade: `CRITICAL` · `HIGH` · `MEDIUM` · `LOW`. Zeilennummern beziehen 
 | ID | Schwere | Plugin | Datei | Befund | Status |
 |---|---|---|---|---|---|
 | FUN-PLG-01 | MEDIUM | `365NET-eventsandspeaker` | Event speichern | Der Slug wird nicht aus dem Titel abgeleitet: „JS Test Event“ ergab `eintrag-2`, ein weiteres Event `eintrag`. | [ ] Offen – PR #3 |
-| DB-PLG-01 | LOW | `365NET-eventsandspeaker`, `365NET-expertsandcompanie` | Schema-Prüfung beim Laden | Beim ersten Laden nach der Aktivierung wird die Einstellungstabelle abgefragt, bevor sie existiert (`Table '…_365net_event_settings' doesn't exist`, `…_365net_excomp_settings`) – Fehlermeldung im PHP-Log. | [ ] Offen – PR #2 |
+| DB-PLG-01 | LOW | `365NET-eventsandspeaker`, `365NET-expertsandcompanie` | Schema-Prüfung beim Laden | Beim ersten Laden nach der Aktivierung wird die Einstellungstabelle abgefragt, bevor sie existiert (`Table '…_365net_event_settings' doesn't exist`, `…_365net_excomp_settings`) – Fehlermeldung im PHP-Log. | [x] Behoben in PR #2 (siehe 3.3) |
 
-## 4. Prüfprotokoll PR #1
+### 3.3 Core-Kompatibilität (PR #2)
+
+Geprüft gegen den **aktuellen Core-`main`** (`f7c8210d`, `Version::CURRENT` 4.0.0, Schema v25) – das ist der Stand, aus dem 4.1.0 entsteht. Die Testinstallation wurde dafür von einem älteren 4.0.0-Build auf diesen Stand aktualisiert (Upgrade-Pfad mit allen sechs aktiven Plugins) und anschließend mit leerer Datenbank neu aufgesetzt (Erstaktivierung aller Plugins). Die Plugin-Ordner heißen dabei wie die Slugs, so wie sie die Marketplace-Installation anlegt.
+
+| ID | Schwere | Plugin | Datei | Befund | Status |
+|---|---|---|---|---|---|
+| DB-PLG-02 | MEDIUM | `365NET-expertsandcompanie` | `cms-365NETexpertsandcompanie.php` | Die Hauptdatei war gemischt geschrieben, der Slug ist `cms-365netexpertsandcompanie`. `PluginManager::deletePlugin()` sucht exakt `<slug>.php` – auf Linux nicht gefunden, die Deinstallation lief nie, alle drei Tabellen blieben nach dem Löschen bestehen (Test über die Plugin-Verwaltung). | [x] Behoben in PR #2 – Datei in `cms-365netexpertsandcompanie.php` umbenannt; Löschen entfernt Tabellen und Option |
+| DB-PLG-01 | LOW | beide `365NET-*` | `includes/class-database.php` | siehe 3.2 | [x] Behoben in PR #2 – Schema-Version in der Autoload-Option `cms_365neteventsandspeaker_db_version` bzw. `cms_365netexpertsandcompanie_db_version` (`OptionStore`, keine Abfrage je Anfrage); Tabelle wird nur gelesen, wenn sie existiert; Deinstallation entfernt die Option |
+| FUN-PLG-02 | MEDIUM | beide `365NET-*` | Repository-Ordner `365NET-eventsandspeaker/`, `365NET-expertsandcompanie/` | Die Ordner heißen nicht wie die Slugs (`cms-365neteventsandspeaker`, `cms-365netexpertsandcompanie`). Wird ein Ordner unverändert nach `CMS/plugins/` kopiert (Git-Checkout, FTP), lautet der Slug `365net-…`; der Core sucht dann `365net_eventsandspeaker_activate()` usw. – ein Funktionsname, der mit einer Ziffer beginnt, kann nicht existieren: Aktivierung, Deaktivierung und Deinstallation laufen nicht (Test), und `deletePlugin()` findet keine Hauptdatei. Marketplace-Installationen (Ordner = Slug) sind nicht betroffen. | [ ] Offen – Entscheidung nötig: Repository-Ordner in die Slugs umbenennen (betrifft `index.json`-Pfade und Deploy-Abläufe) oder als Installationshinweis dokumentieren (in den CHANGELOGs ergänzt) |
+
+**Ohne Befund (geprüft):**
+
+- **Core-APIs:** Jeder Aufruf aus den sechs Plugins auf `CMS\…`-Klassen, -Methoden, -Konstanten und globale Core-Funktionen existiert im aktuellen Core-`main`.
+- **Entfernte 3.5.x-APIs** (`buildSidebarPluginIcon()`, `cmsNormalizeSidebarActivePage()`, `isGroupActive()`, `isSlugActive()`, `sidebarChildIcon()`, `sidebarNavTitleHtml()`, `sidebarTopLevelIcon()`, `Database::invalidateFeedCache()`): keine Verwendung.
+- **PHP 8.4/8.5:** keine `curl_close()`, `finfo_close()`, `imagedestroy()`, `PDO::MYSQL_ATTR_*`, `FILTER_SANITIZE_STRING`, `strftime()`, `utf8_encode()`, keine implizit nullbaren Parameter; das PHP-Log bleibt über alle Tests leer. (Die Laufzeit selbst ist in der Sandbox PHP 8.3, siehe Testumgebung.)
+- **Routing:** `/admin/plugins/<plugin>` und `/admin/plugins/<plugin>/<unterseite>` für alle 49 Seiten (200, kein PHP-Hinweis); `?page=<unterseite>` öffnet in allen sechs Plugins die richtige Unterseite (aktiver Menüpunkt geprüft); unbekannte Unterseiten zeigen den Core-Hinweis. Mitgliederbereich `/member/plugin/booking` und `/member/plugin/projects` als Mitglied 200, unbekannter Bereich 404.
+- **Lebenszyklus:** Für `cms-promos`, `cms-projects`, `cms-booking`, `cms-beratung` und – mit Ordner = Slug – beide `365NET-*`-Plugins: Aktivieren legt Tabellen und Versionsoption an, Löschen über die Plugin-Verwaltung ruft `<slug>_uninstall()` auf und entfernt Tabellen und Option.
+- **Upgrade-Pfad:** Wechsel von einem älteren 4.0.0-Build auf den Core-`main` mit allen sechs aktiven Plugins ohne Fehler; alle Workflow- und Sicherheitstests danach grün.
+
+**Core-Anbindungen (Ist-Stand, optional):**
+
+| Plugin | Sitemap | Suche | Löschfrist | Systemhinweis | DSGVO / Selbstauskunft |
+|---|---|---|---|---|---|
+| `cms-beratung` | ✓ | ✓ | ✓ | ✓ | ✓ / ✓ |
+| `cms-booking` | ✓ | – | ✓ | ✓ | ✓ / – |
+| `cms-projects` | ✓ | ✓ | ✓ (Audit-Log) | ✓ | – (keine Personendaten außer Audit) |
+| `cms-promos` | ✓ | – | – (keine Personendaten) | ✓ | – |
+| `365NET-eventsandspeaker` | ✓ | ✓ | – | ✓ | – / ✓ |
+| `365NET-expertsandcompanie` | ✓ | ✓ | – | ✓ | ✓ / – |
+
+Keines der Plugins registriert einen `ContentTypeRegistry`-Typ (optional). Fehlende Anbindungen mit fachlichem Nutzen (Selbstauskunft für Buchungen, Suche für Buchungsanbieter) sind für PR #3 vorgemerkt.
+
+**Core-Befund (außerhalb des Plugin-Umfangs, nicht geändert):** Die mit dem Core gelieferten Editor.js-Werkzeuge `assets/editorjs/link.umd.js`, `image.umd.js` und `attaches.umd.js` verletzen die Produktiv-CSP (`script-src` ohne `unsafe-eval`, `require-trusted-types-for`). Das tritt identisch im Beitrags- und Seiteneditor des Cores auf (`/admin/posts?action=edit`, `/admin/pages?action=edit`) und in den Plugins, die den Editor über `EditorJsAssetService::render()` einbinden (Events & Speaker, Experts & Companies). In der Testinstallation ist die CSP „Report-Only“; im erzwingenden Modus würden die drei Werkzeuge vermutlich nicht laden. Bitte im Core-Repository prüfen.
+
+## 4. Prüfprotokolle
+
+### 4.1 PR #1
 
 | Prüfung | Ergebnis |
 |---|---|
@@ -85,11 +121,24 @@ Schweregrade: `CRITICAL` · `HIGH` · `MEDIUM` · `LOW`. Zeilennummern beziehen 
 | Buchung nach SEC-PLG-02 | reguläre Buchung inkl. Bestätigungsseite funktioniert; Serienbuchung wird begrenzt |
 | Regression Promos, Projects, Booking, Beratung | ohne Fehler; PHP-Log ohne Einträge (außer Mailversand der Sandbox) |
 
-## 5. Versionen nach PR #1
+### 4.2 PR #2
+
+| Prüfung | Ergebnis |
+|---|---|
+| Statischer Abgleich aller Core-Aufrufe gegen Core-`main` | alle vorhanden |
+| Upgrade der Testinstallation auf Core-`main`, danach alle Tests | grün, PHP-Log leer |
+| Erstaktivierung aller sechs Plugins auf leerer Datenbank | Tabellen + Versionsoptionen angelegt, PHP-Log leer (vorher: zwei SQL-Fehler, DB-PLG-01) |
+| Aktivieren → Deaktivieren → Löschen je Plugin | alle sechs entfernen Tabellen und Option (Experts & Companies vorher nicht, DB-PLG-02) |
+| Routing inkl. `?page=` und Mitgliederbereich | wie erwartet |
+| Browser (Chromium) über 63 Seiten | keine Plugin-bedingten Fehler; CSP-Verletzungen nur durch Core-Editor.js-Werkzeuge (s. Core-Befund) |
+| Regression: Promos, Projects, Booking, Beratung, XSS/Rechte/Uploads, DSGVO | grün |
+
+## 5. Versionen
 
 | Plugin | Version |
 |---|---|
 | `cms-beratung` | 3.0.1 → **3.0.2** (+ neue `plugin.json`) |
 | `cms-booking` | 4.0.0 → **4.0.1** |
-| `365NET-expertsandcompanie` | 2.0.0 → **2.0.1** |
-| übrige | unverändert |
+| `365NET-expertsandcompanie` | 2.0.0 → **2.0.1** (PR #1) → **2.0.2** (PR #2, Hauptdatei umbenannt) |
+| `365NET-eventsandspeaker` | 4.0.0 → **4.0.1** (PR #2) |
+| `cms-promos`, `cms-projects` | unverändert |

@@ -1,6 +1,6 @@
 # 365CMS | Events & Speaker
 
-Version: 4.0.0
+Version: 4.0.1
 Modulares 365CMS-Plugin für Events, Messen und verknüpfte Speaker.
 
 ## Anforderungen
