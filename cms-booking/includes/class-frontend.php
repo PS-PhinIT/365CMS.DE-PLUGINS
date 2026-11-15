@@ -21,6 +21,14 @@ if (!defined('ABSPATH')) {
 
 final class CMS_Booking_Frontend
 {
+    /**
+     * Öffentliche Buchungen: höchstens 10 Versuche je Stunde pro Sitzung (zählt auch abgelehnte Eingaben)
+     * und 10 angelegte Buchungen je Stunde pro IP.
+     */
+    private const RATE_LIMIT_MAX = 10;
+    private const RATE_LIMIT_WINDOW = 3600;
+    private const RATE_LIMIT_ACTION = 'booking_submit';
+
     private static ?self $instance = null;
 
     public static function instance(): self
@@ -213,6 +221,11 @@ final class CMS_Booking_Frontend
             $error = $this->t('error_spam_detected', $lang, 'Spam erkannt.');
         }
 
+        // Ratenbegrenzung: Offene Anfragen blockieren Zeitfenster – ohne Limit könnte ein Bot alle Slots belegen.
+        if ($error === '' && !$this->booking_rate_limit_ok()) {
+            $error = $this->t('error_rate_limited', $lang, 'Es wurden zu viele Buchungen in kurzer Zeit gesendet. Bitte versuchen Sie es später erneut.');
+        }
+
         // Validierung
         if ($error === '') {
             $customerName  = sanitize_text_field($_POST['customer_name'] ?? '');
@@ -322,6 +335,8 @@ final class CMS_Booking_Frontend
                 if ($bookingType === 'instant' || $autoConfirm) {
                     CMS_Booking_Bookings::instance()->confirm($bookingId);
                 }
+
+                $this->record_booking_attempt();
 
                 // Benachrichtigungen senden
                 $booking = CMS_Booking_Bookings::instance()->get($bookingId);
@@ -449,14 +464,14 @@ final class CMS_Booking_Frontend
 
         if ($providerId <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
             http_response_code(400);
-            echo json_encode(['error' => $this->t('api_error_invalid_request', $lang, 'Ungültige Anfrage')]);
+            echo json_encode(['error' => $this->t('api_error_invalid_request', $lang, 'Ungültige Anfrage')], JSON_HEX_TAG | JSON_HEX_AMP);
             exit;
         }
 
         $provider = CMS_Booking_Providers::instance()->get($providerId);
         if (!$provider || ($provider['status'] ?? '') !== 'active') {
             http_response_code(404);
-            echo json_encode(['error' => $this->t('api_error_provider_not_found', $lang, 'Anbieter nicht gefunden')]);
+            echo json_encode(['error' => $this->t('api_error_provider_not_found', $lang, 'Anbieter nicht gefunden')], JSON_HEX_TAG | JSON_HEX_AMP);
             exit;
         }
 
@@ -472,14 +487,14 @@ final class CMS_Booking_Frontend
                 $bufferMin   = (int) $service['buffer_min'];
             } else {
                 http_response_code(404);
-                echo json_encode(['error' => $this->t('api_error_service_not_found', $lang, 'Leistung nicht gefunden')]);
+                echo json_encode(['error' => $this->t('api_error_service_not_found', $lang, 'Leistung nicht gefunden')], JSON_HEX_TAG | JSON_HEX_AMP);
                 exit;
             }
         }
 
         if ($serviceId > 0 && isset($service) && is_array($service)) {
             if ($this->is_daily_limit_reached($providerId, $serviceId, $date, $provider, $service)) {
-                echo json_encode(['success' => true, 'slots' => []]);
+                echo json_encode(['success' => true, 'slots' => []], JSON_HEX_TAG | JSON_HEX_AMP);
                 exit;
             }
         }
@@ -491,7 +506,7 @@ final class CMS_Booking_Frontend
             $bufferMin
         );
 
-        echo json_encode(['success' => true, 'slots' => $slots]);
+        echo json_encode(['success' => true, 'slots' => $slots], JSON_HEX_TAG | JSON_HEX_AMP);
         exit;
     }
 
@@ -597,6 +612,50 @@ final class CMS_Booking_Frontend
         return $hour >= 0 && $hour <= 23 && $minute >= 0 && $minute <= 59;
     }
 
+    /** Höchstens RATE_LIMIT_MAX Buchungsversuche (Sitzung) bzw. Buchungen (IP) je RATE_LIMIT_WINDOW Sekunden. */
+    private function booking_rate_limit_ok(): bool
+    {
+        if (!class_exists('CMS\\Security')) {
+            return true;
+        }
+        try {
+            if (!\CMS\Security::checkRateLimit(self::RATE_LIMIT_ACTION, self::RATE_LIMIT_MAX, self::RATE_LIMIT_WINDOW)) {
+                return false;
+            }
+            $ip = $this->client_ip();
+            if (filter_var($ip, FILTER_VALIDATE_IP) && method_exists(\CMS\Security::class, 'checkDbRateLimit')) {
+                return \CMS\Security::checkDbRateLimit($ip, self::RATE_LIMIT_ACTION, self::RATE_LIMIT_MAX, self::RATE_LIMIT_WINDOW);
+            }
+        } catch (\Throwable) {
+            // Die Ratenbegrenzung darf die Buchung nicht unbenutzbar machen.
+        }
+
+        return true;
+    }
+
+    private function record_booking_attempt(): void
+    {
+        try {
+            $ip = $this->client_ip();
+            if (filter_var($ip, FILTER_VALIDATE_IP) && class_exists('CMS\\Security') && method_exists(\CMS\Security::class, 'recordDbRateLimitAttempt')) {
+                \CMS\Security::recordDbRateLimitAttempt($ip, self::RATE_LIMIT_ACTION);
+            }
+        } catch (\Throwable) {
+        }
+    }
+
+    private function client_ip(): string
+    {
+        if (class_exists('CMS\\Security') && method_exists(\CMS\Security::class, 'getClientIp')) {
+            try {
+                return (string) \CMS\Security::getClientIp();
+            } catch (\Throwable) {
+            }
+        }
+
+        return (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+    }
+
     private function send_security_headers(): void
     {
         if (headers_sent()) {
@@ -666,6 +725,7 @@ final class CMS_Booking_Frontend
             'seo_confirmation_description' => ['text' => 'Ihre Buchung wurde erfolgreich registriert.', 'text_en' => 'Your booking was successfully registered.'],
             'error_security_check_failed' => ['text' => 'Sicherheitscheck fehlgeschlagen. Bitte versuchen Sie es erneut.', 'text_en' => 'Security check failed. Please try again.'],
             'error_spam_detected' => ['text' => 'Spam erkannt.', 'text_en' => 'Spam detected.'],
+            'error_rate_limited' => ['text' => 'Es wurden zu viele Buchungen in kurzer Zeit gesendet. Bitte versuchen Sie es später erneut.', 'text_en' => 'Too many bookings were submitted in a short time. Please try again later.'],
             'error_name_required' => ['text' => 'Bitte geben Sie Ihren Namen an.', 'text_en' => 'Please provide your name.'],
             'error_valid_email_required' => ['text' => 'Bitte geben Sie eine gültige E-Mail-Adresse an.', 'text_en' => 'Please provide a valid email address.'],
             'error_valid_date_required' => ['text' => 'Bitte wählen Sie ein gültiges Datum.', 'text_en' => 'Please select a valid date.'],

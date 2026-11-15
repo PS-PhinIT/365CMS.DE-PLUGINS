@@ -1,5 +1,13 @@
 # Changelog – 365CMS | Experts & Companies
 
+## 2.0.1 – 2026-11-15
+
+Sicherheits-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`): Plugin erstmals auf einer echten 365CMS-4.0.0-Installation aktiviert und geprüft (Admin-Seiten, öffentliche Seiten, XSS-, CSRF-, Rechte- und Upload-Tests).
+
+### Sicherheit
+
+- **SEC-PLG-05:** JSON-Antwort des Medien-Uploads mit `JSON_HEX_TAG`/`JSON_HEX_AMP`.
+
 ## 2.0.0 – 2026-11-14
 
 ### Layout

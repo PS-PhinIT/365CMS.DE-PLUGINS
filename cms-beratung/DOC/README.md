@@ -2,7 +2,7 @@
 
 > Weitere Dokumente: [DATABASE.md](DATABASE.md) · [HOOKS.md](HOOKS.md) · [API.md](API.md) · [GLOBAL-DESIGN-MODULE.md](GLOBAL-DESIGN-MODULE.md) · [Changelog](../CHANGELOG.md)
 
-> **Plugin:** `cms-beratung` · **Version:** 3.0.1 · **Stand:** 2026-11-15
+> **Plugin:** `cms-beratung` · **Version:** 3.0.2 · **Stand:** 2026-11-15
 > **Voraussetzungen:** 365CMS 4.0.0 (Plugin-Layout-Vertrag), PHP 8.4.1
 
 ## 1. Admin-Oberfläche
