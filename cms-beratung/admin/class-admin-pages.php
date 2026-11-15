@@ -1,10 +1,6 @@
 <?php
 /**
- * CMS Beratung – Admin-Seiten, Aktionen und Downloads (Layout-Vertrag 4.0.0).
- *
- * Der AdminRouter liefert die Shell; jede Seite gibt nur Inhalt aus:
- * cms_plugin_workspace_open() → Unterseite (Header → Toolbar/Filter → Inhalt) → cms_plugin_workspace_close().
- * Schreibaktionen prüfen Admin-Rechte und CSRF-Token serverseitig und leiten per 303 auf die eigene Seite um.
+ * CMS Beratung – Admin pages and actions.
  *
  * @package CMS_Beratung
  */
@@ -22,97 +18,111 @@ if (class_exists('CMS_Beratung_Admin_Pages', false)) {
 final class CMS_Beratung_Admin_Pages
 {
     public const MENU_SLUG = 'cms-beratung';
-    public const DEFAULT_PAGE_SLUG = 'cms-beratung-landingpages';
+    public const DEFAULT_PAGE_SLUG = 'cms-beratung-dashboard';
+    public const CAPABILITY = 'manage_options';
+    private const EXPORT_ACTION = 'beratung_export';
+    private const NOTICE_KEY = 'beratung_admin_notice';
 
-    /** Ansichten ohne eigenen Menüeintrag; sie laufen über ?view= der Landingpage-Liste bzw. der Hauptroute. */
-    private const VIEW_SLUGS = ['cms-beratung-landingpages', 'cms-beratung-new', 'cms-beratung-preview'];
+    /** Ansichten ohne eigenen Menüeintrag; sie laufen über die Hauptroute mit ?view=. */
+    private const UNLISTED_PAGE_SLUGS = ['cms-beratung-dashboard', 'cms-beratung-new', 'cms-beratung-preview'];
 
-    private const PER_PAGE = 20;
-
-    /** @var array<string,array{0:string,1:string}> slug => [Seitentitel, Render-Methode] */
-    private const PAGES = [
-        'cms-beratung' => ['Übersicht', 'render_dashboard'],
-        'cms-beratung-landingpages' => ['Landingpages', 'render_landingpages'],
-        'cms-beratung-new' => ['Landingpage bearbeiten', 'render_new_page'],
-        'cms-beratung-preview' => ['Landingpage-Vorschau', 'render_preview'],
-        'cms-beratung-submissions' => ['Anfragen', 'render_submissions'],
-        'cms-beratung-faqs' => ['M365 FAQs', 'render_faqs'],
-        'cms-beratung-presets' => ['Design Presets', 'render_presets'],
-        'cms-beratung-settings' => ['Einstellungen', 'render_settings'],
-        'cms-beratung-import-export' => ['Import und Export', 'render_import_export'],
-        'cms-beratung-help' => ['Hilfe und Dokumentation', 'render_help'],
+    /** Linkes Plugin-Menü (Layout-Vertrag 4.0.0). */
+    private const NAV = [
+        'cms-beratung-dashboard' => ['Übersicht', 'ti ti-layout-dashboard'],
+        'cms-beratung-landingpages' => ['Landingpages', 'ti ti-layout-rows'],
+        'cms-beratung-submissions' => ['Formular-Anfragen', 'ti ti-inbox'],
+        'cms-beratung-faqs' => ['M365 FAQs', 'ti ti-help-circle'],
+        'cms-beratung-presets' => ['Design-Presets', 'ti ti-palette'],
+        'cms-beratung-settings' => ['Globale Einstellungen', 'ti ti-settings'],
+        'cms-beratung-import-export' => ['Import & Export', 'ti ti-transfer'],
+        'cms-beratung-help' => ['Hilfe', 'ti ti-book'],
     ];
 
-    /** Meldungen nach Redirect (nur Schlüssel in der URL, keine Fremdtexte). */
-    private const NOTICES = [
-        'saved' => ['success', 'Gespeichert.'],
-        'created' => ['success', 'Landingpage angelegt.'],
-        'deleted' => ['success', 'Gelöscht.'],
-        'updated' => ['success', 'Aktion erfolgreich ausgeführt.'],
-        'duplicated' => ['success', 'Landingpage dupliziert (als Entwurf).'],
-        'preset_created' => ['success', 'Design-Preset angelegt.'],
-        'preset_deleted' => ['success', 'Design-Preset gelöscht.'],
-        'imported' => ['success', 'Import abgeschlossen.'],
-        'csrf' => ['danger', 'Sicherheitsprüfung fehlgeschlagen. Bitte die Seite neu laden und erneut versuchen.'],
-        'none' => ['danger', 'Bitte mindestens einen Eintrag auswählen.'],
-        'failed' => ['danger', 'Die Aktion konnte nicht ausgeführt werden.'],
-        'notfound' => ['danger', 'Der Eintrag wurde nicht gefunden.'],
+    private const PAGE_TITLES = [
+        'cms-beratung' => 'Übersicht',
+        'cms-beratung-dashboard' => 'Übersicht',
+        'cms-beratung-landingpages' => 'Landingpages',
+        'cms-beratung-new' => 'Neue Landingpage erstellen',
+        'cms-beratung-settings' => 'Globale Einstellungen',
+        'cms-beratung-presets' => 'Design Presets',
+        'cms-beratung-faqs' => 'M365 FAQs',
+        'cms-beratung-submissions' => 'Formular Anfragen',
+        'cms-beratung-import-export' => 'Import und Export',
+        'cms-beratung-preview' => 'Landingpage Vorschau',
+        'cms-beratung-help' => 'Hilfe und Dokumentation',
     ];
 
-    /** @var array<string,mixed>|null */
-    private static ?array $statsCache = null;
-
-    // ─── Menü und Dispatch ─────────────────────────────────────────────────
+    private const PAGE_RENDERERS = [
+        'cms-beratung' => 'render_dashboard',
+        'cms-beratung-dashboard' => 'render_dashboard',
+        'cms-beratung-landingpages' => 'render_landingpages',
+        'cms-beratung-new' => 'render_new_page',
+        'cms-beratung-settings' => 'render_settings',
+        'cms-beratung-presets' => 'render_presets',
+        'cms-beratung-faqs' => 'render_faqs',
+        'cms-beratung-submissions' => 'render_submissions',
+        'cms-beratung-import-export' => 'render_import_export',
+        'cms-beratung-preview' => 'render_preview',
+        'cms-beratung-help' => 'render_help',
+    ];
 
     /** @return array<int,array{slug:string,title:string,menu_title:string}> */
     public static function get_menu_pages(): array
     {
-        return [
-            ['slug' => 'cms-beratung-landingpages', 'title' => 'Landingpages', 'menu_title' => 'Landingpages'],
-            ['slug' => 'cms-beratung-submissions', 'title' => 'Anfragen', 'menu_title' => 'Anfragen'],
-            ['slug' => 'cms-beratung-faqs', 'title' => 'M365 FAQs', 'menu_title' => 'M365 FAQs'],
-            ['slug' => 'cms-beratung-presets', 'title' => 'Design Presets', 'menu_title' => 'Design Presets'],
-            ['slug' => 'cms-beratung-settings', 'title' => 'Einstellungen', 'menu_title' => 'Einstellungen'],
-            ['slug' => 'cms-beratung-import-export', 'title' => 'Import und Export', 'menu_title' => 'Import und Export'],
-            ['slug' => 'cms-beratung-help', 'title' => 'Hilfe und Dokumentation', 'menu_title' => 'Hilfe'],
-        ];
+        $pages = [];
+        foreach (self::NAV as $slug => [$label]) {
+            if ($slug !== self::DEFAULT_PAGE_SLUG) {
+                $pages[] = ['slug' => $slug, 'title' => $label, 'menu_title' => $label];
+            }
+        }
+        return $pages;
     }
 
     /** @return array{0:class-string,1:string} */
     public static function dispatch_callback_for_slug(string $slug): array
     {
-        $method = 'dispatch_' . str_replace('-', '_', self::normalize_slug($slug));
-        return method_exists(self::class, $method) ? [self::class, $method] : [self::class, 'dispatch_overview'];
+        $slug = self::normalize_slug($slug);
+        $method = 'dispatch_' . str_replace('-', '_', $slug);
+        return is_callable([self::class, $method]) ? [self::class, $method] : [self::class, 'dispatch_cms_beratung_landingpages'];
     }
 
-    public static function dispatch_overview(): void { self::render_page('cms-beratung'); }
-    public static function dispatch_cms_beratung(): void { self::render_page('cms-beratung'); }
-    public static function dispatch_cms_beratung_landingpages(): void { self::render_page('cms-beratung-landingpages'); }
-    public static function dispatch_cms_beratung_new(): void { self::render_page('cms-beratung-new'); }
-    public static function dispatch_cms_beratung_preview(): void { self::render_page('cms-beratung-preview'); }
-    public static function dispatch_cms_beratung_settings(): void { self::render_page('cms-beratung-settings'); }
-    public static function dispatch_cms_beratung_presets(): void { self::render_page('cms-beratung-presets'); }
-    public static function dispatch_cms_beratung_faqs(): void { self::render_page('cms-beratung-faqs'); }
-    public static function dispatch_cms_beratung_submissions(): void { self::render_page('cms-beratung-submissions'); }
-    public static function dispatch_cms_beratung_import_export(): void { self::render_page('cms-beratung-import-export'); }
-    public static function dispatch_cms_beratung_help(): void { self::render_page('cms-beratung-help'); }
+    public static function __callStatic(string $name, array $arguments): void
+    {
+        unset($arguments);
+        if (str_starts_with($name, 'dispatch_')) {
+            $_GET['page'] = str_replace('_', '-', substr($name, 9));
+            self::render_dispatch();
+        }
+    }
 
-    /** Kompatibilität: früherer Einstiegspunkt mit ?page= */
+    public static function dispatch_overview(): void
+    {
+        $requested = self::normalize_slug((string) ($_GET['view'] ?? ''));
+        $_GET['page'] = in_array($requested, self::UNLISTED_PAGE_SLUGS, true) ? $requested : self::DEFAULT_PAGE_SLUG;
+        self::render_dispatch();
+        // Breadcrumb und Sidebar-Markierung beziehen sich auf den registrierten Menüeintrag.
+        $_GET['page'] = self::MENU_SLUG;
+    }
+
+    public static function dispatch_cms_beratung_dashboard(): void { $_GET['page'] = 'cms-beratung-dashboard'; self::render_dispatch(); }
+    public static function dispatch_cms_beratung_landingpages(): void { $_GET['page'] = 'cms-beratung-landingpages'; self::render_dispatch(); }
+    public static function dispatch_cms_beratung_new(): void { $_GET['page'] = 'cms-beratung-new'; self::render_dispatch(); }
+    public static function dispatch_cms_beratung_settings(): void { $_GET['page'] = 'cms-beratung-settings'; self::render_dispatch(); }
+    public static function dispatch_cms_beratung_presets(): void { $_GET['page'] = 'cms-beratung-presets'; self::render_dispatch(); }
+    public static function dispatch_cms_beratung_faqs(): void { $_GET['page'] = 'cms-beratung-faqs'; self::render_dispatch(); }
+    public static function dispatch_cms_beratung_submissions(): void { $_GET['page'] = 'cms-beratung-submissions'; self::render_dispatch(); }
+    public static function dispatch_cms_beratung_import_export(): void { $_GET['page'] = 'cms-beratung-import-export'; self::render_dispatch(); }
+    public static function dispatch_cms_beratung_preview(): void { $_GET['page'] = 'cms-beratung-preview'; self::render_dispatch(); }
+    public static function dispatch_cms_beratung_help(): void { $_GET['page'] = 'cms-beratung-help'; self::render_dispatch(); }
+
     public static function render_dispatch(): void
     {
-        self::render_page(self::normalize_slug((string) ($_GET['page'] ?? self::MENU_SLUG)));
-    }
-
-    private static function render_page(string $slug): void
-    {
-        self::check_access();
-        // Unteransichten (Editor, Vorschau) laufen per ?view= über die Hauptroute oder die Landingpage-Liste.
-        $view = self::normalize_slug((string) ($_GET['view'] ?? ''));
-        if (in_array($slug, [self::MENU_SLUG, self::DEFAULT_PAGE_SLUG], true) && in_array($view, self::VIEW_SLUGS, true)) {
-            $slug = $view;
+        $slug = self::normalize_slug((string) ($_GET['page'] ?? self::DEFAULT_PAGE_SLUG));
+        $callbacks = self::resolve_callbacks();
+        $callback = $callbacks[$slug] ?? $callbacks[self::DEFAULT_PAGE_SLUG];
+        if (is_callable($callback)) {
+            call_user_func($callback);
         }
-        $method = self::PAGES[$slug][1] ?? 'render_dashboard';
-        self::$method();
     }
 
     public static function register_admin_routes(mixed $router): void
@@ -122,670 +132,9 @@ final class CMS_Beratung_Admin_Pages
         }
     }
 
-    // ─── Layout ────────────────────────────────────────────────────────────
-
-    private static function load_workspace(): void
-    {
-        if (!function_exists('cms_plugin_workspace_open')) {
-            $core = ABSPATH . 'admin/partials/plugin-workspace.php';
-            if (is_file($core)) {
-                require_once $core;
-            }
-        }
-        if (!function_exists('cms_plugin_workspace_open')) {
-            require_once CMS_BERATUNG_PLUGIN_DIR . 'includes/plugin-workspace.php';
-            // Rückfall-CSS nur, wenn der Core das Layout nicht liefert.
-            echo '<link rel="stylesheet" href="' . self::esc(CMS_BERATUNG_PLUGIN_URL . 'assets/css/cms-plugin-workspace.css?v=' . CMS_BERATUNG_VERSION) . '">';
-        }
-    }
-
-    /** @return array<string,mixed> Live-Kennzahlen (einmal pro Request). */
-    public static function stats(): array
-    {
-        if (self::$statsCache !== null) {
-            return self::$statsCache;
-        }
-        $storage = CMS_Beratung_Storage::instance();
-        return self::$statsCache = [
-            'pages' => $storage->landingpage_counts(),
-            'submissions' => $storage->submission_counts(),
-        ];
-    }
-
-    /** Öffnet Kopfzeile, linkes Plugin-Menü und Inhaltsspalte; $active ist der Slug des aktiven Menüpunkts. */
-    private static function open_layout(string $active): void
-    {
-        self::load_workspace();
-        self::enqueue_admin_assets();
-        $stats = self::stats();
-        $settings = CMS_Beratung_Settings::all();
-        $pages = $stats['pages'];
-        $subs = $stats['submissions'];
-        $showSubmissions = ($settings['show_submissions_backend'] ?? '1') === '1';
-        $missing = CMS_Beratung_Installer::missing_tables();
-        $tab = self::settings_tab();
-
-        $nav = [
-            ['slug' => 'cms-beratung', 'label' => 'Übersicht', 'icon' => 'ti ti-layout-dashboard', 'url' => self::admin_url('cms-beratung'), 'active' => $active === 'cms-beratung'],
-            ['slug' => 'cms-beratung-landingpages', 'label' => 'Landingpages', 'icon' => 'ti ti-file-text', 'badge' => (int) $pages['total'], 'url' => self::admin_url('cms-beratung-landingpages'), 'active' => in_array($active, ['cms-beratung-landingpages', 'cms-beratung-edit'], true)],
-            ['slug' => 'cms-beratung-new', 'label' => 'Neue Landingpage', 'icon' => 'ti ti-plus', 'url' => self::admin_url('cms-beratung-new'), 'active' => $active === 'cms-beratung-new'],
-        ];
-        if ($showSubmissions) {
-            $nav[] = ['slug' => 'cms-beratung-submissions', 'label' => 'Anfragen', 'icon' => 'ti ti-inbox', 'badge' => (int) $subs['new'], 'badge_tone' => 'warning', 'url' => self::admin_url('cms-beratung-submissions'), 'active' => $active === 'cms-beratung-submissions'];
-        }
-        $nav[] = ['slug' => 'cms-beratung-faqs', 'label' => 'M365 FAQs', 'icon' => 'ti ti-help-circle', 'url' => self::admin_url('cms-beratung-faqs'), 'active' => $active === 'cms-beratung-faqs'];
-        $nav[] = ['slug' => 'cms-beratung-presets', 'label' => 'Design Presets', 'icon' => 'ti ti-palette', 'url' => self::admin_url('cms-beratung-presets'), 'active' => $active === 'cms-beratung-presets'];
-        foreach (CMS_Beratung_Settings::tabs() as $key => $definition) {
-            $nav[] = ['slug' => 'cms-beratung-settings-' . $key, 'label' => $definition['label'], 'icon' => $definition['icon'], 'group' => 'Einstellungen', 'url' => self::admin_url('cms-beratung-settings', ['tab' => $key]), 'active' => $active === 'cms-beratung-settings' && $tab === $key];
-        }
-        $nav[] = ['slug' => 'cms-beratung-import-export', 'label' => 'Import und Export', 'icon' => 'ti ti-transfer', 'url' => self::admin_url('cms-beratung-import-export'), 'active' => $active === 'cms-beratung-import-export'];
-        $nav[] = ['slug' => 'cms-beratung-help', 'label' => 'Hilfe', 'icon' => 'ti ti-book', 'url' => self::admin_url('cms-beratung-help'), 'active' => $active === 'cms-beratung-help'];
-
-        $status = ['label' => 'Aktiv', 'tone' => 'success'];
-        if ($missing !== []) {
-            $status = ['label' => 'Tabellen fehlen', 'tone' => 'danger'];
-        } elseif (($settings['notification_enabled'] ?? '1') === '1' && !filter_var((string) ($settings['contact_recipient_email'] ?? ''), FILTER_VALIDATE_EMAIL)) {
-            $status = ['label' => 'Empfänger fehlt', 'tone' => 'warning'];
-        }
-
-        echo cms_plugin_workspace_open([
-            'plugin' => self::MENU_SLUG,
-            'title' => '365CMS | Beratung',
-            'icon' => 'ti ti-briefcase',
-            'version' => CMS_BERATUNG_VERSION,
-            'status' => $status,
-            'description' => 'Landingpages für Microsoft-365-, Copilot- und Security-Beratung mit Anfrageformular.',
-            'stats' => [
-                ['label' => 'Landingpages', 'value' => (int) $pages['total'], 'icon' => 'ti ti-file-text', 'url' => self::admin_url('cms-beratung-landingpages')],
-                ['label' => 'Veröffentlicht', 'value' => (int) ($pages['published'] ?? 0), 'icon' => 'ti ti-world', 'tone' => 'success', 'url' => self::admin_url('cms-beratung-landingpages', ['status' => 'published'])],
-                ['label' => 'Neue Anfragen', 'value' => (int) ($subs['new'] ?? 0), 'icon' => 'ti ti-inbox', 'tone' => ((int) ($subs['new'] ?? 0)) > 0 ? 'warning' : '', 'url' => self::admin_url('cms-beratung-submissions', ['status' => 'new'])],
-                ['label' => 'Anfragen gesamt', 'value' => (int) $subs['total'], 'icon' => 'ti ti-messages', 'url' => self::admin_url('cms-beratung-submissions')],
-            ],
-            'nav' => $nav,
-            'nav_explicit' => true,
-        ]);
-        echo '<div class="beratung-admin">';
-    }
-
-    private static function close_layout(): void
-    {
-        echo '</div>';
-        echo cms_plugin_workspace_close();
-        self::enqueue_admin_scripts();
-    }
-
-    /** Unterseiten-Header: Titel, Einzeiler, Aktionen (bereits escaptes HTML). */
-    public static function page_header(string $title, string $description, string $actionsHtml = ''): void
-    {
-        echo '<div class="admin-page-header"><div><h2>' . self::esc($title) . '</h2>'
-            . ($description !== '' ? '<p>' . self::esc($description) . '</p>' : '') . '</div>'
-            . ($actionsHtml !== '' ? '<div class="header-actions">' . $actionsHtml . '</div>' : '') . '</div>';
-    }
-
-    public static function button_link(string $label, string $url, string $icon = '', string $class = 'btn btn-outline-secondary', bool $newTab = false): string
-    {
-        return '<a class="' . self::esc($class) . '" href="' . self::esc($url) . '"' . ($newTab ? ' target="_blank" rel="noopener noreferrer"' : '') . '>'
-            . ($icon !== '' ? '<i class="' . self::esc($icon) . '" aria-hidden="true"></i> ' : '') . self::esc($label) . '</a>';
-    }
-
-    /** Meldung aus ?notice=<schlüssel> sowie direkte Meldungen. */
-    public static function render_alerts(string $success = '', string $error = ''): void
-    {
-        $key = (string) ($_GET['notice'] ?? '');
-        if (isset(self::NOTICES[$key])) {
-            [$tone, $text] = self::NOTICES[$key];
-            $count = isset($_GET['count']) ? max(0, (int) $_GET['count']) : null;
-            echo '<div class="alert alert-' . $tone . '" role="status">' . self::esc($text . ($count !== null && $tone === 'success' ? ' (' . $count . ')' : '')) . '</div>';
-        }
-        if ($success !== '') {
-            echo '<div class="alert alert-success" role="status">' . self::esc($success) . '</div>';
-        }
-        if ($error !== '') {
-            echo '<div class="alert alert-danger" role="alert">' . self::esc($error) . '</div>';
-        }
-    }
-
-    private static function enqueue_admin_assets(): void
-    {
-        static $loaded = false;
-        if ($loaded) {
-            return;
-        }
-        $loaded = true;
-        $css = CMS_BERATUNG_PLUGIN_DIR . 'assets/css/admin.css';
-        if (is_file($css)) {
-            echo '<link rel="stylesheet" href="' . self::esc(CMS_BERATUNG_PLUGIN_URL . 'assets/css/admin.css?v=' . CMS_BERATUNG_VERSION . '-' . filemtime($css)) . '">' . "\n";
-        }
-    }
-
-    private static function enqueue_admin_scripts(): void
-    {
-        static $loaded = false;
-        $js = CMS_BERATUNG_PLUGIN_DIR . 'assets/js/admin-builder.js';
-        if ($loaded || !is_file($js)) {
-            return;
-        }
-        $loaded = true;
-        $nonce = class_exists('CMS\\Security') ? ' ' . \CMS\Security::instance()->nonceAttr() : '';
-        echo '<script src="' . self::esc(CMS_BERATUNG_PLUGIN_URL . 'assets/js/admin-builder.js?v=' . CMS_BERATUNG_VERSION . '-' . filemtime($js)) . '" defer' . $nonce . '></script>' . "\n";
-    }
-
-    private static function view(string $name, array $vars = []): void
-    {
-        $file = CMS_BERATUNG_PLUGIN_DIR . 'admin/views/' . $name . '.php';
-        if (!is_file($file)) {
-            echo '<div class="alert alert-danger">Ansicht fehlt: ' . self::esc($name) . '</div>';
-            return;
-        }
-        extract($vars, EXTR_SKIP);
-        include $file;
-    }
-
-    // ─── Seiten ────────────────────────────────────────────────────────────
-
-    public static function render_dashboard(): void
-    {
-        $storage = CMS_Beratung_Storage::instance();
-        $recentPages = $storage->recent_landingpages(6);
-        $recentSubmissions = (CMS_Beratung_Settings::all()['show_submissions_backend'] ?? '1') === '1'
-            ? $storage->list_submissions([], 1, 5)['rows'] : [];
-        self::open_layout('cms-beratung');
-        self::render_alerts();
-        self::view('dashboard', ['recentPages' => $recentPages, 'recentSubmissions' => $recentSubmissions, 'stats' => self::stats()]);
-        self::close_layout();
-    }
-
-    public static function render_landingpages(): void
-    {
-        self::handle_landingpage_actions();
-        $filters = [
-            'status' => (string) ($_GET['status'] ?? ''),
-            'search' => mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 120),
-            'sort' => (string) ($_GET['sort'] ?? 'updated'),
-        ];
-        $page = max(1, (int) ($_GET['p'] ?? 1));
-        $result = CMS_Beratung_Storage::instance()->list_landingpages($filters, $page, self::PER_PAGE);
-        self::open_layout('cms-beratung-landingpages');
-        self::view('landingpages', ['filters' => $filters, 'result' => $result, 'pageNumber' => $page, 'perPage' => self::PER_PAGE]);
-        self::close_layout();
-    }
-
-    public static function render_new_page(): void
-    {
-        $storage = CMS_Beratung_Storage::instance();
-        $id = max(0, (int) ($_GET['id'] ?? 0));
-        $error = '';
-        $posted = null;
-        if (self::is_post() && (string) ($_POST['beratung_admin_action'] ?? '') === 'save_landingpage') {
-            if (!self::verify_nonce('beratung_save_landingpage')) {
-                $error = 'Sicherheitsprüfung fehlgeschlagen. Bitte erneut speichern.';
-                $posted = $_POST;
-            } else {
-                try {
-                    $savedId = $storage->save_landingpage($_POST);
-                    self::redirect('cms-beratung-new', ['id' => $savedId, 'notice' => $id > 0 ? 'saved' : 'created']);
-                } catch (\Throwable $e) {
-                    $error = 'Landingpage konnte nicht gespeichert werden: ' . $e->getMessage();
-                    $posted = $_POST;
-                }
-            }
-        }
-
-        $page = $id > 0 ? $storage->get_landingpage($id) : null;
-        if ($id > 0 && $page === null) {
-            self::redirect('cms-beratung-landingpages', ['notice' => 'notfound']);
-        }
-        if ($posted !== null) {
-            // Eingaben nach Fehler erhalten (bereinigt).
-            $page = array_merge($page ?? [], CMS_Beratung_Import_Export::sanitize_landingpage_payload($posted), ['id' => $id]);
-        }
-        if ($page === null) {
-            $page = CMS_Beratung_Admin_Defaults::default_landingpage((string) ($_GET['proposal'] ?? 'microsoft-365-copilot'));
-        }
-
-        self::open_layout($id > 0 ? 'cms-beratung-edit' : 'cms-beratung-new');
-        $actions = self::button_link('Zur Übersicht', self::admin_url('cms-beratung-landingpages'), 'ti ti-arrow-left');
-        if ($id > 0) {
-            $actions = self::button_link('Vorschau', self::preview_url($id), 'ti ti-eye', 'btn btn-outline-secondary', true) . $actions;
-        }
-        self::page_header($id > 0 ? 'Landingpage bearbeiten' : 'Neue Landingpage', $id > 0 ? (string) ($page['internal_title'] ?? '') : 'Vorlage wählen, Inhalte anpassen und als Entwurf speichern.', $actions);
-        self::render_alerts('', $error);
-        if ($id <= 0) {
-            self::view('proposals', ['active' => (string) ($_GET['proposal'] ?? 'microsoft-365-copilot')]);
-        }
-        self::view('editor', ['page' => $page, 'formAction' => self::admin_url('cms-beratung-new', $id > 0 ? ['id' => $id] : [])]);
-        self::close_layout();
-    }
-
-    /** Alte Vorschau-Adresse (?view=cms-beratung-preview) auf die eigenständige Vorschau-Route umleiten. */
-    public static function render_preview(): void
-    {
-        $id = max(0, (int) ($_GET['id'] ?? 0));
-        header('Location: ' . self::site_url() . self::preview_url($id), true, 303);
-        exit;
-    }
-
-    public static function render_settings(): void
-    {
-        $tab = self::settings_tab();
-        $tabs = CMS_Beratung_Settings::tabs();
-        if (self::is_post() && (string) ($_POST['beratung_admin_action'] ?? '') === 'save_settings') {
-            if (!self::verify_nonce('beratung_settings')) {
-                self::redirect('cms-beratung-settings', ['tab' => $tab, 'notice' => 'csrf']);
-            }
-            CMS_Beratung_Settings::save(CMS_Beratung_Settings::sanitize_from_post($_POST, $tabs[$tab]['keys']));
-            self::redirect('cms-beratung-settings', ['tab' => $tab, 'notice' => 'saved']);
-        }
-        self::open_layout('cms-beratung-settings');
-        self::page_header('Einstellungen: ' . $tabs[$tab]['label'], $tabs[$tab]['description']);
-        self::render_alerts();
-        self::view('settings', ['tab' => $tab, 'definition' => $tabs[$tab], 'settings' => CMS_Beratung_Settings::all()]);
-        self::close_layout();
-    }
-
-    public static function render_presets(): void
-    {
-        $storage = CMS_Beratung_Storage::instance();
-        $error = '';
-        if (self::is_post()) {
-            $action = (string) ($_POST['beratung_admin_action'] ?? '');
-            if (!self::verify_nonce('beratung_presets')) {
-                self::redirect('cms-beratung-presets', ['notice' => 'csrf']);
-            }
-            if ($action === 'create_preset') {
-                try {
-                    $colors = [];
-                    foreach (CMS_Beratung_Storage::preset_color_keys() as $key) {
-                        $colors[$key] = is_scalar($_POST[$key] ?? null) ? (string) $_POST[$key] : '';
-                    }
-                    $storage->create_custom_preset((string) ($_POST['preset_name'] ?? ''), (string) ($_POST['preset_description'] ?? ''), $colors);
-                    self::redirect('cms-beratung-presets', ['notice' => 'preset_created']);
-                } catch (\Throwable $e) {
-                    $error = $e->getMessage();
-                }
-            } elseif ($action === 'delete_preset') {
-                self::redirect('cms-beratung-presets', ['notice' => $storage->delete_custom_preset((int) ($_POST['preset_id'] ?? 0)) ? 'preset_deleted' : 'failed']);
-            }
-        }
-        self::open_layout('cms-beratung-presets');
-        self::page_header('Design Presets', 'Farbsets für den Landingpage-Editor („Design Preset anwenden“). System-Presets sind schreibgeschützt.');
-        self::render_alerts('', $error);
-        self::view('presets', ['presets' => $storage->all_presets(), 'settings' => CMS_Beratung_Settings::all()]);
-        self::close_layout();
-    }
-
-    public static function render_faqs(): void
-    {
-        $storage = CMS_Beratung_Storage::instance();
-        $error = '';
-        if (self::is_post() && (string) ($_POST['beratung_admin_action'] ?? '') === 'save_m365_faqs') {
-            if (!self::verify_nonce('beratung_m365_faqs')) {
-                $error = 'Sicherheitsprüfung fehlgeschlagen.';
-            } else {
-                try {
-                    $storage->save_m365_faq_config($_POST);
-                    self::redirect('cms-beratung-faqs', ['notice' => 'saved']);
-                } catch (\Throwable $e) {
-                    $error = 'FAQs konnten nicht gespeichert werden: ' . $e->getMessage();
-                }
-            }
-        }
-        $config = $storage->m365_faq_config();
-        self::open_layout('cms-beratung-faqs');
-        self::page_header('M365 FAQs', 'Zentrale FAQs für alle Landingpages (inklusive FAQ-Schema).');
-        self::render_alerts('', $error);
-        self::view('faqs', ['config' => $config]);
-        self::close_layout();
-    }
-
-    public static function render_submissions(): void
-    {
-        $storage = CMS_Beratung_Storage::instance();
-        $enabled = (CMS_Beratung_Settings::all()['show_submissions_backend'] ?? '1') === '1';
-        if ($enabled) {
-            self::handle_submission_actions();
-        }
-        $filters = [
-            'status' => (string) ($_GET['status'] ?? ''),
-            'landingpage_id' => max(0, (int) ($_GET['landingpage'] ?? 0)),
-            'search' => mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 120),
-        ];
-        $detailId = max(0, (int) ($_GET['id'] ?? 0));
-        $detail = null;
-        if ($enabled && $detailId > 0) {
-            $detail = $storage->submission($detailId);
-            if ($detail !== null && (string) ($detail['status'] ?? '') === 'new') {
-                $storage->mark_submission_read($detailId);
-                $detail['status'] = 'read';
-                self::$statsCache = null;
-            }
-        }
-        $page = max(1, (int) ($_GET['p'] ?? 1));
-        self::open_layout('cms-beratung-submissions');
-        if (!$enabled) {
-            self::page_header('Anfragen', 'Die Anzeige der Anfragen ist ausgeschaltet.', self::button_link('Einstellung ändern', self::admin_url('cms-beratung-settings', ['tab' => 'contact']), 'ti ti-settings'));
-            echo '<div class="alert alert-info">Anfragen werden weiterhin gespeichert, sofern „Anfragen in der Datenbank speichern“ aktiv ist. Unter Einstellungen → Kontaktformular lässt sich die Anzeige wieder einschalten.</div>';
-        } elseif ($detailId > 0) {
-            self::view('submission-detail', ['submission' => $detail]);
-        } else {
-            self::view('submissions', [
-                'filters' => $filters,
-                'result' => $storage->list_submissions($filters, $page, self::PER_PAGE),
-                'pageNumber' => $page,
-                'perPage' => self::PER_PAGE,
-                'landingpages' => $storage->all_landingpages(),
-                'exports' => CMS_Beratung_Integrations::privacy_exports(),
-            ]);
-        }
-        self::close_layout();
-    }
-
-    public static function render_import_export(): void
-    {
-        $storage = CMS_Beratung_Storage::instance();
-        $notice = '';
-        $error = '';
-        if (self::is_post()) {
-            $action = (string) ($_POST['beratung_admin_action'] ?? '');
-            if (!self::verify_nonce('beratung_import_export')) {
-                $error = 'Sicherheitsprüfung fehlgeschlagen. Bitte die Seite neu laden.';
-            } elseif ($action === 'export_landingpage') {
-                $exportPage = $storage->get_landingpage(max(0, (int) ($_POST['export_id'] ?? 0)));
-                if ($exportPage === null) {
-                    $error = 'Bitte eine Landingpage für den Export wählen.';
-                } else {
-                    self::send_download('landingpage-' . CMS_Beratung_Settings::slug((string) ($exportPage['slug'] ?? 'beratung')) . '-' . date('Ymd') . '.json', 'application/json; charset=utf-8', CMS_Beratung_Import_Export::export_json($exportPage));
-                }
-            } elseif ($action === 'export_config') {
-                self::send_download('cms-beratung-konfiguration-' . date('Ymd') . '.json', 'application/json; charset=utf-8', self::config_export_json());
-            } elseif ($action === 'import_json') {
-                try {
-                    $raw = is_array($_FILES['import_file'] ?? null) ? CMS_Beratung_Import_Export::read_import_file($_FILES['import_file']) : '';
-                    if ($raw === '') {
-                        $raw = is_scalar($_POST['import_json'] ?? null) ? (string) $_POST['import_json'] : '';
-                    }
-                    $payload = CMS_Beratung_Import_Export::decode_import_json($raw);
-                    if (!empty($_POST['skip_images'])) {
-                        $payload = self::strip_import_images($payload);
-                    }
-                    $mode = (string) ($_POST['import_mode'] ?? 'new');
-                    $overwriteId = max(0, (int) ($_POST['overwrite_id'] ?? 0));
-                    if ($mode === 'overwrite' && ($overwriteId <= 0 || $storage->get_landingpage($overwriteId) === null)) {
-                        throw new \InvalidArgumentException('Bitte die Landingpage wählen, die überschrieben werden soll.');
-                    }
-                    $payload['id'] = $mode === 'overwrite' ? $overwriteId : 0;
-                    $payload['status'] = 'draft';
-                    $originalSlug = (string) ($payload['slug'] ?? 'beratung');
-                    $newId = $storage->save_landingpage($payload);
-                    $imported = $storage->get_landingpage($newId);
-                    $newSlug = (string) ($imported['slug'] ?? $originalSlug);
-                    $notice = ($payload['id'] > 0 ? 'Landingpage überschrieben (Status: Entwurf).' : 'Landingpage als neuer Entwurf importiert.')
-                        . ' ID ' . $newId . ', ' . count((array) ($imported['sections'] ?? [])) . ' Bereiche.'
-                        . ($newSlug !== $originalSlug ? ' Slug-Konflikt erkannt, neuer Slug: ' . $newSlug : '');
-                } catch (\Throwable $e) {
-                    $error = 'Import fehlgeschlagen: ' . $e->getMessage();
-                }
-            } elseif ($action === 'import_config') {
-                try {
-                    $notice = self::import_config(is_array($_FILES['config_file'] ?? null) ? CMS_Beratung_Import_Export::read_import_file($_FILES['config_file']) : '');
-                } catch (\Throwable $e) {
-                    $error = 'Import der Konfiguration fehlgeschlagen: ' . $e->getMessage();
-                }
-            }
-        }
-        $previewId = max(0, (int) ($_GET['export'] ?? 0));
-        $previewPage = $previewId > 0 ? $storage->get_landingpage($previewId) : null;
-        self::open_layout('cms-beratung-import-export');
-        self::page_header('Import und Export', 'Landingpages und Konfiguration als JSON sichern, übertragen und wiederherstellen.');
-        self::render_alerts($notice, $error);
-        self::view('import-export', [
-            'landingpages' => $storage->all_landingpages(),
-            'previewPage' => $previewPage,
-            'previewJson' => $previewPage !== null ? CMS_Beratung_Import_Export::export_json($previewPage) : '',
-        ]);
-        self::close_layout();
-    }
-
-    public static function render_help(): void
-    {
-        self::open_layout('cms-beratung-help');
-        self::page_header('Hilfe und Dokumentation', 'Routing, Bereiche, SEO, Datenschutz und Sicherheit im Überblick.');
-        self::view('help');
-        self::close_layout();
-    }
-
-    // ─── Aktionen ──────────────────────────────────────────────────────────
-
-    private static function handle_landingpage_actions(): void
-    {
-        if (!self::is_post() || (string) ($_POST['beratung_admin_action'] ?? '') !== 'landingpage_action') {
-            return;
-        }
-        $back = self::list_query_params();
-        if (!self::verify_nonce('beratung_landingpage_action')) {
-            self::redirect('cms-beratung-landingpages', $back + ['notice' => 'csrf']);
-        }
-        $storage = CMS_Beratung_Storage::instance();
-        $rowAction = (string) ($_POST['row_action'] ?? '');
-        if ($rowAction !== '' && preg_match('/^(publish|draft|duplicate|delete|export):(\d+)$/', $rowAction, $m) === 1) {
-            $id = (int) $m[2];
-            $result = match ($m[1]) {
-                'publish' => $storage->update_status($id, 'published') ? 'updated' : 'failed',
-                'draft' => $storage->update_status($id, 'draft') ? 'updated' : 'failed',
-                'duplicate' => $storage->duplicate_landingpage($id) > 0 ? 'duplicated' : 'failed',
-                'delete' => $storage->delete_landingpage($id) ? 'deleted' : 'failed',
-                default => 'failed',
-            };
-            if ($m[1] === 'export') {
-                $page = $storage->get_landingpage($id);
-                if ($page !== null) {
-                    self::send_download('landingpage-' . CMS_Beratung_Settings::slug((string) ($page['slug'] ?? 'beratung')) . '-' . date('Ymd') . '.json', 'application/json; charset=utf-8', CMS_Beratung_Import_Export::export_json($page));
-                }
-                $result = 'notfound';
-            }
-            self::redirect('cms-beratung-landingpages', $back + ['notice' => $result]);
-        }
-
-        $ids = CMS_Beratung_Storage::clean_ids(is_array($_POST['ids'] ?? null) ? $_POST['ids'] : []);
-        $bulk = (string) ($_POST['bulk_action'] ?? '');
-        if ($ids === []) {
-            self::redirect('cms-beratung-landingpages', $back + ['notice' => 'none']);
-        }
-        $count = match ($bulk) {
-            'publish' => $storage->update_status_bulk($ids, 'published'),
-            'draft' => $storage->update_status_bulk($ids, 'draft'),
-            'private' => $storage->update_status_bulk($ids, 'private'),
-            'archived' => $storage->update_status_bulk($ids, 'archived'),
-            'delete' => $storage->delete_landingpages($ids),
-            default => -1,
-        };
-        self::redirect('cms-beratung-landingpages', $back + ['notice' => $count < 0 ? 'failed' : ($bulk === 'delete' ? 'deleted' : 'updated'), 'count' => max(0, $count)]);
-    }
-
-    private static function handle_submission_actions(): void
-    {
-        if (!self::is_post()) {
-            return;
-        }
-        $action = (string) ($_POST['beratung_admin_action'] ?? '');
-        $back = self::list_query_params(['status', 'landingpage', 'q', 'p']);
-        if (!self::verify_nonce('beratung_submissions')) {
-            self::redirect('cms-beratung-submissions', $back + ['notice' => 'csrf']);
-        }
-        $storage = CMS_Beratung_Storage::instance();
-        if ($action === 'update_submission') {
-            $id = max(0, (int) ($_POST['id'] ?? 0));
-            $ok = $storage->update_submission($id, (string) ($_POST['status'] ?? ''), mb_substr(is_scalar($_POST['internal_note'] ?? null) ? (string) $_POST['internal_note'] : '', 0, 5000));
-            self::redirect('cms-beratung-submissions', ['id' => $id, 'notice' => $ok ? 'saved' : 'failed']);
-        }
-        if ($action === 'delete_submission') {
-            $count = $storage->delete_submissions([(int) ($_POST['id'] ?? 0)]);
-            self::redirect('cms-beratung-submissions', ['notice' => $count > 0 ? 'deleted' : 'failed']);
-        }
-        if ($action === 'export_csv') {
-            self::export_submissions_csv([
-                'status' => (string) ($_POST['status'] ?? ''),
-                'landingpage_id' => max(0, (int) ($_POST['landingpage'] ?? 0)),
-                'search' => mb_substr(trim(is_scalar($_POST['q'] ?? null) ? (string) $_POST['q'] : ''), 0, 120),
-            ]);
-        }
-        if ($action === 'privacy_export') {
-            $name = (string) ($_POST['file'] ?? '');
-            $path = CMS_Beratung_Integrations::privacy_export_path($name);
-            if ($path === null) {
-                self::redirect('cms-beratung-submissions', ['notice' => 'notfound']);
-            }
-            if (!empty($_POST['delete'])) {
-                CMS_Beratung_Integrations::delete_privacy_export($name);
-                self::redirect('cms-beratung-submissions', ['notice' => 'deleted']);
-            }
-            self::send_download($name, 'application/json; charset=utf-8', (string) file_get_contents($path));
-        }
-        if ($action === 'bulk_submissions') {
-            $ids = CMS_Beratung_Storage::clean_ids(is_array($_POST['ids'] ?? null) ? $_POST['ids'] : []);
-            if ($ids === []) {
-                self::redirect('cms-beratung-submissions', $back + ['notice' => 'none']);
-            }
-            $bulk = (string) ($_POST['bulk_action'] ?? '');
-            if ($bulk === 'delete') {
-                $count = $storage->delete_submissions($ids);
-                self::redirect('cms-beratung-submissions', $back + ['notice' => 'deleted', 'count' => $count]);
-            }
-            $count = array_key_exists($bulk, CMS_Beratung_Storage::submission_statuses()) ? $storage->update_submission_status_bulk($ids, $bulk) : -1;
-            self::redirect('cms-beratung-submissions', $back + ['notice' => $count < 0 ? 'failed' : 'updated', 'count' => max(0, $count)]);
-        }
-    }
-
-    /** @param array{status?:string,landingpage_id?:int,search?:string} $filters */
-    private static function export_submissions_csv(array $filters): never
-    {
-        $statuses = CMS_Beratung_Storage::submission_statuses();
-        $cell = static function (mixed $value): string {
-            $value = str_replace(["\r\n", "\r"], "\n", (string) $value);
-            if ($value !== '' && preg_match('/^[=+\-@\t\r]/', $value) === 1) {
-                $value = "'" . $value; // Schutz vor Formel-Injection in Tabellenprogrammen
-            }
-            return '"' . str_replace('"', '""', $value) . '"';
-        };
-        $lines = [implode(';', array_map($cell, ['ID', 'Datum', 'Landingpage', 'Status', 'Name', 'E-Mail', 'Telefon', 'Unternehmen', 'Thema', 'Wunschleistung', 'Nachricht', 'Interne Notiz']))];
-        foreach (CMS_Beratung_Storage::instance()->iterate_submissions($filters) as $row) {
-            $lines[] = implode(';', array_map($cell, [
-                (int) $row['id'], (string) ($row['created_at'] ?? ''), (string) ($row['landingpage_title'] ?? ''),
-                $statuses[(string) ($row['status'] ?? '')] ?? (string) ($row['status'] ?? ''),
-                (string) ($row['sender_name'] ?? ''), (string) ($row['sender_email'] ?? ''), (string) ($row['phone'] ?? ''),
-                (string) ($row['company'] ?? ''), (string) ($row['topic'] ?? ''), (string) ($row['desired_service'] ?? ''),
-                (string) ($row['message'] ?? ''), (string) ($row['internal_note'] ?? ''),
-            ]));
-        }
-        self::send_download('beratung-anfragen-' . date('Ymd-His') . '.csv', 'text/csv; charset=utf-8', "\xEF\xBB\xBF" . implode("\r\n", $lines) . "\r\n");
-    }
-
-    /** Konfiguration (globale Einstellungen, M365-FAQs, eigene Presets) als JSON. */
-    private static function config_export_json(): string
-    {
-        $settings = array_intersect_key(CMS_Beratung_Settings::all(), CMS_Beratung_Settings::defaults());
-        $presets = [];
-        foreach (CMS_Beratung_Storage::instance()->all_presets() as $preset) {
-            if (empty($preset['is_system'])) {
-                $presets[] = ['name' => (string) $preset['name'], 'description' => (string) ($preset['description'] ?? ''), 'design' => json_decode((string) ($preset['design_json'] ?? '{}'), true) ?: []];
-            }
-        }
-        return json_encode([
-            'schema' => 'cms-beratung-config/v1',
-            'exported_at' => date('c'),
-            'plugin_version' => CMS_BERATUNG_VERSION,
-            'settings' => $settings,
-            'm365_faqs' => CMS_Beratung_Storage::instance()->m365_faq_config(),
-            'presets' => $presets,
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}';
-    }
-
-    private static function import_config(string $raw): string
-    {
-        if (trim($raw) === '') {
-            throw new \InvalidArgumentException('Bitte eine Konfigurationsdatei (.json) wählen.');
-        }
-        $data = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
-        if (!is_array($data) || ($data['schema'] ?? '') !== 'cms-beratung-config/v1') {
-            throw new \InvalidArgumentException('Die Datei ist keine CMS-Beratung-Konfiguration (schema cms-beratung-config/v1).');
-        }
-        $summary = [];
-        if (is_array($data['settings'] ?? null)) {
-            $keys = array_values(array_intersect(array_keys(CMS_Beratung_Settings::defaults()), array_keys($data['settings'])));
-            CMS_Beratung_Settings::save(CMS_Beratung_Settings::sanitize_from_post($data['settings'], $keys));
-            $summary[] = count($keys) . ' Einstellungen';
-        }
-        if (is_array($data['m365_faqs'] ?? null)) {
-            $faq = $data['m365_faqs'];
-            $items = is_array($faq['items'] ?? null) ? array_values($faq['items']) : [];
-            $post = $faq;
-            foreach ($items as $index => $item) {
-                if (!is_array($item)) {
-                    continue;
-                }
-                $post['faq_question'][$index] = (string) ($item['question'] ?? '');
-                $post['faq_answer'][$index] = (string) ($item['answer'] ?? '');
-                $post['faq_sort_order'][$index] = (int) ($item['sort_order'] ?? 0);
-                if (!empty($item['enabled'])) {
-                    $post['faq_enabled'][$index] = '1';
-                }
-                if (!empty($item['default_open'])) {
-                    $post['faq_default_open'][$index] = '1';
-                }
-            }
-            CMS_Beratung_Storage::instance()->save_m365_faq_config($post);
-            $summary[] = count($items) . ' FAQs';
-        }
-        $presetCount = 0;
-        foreach (is_array($data['presets'] ?? null) ? array_slice($data['presets'], 0, 50) : [] as $preset) {
-            if (is_array($preset) && trim((string) ($preset['name'] ?? '')) !== '') {
-                CMS_Beratung_Storage::instance()->create_custom_preset((string) $preset['name'], (string) ($preset['description'] ?? ''), is_array($preset['design'] ?? null) ? array_map('strval', array_filter($preset['design'], 'is_scalar')) : []);
-                $presetCount++;
-            }
-        }
-        if ($presetCount > 0) {
-            $summary[] = $presetCount . ' Presets';
-        }
-        return 'Konfiguration importiert: ' . ($summary !== [] ? implode(', ', $summary) : 'keine Daten') . '.';
-    }
-
-    /** Download ohne Layout: Ausgabepuffer des Routers verwerfen, Header setzen, beenden. */
-    private static function send_download(string $filename, string $contentType, string $body): never
-    {
-        while (ob_get_level() > 0) {
-            ob_end_clean();
-        }
-        $filename = preg_replace('/[^A-Za-z0-9._-]+/', '-', $filename) ?: 'download';
-        header('Content-Type: ' . $contentType);
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Content-Length: ' . strlen($body));
-        header('X-Content-Type-Options: nosniff');
-        header('Cache-Control: no-store, max-age=0');
-        echo $body;
-        exit;
-    }
-
-    // ─── Medien-Upload ─────────────────────────────────────────────────────
-
-    /** Erlaubte Endungen und ihre MIME-Typen (finfo). */
-    private const UPLOAD_MIME = [
-        'jpg' => ['image/jpeg'],
-        'jpeg' => ['image/jpeg'],
-        'png' => ['image/png'],
-        'gif' => ['image/gif'],
-        'webp' => ['image/webp'],
-        'bmp' => ['image/bmp', 'image/x-ms-bmp'],
-        'ico' => ['image/vnd.microsoft.icon', 'image/x-icon'],
-        'svg' => ['image/svg+xml', 'text/xml', 'application/xml', 'text/plain', 'text/html'],
-    ];
-
-    private const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
-
     public static function handle_media_upload(): void
     {
-        if (!self::has_access()) {
-            self::json_response(['success' => 0, 'message' => 'Keine Berechtigung.'], 403);
-        }
+        self::check_access();
 
         $token = (string) ($_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
         if (!class_exists('CMS\\Security') || !\CMS\Security::instance()->verifyPersistentToken($token, 'editorjs_media')) {
@@ -801,32 +150,37 @@ final class CMS_Beratung_Admin_Pages
             self::json_response(['success' => 0, 'message' => 'Keine gültige Bilddatei empfangen.'], 400);
         }
 
-        $size = (int) ($file['size'] ?? 0);
-        if ($size <= 0 || $size > self::UPLOAD_MAX_BYTES) {
-            self::json_response(['success' => 0, 'message' => 'Die Bilddatei ist leer oder größer als 10 MB.'], 400);
-        }
-
         $tmpName = (string) ($file['tmp_name'] ?? '');
         $originalName = (string) ($file['name'] ?? 'beratung-bild');
         $extension = strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION));
-        if (!isset(self::UPLOAD_MIME[$extension]) || !self::uploaded_file_matches($tmpName, $extension)) {
-            self::json_response(['success' => 0, 'message' => 'Nur Bilddateien (JPG, PNG, GIF, WebP, BMP, ICO, SVG) sind erlaubt.'], 400);
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'svg'];
+        if (!in_array($extension, $allowedExtensions, true) || !self::uploaded_file_is_image($tmpName)) {
+            self::json_response(['success' => 0, 'message' => 'Nur Bilddateien sind erlaubt.'], 400);
         }
 
         if ($extension === 'svg' && !self::svg_upload_is_safe($tmpName)) {
             self::json_response(['success' => 0, 'message' => 'SVG enthält nicht erlaubte aktive Inhalte.'], 400);
         }
 
-        $targetDir = rtrim((string) UPLOAD_PATH, '/\\') . DIRECTORY_SEPARATOR . 'beratung';
+        $size = (int) ($file['size'] ?? 0);
+        if ($size <= 0 || $size > 10 * 1024 * 1024) {
+            self::json_response(['success' => 0, 'message' => 'Die Bilddatei ist leer oder größer als 10 MB.'], 400);
+        }
+
+        $uploadRoot = rtrim((string) UPLOAD_PATH, '/\\');
+        $targetDir = $uploadRoot . DIRECTORY_SEPARATOR . 'beratung';
         if (!is_dir($targetDir) && !mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
             self::json_response(['success' => 0, 'message' => 'Der Ordner /uploads/beratung konnte nicht erstellt werden.'], 500);
         }
 
-        $filename = self::random_upload_filename($targetDir, self::sanitize_upload_basename((string) pathinfo($originalName, PATHINFO_FILENAME)), $extension);
+        $baseName = self::sanitize_upload_basename((string) pathinfo($originalName, PATHINFO_FILENAME));
+        $filename = self::unique_upload_filename($targetDir, $baseName, $extension);
         $targetPath = $targetDir . DIRECTORY_SEPARATOR . $filename;
+
         if (!move_uploaded_file($tmpName, $targetPath)) {
             self::json_response(['success' => 0, 'message' => 'Die Datei konnte nicht gespeichert werden.'], 500);
         }
+
         @chmod($targetPath, 0644);
 
         $relativePath = 'beratung/' . $filename;
@@ -835,92 +189,1529 @@ final class CMS_Beratung_Admin_Pages
             'success' => 1,
             'url' => $url,
             'path' => $relativePath,
-            'file' => ['url' => $url, 'path' => $relativePath, 'name' => $filename, 'size' => filesize($targetPath) ?: $size, 'extension' => $extension],
+            'file' => [
+                'url' => $url,
+                'path' => $relativePath,
+                'name' => $filename,
+                'size' => filesize($targetPath) ?: $size,
+                'extension' => $extension,
+            ],
             'message' => 'Bild wurde nach /uploads/beratung hochgeladen.',
         ]);
     }
 
-    /** MIME-Prüfung per finfo gegen die Endung; Rastergrafiken müssen zusätzlich als Bild lesbar sein. */
-    private static function uploaded_file_matches(string $tmpName, string $extension): bool
+    public static function render_dashboard(): void
     {
-        if ($tmpName === '' || !is_file($tmpName)) {
-            return false;
-        }
-        $mime = '';
-        if (function_exists('finfo_open')) {
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            if ($finfo !== false) {
-                // finfo-Objekt nicht explizit schließen (seit PHP 8.5 veraltet); es wird automatisch freigegeben.
-                $mime = strtolower((string) finfo_file($finfo, $tmpName));
+        self::render_with_layout('cms-beratung-dashboard', function (): void {
+            $storage = CMS_Beratung_Storage::instance();
+            $settings = CMS_Beratung_Settings::all();
+            $counts = $storage->landingpage_counts();
+            $subCounts = $storage->submission_counts();
+            $new = (int) ($subCounts['new'] ?? 0);
+            $schemaOk = CMS_Beratung_Installer::stored_version() === CMS_BERATUNG_DB_VERSION;
+            $recipient = (string) ($settings['contact_recipient_email'] ?? '');
+            $autoDelete = ($settings['auto_delete_submissions_enabled'] ?? '0') === '1';
+            $faq = $storage->m365_faq_config();
+
+            $activity = [];
+            foreach (array_slice($storage->find_submissions('', 0, '', 5), 0, 5) as $item) {
+                $activity[] = [
+                    'title' => (string) ($item['sender_name'] ?? 'Anfrage') . ((string) ($item['topic'] ?? '') !== '' ? ' – ' . (string) $item['topic'] : ''),
+                    'url' => self::admin_url('cms-beratung-submissions', ['view_id' => (int) $item['id']]),
+                    'meta' => 'Anfrage · ' . self::format_datetime((string) ($item['created_at'] ?? '')) . ((string) ($item['landingpage_title'] ?? '') !== '' ? ' · ' . (string) $item['landingpage_title'] : ''),
+                    'badge' => CMS_Beratung_Storage::submission_statuses()[(string) ($item['status'] ?? 'new')] ?? (string) ($item['status'] ?? ''),
+                    'tone' => ($item['status'] ?? '') === 'new' ? 'warning' : 'info',
+                ];
             }
-        }
-        if ($mime !== '' && !in_array($mime, self::UPLOAD_MIME[$extension], true)) {
-            return false;
-        }
-        if ($extension === 'svg') {
-            return true; // Inhalt prüft svg_upload_is_safe()
-        }
-        if ($extension === 'ico') {
-            return $mime !== '';
-        }
-        return @getimagesize($tmpName) !== false;
+            foreach (array_slice($storage->all_landingpages(), 0, 3) as $page) {
+                $activity[] = [
+                    'title' => (string) ($page['internal_title'] ?? 'Landingpage'),
+                    'url' => self::admin_url('cms-beratung-new', ['id' => (int) $page['id']]),
+                    'meta' => 'Landingpage · geändert ' . self::format_datetime((string) ($page['updated_at'] ?? '')),
+                    'badge' => CMS_Beratung_Settings::statuses()[(string) ($page['status'] ?? 'draft')] ?? (string) ($page['status'] ?? ''),
+                    'tone' => ($page['status'] ?? '') === 'published' ? 'success' : 'muted',
+                ];
+            }
+
+            echo cms_plugin_dashboard([
+                'intro' => 'Beratungs-Landingpages für Microsoft 365, Copilot, Security und Governance bauen, veröffentlichen und Anfragen bearbeiten.',
+                'actions' => [
+                    ['label' => 'Neue Landingpage', 'url' => self::admin_url('cms-beratung-new'), 'icon' => 'ti ti-plus', 'primary' => true, 'description' => 'Mit einer von fünf Vorlagen starten.'],
+                    ['label' => 'Neue Anfragen', 'url' => self::admin_url('cms-beratung-submissions', ['status' => 'new']), 'icon' => 'ti ti-inbox', 'description' => $new . ' unbearbeitete Formular-Anfrage(n).'],
+                    ['label' => 'Globale Einstellungen', 'url' => self::admin_url('cms-beratung-settings'), 'icon' => 'ti ti-settings', 'description' => 'Design, Kontakt, Datenschutz, SEO.'],
+                    ['label' => 'Import & Export', 'url' => self::admin_url('cms-beratung-import-export'), 'icon' => 'ti ti-transfer', 'description' => 'Landingpages als JSON übertragen.'],
+                ],
+                'checks' => [
+                    ['label' => 'Datenbank-Schema', 'status' => $schemaOk ? 'ok' : 'warning', 'value' => $schemaOk ? 'v' . CMS_BERATUNG_DB_VERSION : 'Migration ausstehend'],
+                    ['label' => 'Veröffentlichte Landingpages', 'status' => $counts['published'] > 0 ? 'ok' : 'info', 'value' => $counts['published'] . ' / ' . $counts['total'], 'url' => self::admin_url('cms-beratung-landingpages', ['status' => 'published'])],
+                    ['label' => 'Empfänger für Anfragen', 'status' => $recipient !== '' ? 'ok' : 'warning', 'value' => $recipient !== '' ? $recipient : 'nicht gesetzt', 'hint' => $recipient !== '' ? '' : 'Ohne Empfänger werden Anfragen nur gespeichert.', 'url' => self::admin_url('cms-beratung-settings')],
+                    ['label' => 'Löschfrist Anfragen', 'status' => $autoDelete ? 'ok' : 'warning', 'value' => $autoDelete ? (int) ($settings['retention_days'] ?? 180) . ' Tage' : 'aus', 'hint' => 'Formular-Anfragen enthalten personenbezogene Daten.', 'url' => self::admin_url('cms-beratung-settings')],
+                    ['label' => 'Zentrale M365 FAQs', 'status' => !empty($faq['enabled']) ? 'ok' : 'muted', 'value' => count(is_array($faq['items'] ?? null) ? $faq['items'] : []) . ' Fragen', 'url' => self::admin_url('cms-beratung-faqs')],
+                    ['label' => 'Spam-Schutz (Honeypot)', 'status' => ($settings['honeypot_enabled'] ?? '1') === '1' ? 'ok' : 'warning', 'value' => ($settings['honeypot_enabled'] ?? '1') === '1' ? 'aktiv' : 'aus'],
+                ],
+                'activity' => [
+                    'heading' => 'Neueste Anfragen & Landingpages',
+                    'items' => $activity,
+                    'empty' => 'Noch keine Landingpages oder Anfragen.',
+                    'more_url' => self::admin_url('cms-beratung-submissions'),
+                    'more_label' => 'Alle Anfragen',
+                ],
+            ]);
+        });
     }
 
-    private static function svg_upload_is_safe(string $tmpName): bool
+    public static function render_landingpages(): void
     {
-        $content = (string) @file_get_contents($tmpName, false, null, 0, 1024 * 1024);
-        if ($content === '' || preg_match('#<svg[\s>]#i', $content) !== 1) {
-            return false;
+        self::handle_landingpage_actions();
+        self::render_with_layout('cms-beratung-landingpages', function (): void {
+            $statuses = CMS_Beratung_Settings::statuses();
+            $statusFilter = (string) ($_GET['status'] ?? '');
+            $search = mb_strtolower(trim(mb_substr((string) ($_GET['q'] ?? ''), 0, 100)));
+            $pages = array_values(array_filter(CMS_Beratung_Storage::instance()->all_landingpages(), static function (array $page) use ($statusFilter, $search): bool {
+                if ($statusFilter !== '' && (string) ($page['status'] ?? '') !== $statusFilter) {
+                    return false;
+                }
+                return $search === '' || str_contains(mb_strtolower((string) ($page['internal_title'] ?? '') . ' ' . (string) ($page['public_title'] ?? '') . ' ' . (string) ($page['slug'] ?? '')), $search);
+            }));
+            echo '<div class="admin-page-header"><div><h2>Landingpages</h2><p>Beratungs-Landingpages bearbeiten, veröffentlichen, duplizieren und exportieren. Veröffentlichte Seiten sind unter /beratung/&lt;slug&gt; erreichbar.</p></div><div class="header-actions"><a class="btn btn-primary" href="' . self::esc(self::admin_url('cms-beratung-new')) . '"><i class="ti ti-plus" aria-hidden="true"></i> Landingpage anlegen</a></div></div>';
+            echo '<form method="get" action="' . self::esc(self::admin_url('cms-beratung-landingpages')) . '" class="beratung-toolbar" role="search" aria-label="Landingpages filtern">'
+                . '<div class="beratung-toolbar__field"><label class="form-label" for="bl-q">Suche</label><input id="bl-q" class="form-control" type="search" name="q" value="' . self::esc($search) . '" placeholder="Titel oder Slug"></div>'
+                . '<div class="beratung-toolbar__field"><label class="form-label" for="bl-status">Status</label><select id="bl-status" class="form-select" name="status"><option value="">Alle</option>';
+            foreach ($statuses as $key => $label) {
+                echo '<option value="' . self::esc((string) $key) . '"' . ($statusFilter === (string) $key ? ' selected' : '') . '>' . self::esc((string) $label) . '</option>';
+            }
+            echo '</select></div><div class="beratung-toolbar__actions"><button class="btn btn-secondary" type="submit"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>'
+                . ($statusFilter !== '' || $search !== '' ? '<a class="btn btn-link" href="' . self::esc(self::admin_url('cms-beratung-landingpages')) . '">Zurücksetzen</a>' : '') . '</div></form>';
+            if ($pages === []) {
+                echo '<div class="admin-card"><div class="empty-state"><p><strong>Keine Landingpages gefunden.</strong></p><p class="beratung-muted">Starte mit einer Vorlage und speichere die Seite als Entwurf.</p><a class="btn btn-primary" href="' . self::esc(self::admin_url('cms-beratung-new')) . '">Landingpage anlegen</a></div></div>';
+                return;
+            }
+            echo '<div class="beratung-landingpage-list" role="list">';
+            foreach ($pages as $page) {
+                $id = (int) ($page['id'] ?? 0);
+                $status = (string) ($page['status'] ?? 'draft');
+                $publicUrl = $status === 'published' ? self::public_landingpage_url((string) ($page['slug'] ?? '')) : '';
+                $publicLink = $publicUrl !== '' ? '<a target="_blank" rel="noopener noreferrer" href="' . self::esc($publicUrl) . '">Publicseite</a>' : '';
+                $hero = is_array($page['hero'] ?? null) ? $page['hero'] : [];
+                $standaloneUrl = $status === 'published' && !empty($hero['standalone_header_enabled']) && !empty($hero['standalone_header_slug']) ? self::public_landingpage_url((string) $hero['standalone_header_slug']) : '';
+                $standaloneLink = $standaloneUrl !== '' ? '<a target="_blank" rel="noopener noreferrer" href="' . self::esc($standaloneUrl) . '">Standalone</a>' : '';
+                $template = CMS_Beratung_Settings::templates()[(string) ($page['template'] ?? 'standard')] ?? (string) ($page['template'] ?? 'standard');
+                echo '<article class="beratung-landingpage-item" role="listitem">';
+                echo '<div class="beratung-landingpage-item__main"><div class="beratung-landingpage-item__title"><strong>' . self::esc((string) ($page['internal_title'] ?? 'Ohne internen Titel')) . '</strong><span class="beratung-status beratung-status--' . self::esc($status) . '">' . self::esc($statuses[$status] ?? $status) . '</span></div>';
+                echo '<p>' . self::esc((string) ($page['public_title'] ?? '')) . '</p><div class="beratung-landingpage-item__meta"><span><b>Slug</b> <code>' . self::esc((string) ($page['slug'] ?? '')) . '</code></span><span><b>Template</b> ' . self::esc($template) . '</span><span><b>Geändert</b> ' . self::esc((string) ($page['updated_at'] ?? '')) . '</span><span><b>Erstellt von</b> ' . self::esc((string) ($page['created_by'] ?? 'System')) . '</span></div></div>';
+                echo '<div class="beratung-actions beratung-landingpage-item__actions">'
+                    . '<a class="is-primary" href="' . self::esc(self::admin_url('cms-beratung-new', ['id' => $id])) . '">Bearbeiten</a>'
+                    . '<a target="_blank" rel="noopener noreferrer" href="' . self::esc(self::preview_url($id)) . '">Vorschau</a>'
+                    . $publicLink
+                    . $standaloneLink
+                    . '<a href="' . self::esc(self::admin_url('cms-beratung-import-export', ['export' => $id])) . '">Export</a>'
+                    . self::action_form($id, 'duplicate', 'Duplizieren')
+                    . ($status === 'published' ? self::action_form($id, 'deactivate', 'Deaktivieren') : self::action_form($id, 'publish', 'Veröffentlichen'))
+                    . self::action_form($id, 'delete', 'Löschen', true)
+                    . '</div>';
+                echo '</article>';
+            }
+            echo '</div>';
+        });
+    }
+
+    public static function render_new_page(): void
+    {
+        $storage = CMS_Beratung_Storage::instance();
+        $id = max(0, (int) ($_GET['id'] ?? 0));
+        $notice = '';
+        $error = '';
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && (string) ($_POST['beratung_admin_action'] ?? '') === 'save_landingpage') {
+            self::check_access();
+            if (!self::verify_nonce('beratung_save_landingpage')) {
+                $error = 'Sicherheitscheck fehlgeschlagen.';
+            } else {
+                try {
+                    $savedId = $storage->save_landingpage($_POST);
+                    self::redirect('cms-beratung-new', ['id' => $savedId, 'saved' => 1]);
+                } catch (\Throwable $e) {
+                    $error = 'Landingpage konnte nicht gespeichert werden: ' . $e->getMessage();
+                }
+            }
         }
-        $checks = [
-            '#<!(?:DOCTYPE|ENTITY)#i',
-            '#<(script|foreignObject|iframe|object|embed|form|input|button|textarea|select|link|meta|base|style|animate|set|handler)\b#i',
-            '/\son[a-z]+\s*=/i',
-            '/(?:href|xlink:href|src)\s*=\s*(["\']?)\s*(?:javascript|vbscript|data|https?):/i',
-            '/url\s*\(\s*["\']?\s*(?:javascript|data|https?):/i',
-            '/<\?xml-stylesheet/i',
+
+        self::render_with_layout('cms-beratung-new', function () use ($storage, $id, $notice, $error): void {
+            $page = $id > 0 ? $storage->get_landingpage($id) : null;
+            if ($page === null) {
+                $page = self::default_landingpage((string) ($_GET['proposal'] ?? 'microsoft-365-copilot'));
+            }
+            if (!empty($_GET['saved'])) {
+                $notice = 'Landingpage gespeichert.';
+            }
+            self::render_notice($notice, $error);
+            if ($id <= 0) {
+                self::render_landingpage_proposals((string) ($_GET['proposal'] ?? 'microsoft-365-copilot'));
+            }
+            self::render_landingpage_form($page);
+        });
+    }
+
+    public static function render_settings(): void
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && (string) ($_POST['beratung_admin_action'] ?? '') === 'save_settings') {
+            self::check_access();
+            if (!self::verify_nonce('beratung_settings')) {
+                self::flash(false, 'Sicherheitsprüfung fehlgeschlagen.');
+            } else {
+                CMS_Beratung_Settings::save(CMS_Beratung_Settings::sanitize_from_post($_POST));
+                self::flash(true, 'Globale Einstellungen gespeichert.');
+            }
+            self::redirect('cms-beratung-settings');
+        }
+
+        self::render_with_layout('cms-beratung-settings', function (): void {
+            echo '<div class="admin-page-header"><div><h2>Globale Einstellungen</h2><p>Design-Standards, Kontaktformular, Datenschutz, SEO und Tracking für alle Landingpages.</p></div></div>';
+            self::render_settings_form(CMS_Beratung_Settings::all());
+        });
+    }
+
+    /** Farbfelder eines eigenen Presets (Teilmenge der globalen Design-Einstellungen). */
+    private const PRESET_FIELDS = [
+        'primary_color' => 'Primärfarbe', 'secondary_color' => 'Sekundärfarbe', 'accent_color' => 'Akzentfarbe',
+        'background_color' => 'Hintergrund', 'text_color' => 'Text', 'heading_color' => 'Überschriften',
+        'button_color' => 'Button', 'button_text_color' => 'Button-Text', 'card_background_color' => 'Card-Hintergrund',
+        'card_border_color' => 'Card-Rahmen',
+    ];
+
+    public static function render_presets(): void
+    {
+        $storage = CMS_Beratung_Storage::instance();
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && (string) ($_POST['beratung_admin_action'] ?? '') === 'preset_action') {
+            self::check_access();
+            if (!self::verify_nonce('beratung_presets')) {
+                self::flash(false, 'Sicherheitsprüfung fehlgeschlagen.');
+                self::redirect('cms-beratung-presets');
+            }
+            $id = max(0, (int) ($_POST['preset_id'] ?? 0));
+            try {
+                switch ((string) ($_POST['preset_action'] ?? '')) {
+                    case 'save':
+                        $design = [];
+                        $defaults = CMS_Beratung_Settings::defaults();
+                        foreach (array_keys(self::PRESET_FIELDS) as $field) {
+                            $design[$field] = CMS_Beratung_Settings::color((string) ($_POST[$field] ?? ''), (string) ($defaults[$field] ?? '#2563eb'));
+                        }
+                        $storage->save_preset($id, (string) ($_POST['name'] ?? ''), (string) ($_POST['description'] ?? ''), $design);
+                        self::flash(true, $id > 0 ? 'Preset aktualisiert.' : 'Preset angelegt.');
+                        break;
+                    case 'delete':
+                        $ok = $storage->delete_preset($id);
+                        self::flash($ok, $ok ? 'Preset gelöscht.' : 'System-Presets können nicht gelöscht werden.');
+                        break;
+                    case 'apply':
+                        $preset = $storage->preset($id);
+                        $design = is_array($preset) ? json_decode((string) ($preset['design_json'] ?? '{}'), true) : null;
+                        if (!is_array($design)) {
+                            throw new \InvalidArgumentException('Preset nicht gefunden.');
+                        }
+                        $settings = CMS_Beratung_Settings::all();
+                        foreach ($design as $key => $value) {
+                            if (array_key_exists((string) $key, CMS_Beratung_Settings::defaults()) && str_contains((string) $key, 'color')) {
+                                $settings[(string) $key] = CMS_Beratung_Settings::color((string) $value, (string) ($settings[(string) $key] ?? '#2563eb'));
+                            }
+                        }
+                        CMS_Beratung_Settings::save($settings);
+                        self::flash(true, 'Preset „' . (string) ($preset['name'] ?? '') . '“ in die globalen Design-Einstellungen übernommen.');
+                        break;
+                    default:
+                        self::flash(false, 'Unbekannte Aktion.');
+                }
+            } catch (\Throwable $e) {
+                self::flash(false, $e instanceof \InvalidArgumentException ? $e->getMessage() : 'Die Aktion konnte nicht ausgeführt werden.');
+            }
+            self::redirect('cms-beratung-presets');
+        }
+
+        self::render_with_layout('cms-beratung-presets', function () use ($storage): void {
+            CMS_Beratung_Installer::ensure_for_admin_save();
+            $presets = $storage->all_presets();
+            $editId = max(0, (int) ($_GET['edit'] ?? 0));
+            $edit = $editId > 0 ? $storage->preset($editId) : null;
+            $edit = $edit !== null && empty($edit['is_system']) ? $edit : null;
+            $token = self::nonce('beratung_presets');
+            $settings = CMS_Beratung_Settings::all();
+
+            echo '<div class="admin-page-header"><div><h2>Design-Presets</h2><p>Farbsets für Landingpages. „Übernehmen“ schreibt die Farben in die globalen Design-Einstellungen; System-Presets sind schreibgeschützt.</p></div></div>';
+            echo '<div class="beratung-split"><section class="admin-card"><ul class="beratung-preset-list">';
+            foreach ($presets as $preset) {
+                $design = json_decode((string) ($preset['design_json'] ?? '{}'), true);
+                $design = is_array($design) ? $design : [];
+                $pid = (int) ($preset['id'] ?? 0);
+                echo '<li class="beratung-preset-row"><span class="beratung-swatches">';
+                foreach (['primary_color', 'secondary_color', 'accent_color', 'background_color'] as $field) {
+                    echo self::swatch((string) ($design[$field] ?? ''));
+                }
+                echo '</span><span class="beratung-preset-row__body"><strong>' . self::esc((string) ($preset['name'] ?? 'Preset')) . '</strong>'
+                    . (!empty($preset['is_system']) ? ' <span class="beratung-badge">System</span>' : '')
+                    . '<span class="beratung-muted">' . self::esc((string) ($preset['description'] ?? '')) . '</span></span><span class="beratung-row-actions">'
+                    . self::preset_form($token, $pid, 'apply', '<i class="ti ti-check" aria-hidden="true"></i> Übernehmen', 'btn-outline-primary', 'Farben dieses Presets in die globalen Design-Einstellungen übernehmen?');
+                if (empty($preset['is_system'])) {
+                    echo '<a class="btn btn-sm btn-outline-secondary" href="' . self::esc(self::admin_url('cms-beratung-presets', ['edit' => $pid])) . '" title="Bearbeiten"><i class="ti ti-pencil" aria-hidden="true"></i><span class="visually-hidden">Bearbeiten</span></a>'
+                        . self::preset_form($token, $pid, 'delete', '<i class="ti ti-trash" aria-hidden="true"></i><span class="visually-hidden">Löschen</span>', 'btn-outline-danger', 'Preset löschen?');
+                }
+                echo '</span></li>';
+            }
+            echo '</ul></section>';
+
+            $values = $edit !== null ? (json_decode((string) ($edit['design_json'] ?? '{}'), true) ?: []) : $settings;
+            echo '<section class="admin-card"><h3 class="beratung-panel-title">' . ($edit !== null ? 'Preset bearbeiten' : 'Eigenes Preset anlegen') . '</h3>'
+                . '<form method="post" class="admin-form"><input type="hidden" name="csrf_token" value="' . self::esc($token) . '"><input type="hidden" name="beratung_admin_action" value="preset_action"><input type="hidden" name="preset_action" value="save"><input type="hidden" name="preset_id" value="' . (int) ($edit['id'] ?? 0) . '">'
+                . '<div class="form-group"><label class="form-label required" for="bp-name">Name</label><input id="bp-name" class="form-control" name="name" maxlength="160" required value="' . self::esc((string) ($edit['name'] ?? '')) . '"></div>'
+                . '<div class="form-group"><label class="form-label" for="bp-desc">Beschreibung</label><input id="bp-desc" class="form-control" name="description" maxlength="500" value="' . self::esc((string) ($edit['description'] ?? '')) . '"></div><div class="beratung-color-grid">';
+            foreach (self::PRESET_FIELDS as $field => $label) {
+                echo '<label class="form-group"><span class="form-label">' . self::esc($label) . '</span><input class="form-control form-control-color" type="color" name="' . self::esc($field) . '" value="' . self::esc(CMS_Beratung_Settings::color((string) ($values[$field] ?? ''), (string) (CMS_Beratung_Settings::defaults()[$field] ?? '#2563eb'))) . '"></label>';
+            }
+            echo '</div><div class="beratung-form-actions"><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy" aria-hidden="true"></i> Preset speichern</button>'
+                . ($edit !== null ? '<a class="btn btn-link" href="' . self::esc(self::admin_url('cms-beratung-presets')) . '">Abbrechen</a>' : '<span class="beratung-muted">Vorbelegt mit den aktuellen globalen Farben.</span>')
+                . '</div></form></section></div>';
+        });
+    }
+
+    private static function preset_form(string $token, int $id, string $action, string $labelHtml, string $class, string $confirm): string
+    {
+        return '<form method="post" data-cms-confirm="' . self::esc($confirm) . '"><input type="hidden" name="csrf_token" value="' . self::esc($token) . '"><input type="hidden" name="beratung_admin_action" value="preset_action"><input type="hidden" name="preset_action" value="' . self::esc($action) . '"><input type="hidden" name="preset_id" value="' . $id . '"><button type="submit" class="btn btn-sm ' . self::esc($class) . '">' . $labelHtml . '</button></form>';
+    }
+
+    /** Farbfeld ohne style-Attribut: validierte Farbe als Klasse über nonce-geschützten <style>-Block. */
+    private static function swatch(string $color): string
+    {
+        static $emitted = [];
+        $color = strtolower(trim($color));
+        if (preg_match('/^#[0-9a-f]{6}$/', $color) !== 1) {
+            return '<span class="beratung-swatch beratung-swatch--empty" aria-hidden="true"></span>';
+        }
+        $token = substr($color, 1);
+        $html = '';
+        if (!isset($emitted[$token])) {
+            $emitted[$token] = true;
+            $nonce = class_exists('CMS\\Security') ? ' ' . \CMS\Security::instance()->nonceAttr() : '';
+            $html = '<style' . $nonce . '>.beratung-swatch--' . $token . '{background:' . $color . '}</style>';
+        }
+
+        return $html . '<span class="beratung-swatch beratung-swatch--' . $token . '" title="' . self::esc($color) . '" aria-hidden="true"></span>';
+    }
+
+    public static function render_faqs(): void
+    {
+        $storage = CMS_Beratung_Storage::instance();
+        $notice = '';
+        $error = '';
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && (string) ($_POST['beratung_admin_action'] ?? '') === 'save_m365_faqs') {
+            self::check_access();
+            if (!self::verify_nonce('beratung_m365_faqs')) {
+                $error = 'Sicherheitscheck fehlgeschlagen.';
+            } else {
+                try {
+                    $storage->save_m365_faq_config($_POST);
+                    self::redirect('cms-beratung-faqs', ['saved' => 1]);
+                } catch (\Throwable $e) {
+                    $error = 'FAQs konnten nicht gespeichert werden: ' . $e->getMessage();
+                }
+            }
+        }
+
+        self::render_with_layout('cms-beratung-faqs', function () use ($storage, $notice, $error): void {
+            if (!empty($_GET['saved'])) { $notice = 'M365 FAQs gespeichert.'; }
+            $config = $storage->m365_faq_config();
+            $items = is_array($config['items'] ?? null) ? $config['items'] : [];
+            self::render_notice($notice, $error);
+            echo '<form method="post" class="beratung-card beratung-faq-admin"><input type="hidden" name="csrf_token" value="' . self::esc(self::nonce('beratung_m365_faqs')) . '"><input type="hidden" name="beratung_admin_action" value="save_m365_faqs"><div class="beratung-template-library__head"><div><h1>M365 FAQs</h1><p>Diese zentralen FAQs werden auf den Public Landingpages ausgegeben. In einzelnen Landingpages werden FAQ-Inhalte nicht mehr bearbeitet.</p></div><span>' . count($items) . ' Fragen</span></div>';
+            echo '<div class="beratung-grid-2"><section><h2>Anzeige</h2>';
+            self::checkbox('FAQ Bereich auf Landingpages anzeigen', 'enabled', !empty($config['enabled']));
+            self::field('Eyebrow', 'eyebrow', (string) ($config['eyebrow'] ?? 'FAQ'));
+            self::field('Titel', 'title', (string) ($config['title'] ?? 'Häufige Fragen'));
+            self::textarea('Intro Text', 'intro', (string) ($config['intro'] ?? ''), 3);
+            self::field('Anker ID', 'anchor_id', (string) ($config['anchor_id'] ?? 'faq'));
+            echo '</section><section><h2>Verhalten</h2>';
+            self::checkbox('Mehrere Einträge gleichzeitig geöffnet erlauben', 'allow_multiple', !empty($config['allow_multiple']));
+            self::select('Standard Öffnung', 'open_behavior', (string) ($config['open_behavior'] ?? 'first'), ['none' => 'Kein Eintrag offen', 'first' => 'Erster Eintrag offen', 'custom' => 'Individuell pro Frage']);
+            self::select('Icon Stil', 'icon_style', (string) ($config['icon_style'] ?? 'plus'), ['plus' => 'Plus', 'chevron' => 'Chevron', 'question' => 'Fragezeichen']);
+            self::checkbox('FAQ Schema aktivieren', 'schema_enabled', !empty($config['schema_enabled']));
+            echo '</section></div><h2>Fragen und Antworten</h2><div class="beratung-faq-list">';
+            $items[] = ['enabled' => true, 'question' => '', 'answer' => '', 'default_open' => false, 'sort_order' => (count($items) + 1) * 10];
+            foreach (array_values($items) as $index => $item) {
+                echo '<article class="beratung-faq-row"><div class="beratung-faq-row__meta"><strong>FAQ ' . ($index + 1) . '</strong><label><span>Sortierung</span><input type="number" name="faq_sort_order[' . $index . ']" value="' . (int) ($item['sort_order'] ?? (($index + 1) * 10)) . '"></label><label class="beratung-check"><input type="checkbox" name="faq_enabled[' . $index . ']" value="1"' . (!empty($item['enabled']) ? ' checked' : '') . '> <span>Aktiv</span></label><label class="beratung-check"><input type="checkbox" name="faq_default_open[' . $index . ']" value="1"' . (!empty($item['default_open']) ? ' checked' : '') . '> <span>Offen</span></label></div>';
+                echo '<label class="beratung-field"><span>Frage</span><input name="faq_question[' . $index . ']" value="' . self::esc((string) ($item['question'] ?? '')) . '"></label><label class="beratung-field"><span>Antwort</span><textarea name="faq_answer[' . $index . ']" rows="4">' . self::esc((string) ($item['answer'] ?? '')) . '</textarea></label></article>';
+            }
+            echo '</div><p><button class="beratung-btn" type="submit">M365 FAQs speichern</button></p></form>';
+        });
+    }
+
+    public static function render_submissions(): void
+    {
+        $storage = CMS_Beratung_Storage::instance();
+        self::handle_submission_export();
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && (string) ($_POST['beratung_admin_action'] ?? '') === 'submission_action') {
+            self::check_access();
+            if (!self::verify_nonce('beratung_submissions')) {
+                self::flash(false, 'Sicherheitsprüfung fehlgeschlagen.');
+                self::redirect('cms-beratung-submissions');
+            }
+            $id = max(0, (int) ($_POST['submission_id'] ?? 0));
+            switch ((string) ($_POST['submission_action'] ?? '')) {
+                case 'update':
+                    $ok = $storage->update_submission($id, (string) ($_POST['status'] ?? 'read'), mb_substr((string) ($_POST['internal_note'] ?? ''), 0, 5000));
+                    self::flash($ok, $ok ? 'Anfrage aktualisiert.' : 'Anfrage konnte nicht aktualisiert werden.');
+                    self::redirect('cms-beratung-submissions', ['view_id' => $id]);
+                    // no break – redirect beendet
+                case 'delete':
+                    $count = $storage->delete_submissions([$id]);
+                    self::flash($count > 0, $count > 0 ? 'Anfrage gelöscht.' : 'Anfrage nicht gefunden.');
+                    break;
+                case 'purge':
+                    $days = max(1, (int) (CMS_Beratung_Settings::all()['retention_days'] ?? 180));
+                    self::flash(true, sprintf('%d Anfrage(n) älter als %d Tage gelöscht.', $storage->purge_old_submissions($days), $days));
+                    break;
+                default:
+                    self::flash(false, 'Unbekannte Aktion.');
+            }
+            self::redirect('cms-beratung-submissions');
+        }
+
+        self::render_with_layout('cms-beratung-submissions', function () use ($storage): void {
+            $statuses = CMS_Beratung_Storage::submission_statuses();
+            $token = self::nonce('beratung_submissions');
+            $viewId = max(0, (int) ($_GET['view_id'] ?? 0));
+            $detail = $viewId > 0 ? $storage->submission($viewId) : null;
+            if ($detail !== null) {
+                if ((string) ($detail['status'] ?? '') === 'new') {
+                    $storage->update_submission($viewId, 'read', (string) ($detail['internal_note'] ?? ''));
+                    $detail['status'] = 'read';
+                }
+                self::render_submission_detail($detail, $statuses, $token);
+                return;
+            }
+
+            $filters = [
+                'status' => array_key_exists((string) ($_GET['status'] ?? ''), $statuses) ? (string) $_GET['status'] : '',
+                'landingpage' => max(0, (int) ($_GET['landingpage'] ?? 0)),
+                'q' => trim(mb_substr((string) ($_GET['q'] ?? ''), 0, 100)),
+            ];
+            $items = $storage->find_submissions($filters['status'], $filters['landingpage'], $filters['q'], 300);
+            $settings = CMS_Beratung_Settings::all();
+            $retention = (int) ($settings['retention_days'] ?? 180);
+
+            echo '<div class="admin-page-header"><div><h2>Formular-Anfragen</h2><p>Beratungsanfragen aus den Landingpage-Formularen. '
+                . (($settings['auto_delete_submissions_enabled'] ?? '0') === '1' ? self::esc(sprintf('Automatische Löschung nach %d Tagen aktiv.', $retention)) : 'Automatische Löschung ist deaktiviert (Globale Einstellungen › Datenschutz).')
+                . '</p></div><div class="header-actions"><a class="btn btn-outline-secondary" href="' . self::esc(self::export_url('submissions_csv', array_filter($filters))) . '"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> CSV-Export</a>'
+                . '<form method="post" data-cms-confirm="' . self::esc(sprintf('Alle Anfragen älter als %d Tage löschen?', $retention)) . '"><input type="hidden" name="csrf_token" value="' . self::esc($token) . '"><input type="hidden" name="beratung_admin_action" value="submission_action"><input type="hidden" name="submission_action" value="purge"><button class="btn btn-outline-danger" type="submit"><i class="ti ti-trash" aria-hidden="true"></i> Alte Anfragen löschen</button></form></div></div>';
+
+            echo '<form method="get" action="' . self::esc(self::admin_url('cms-beratung-submissions')) . '" class="beratung-toolbar" role="search" aria-label="Anfragen filtern">'
+                . '<div class="beratung-toolbar__field"><label class="form-label" for="bs-q">Suche</label><input id="bs-q" class="form-control" type="search" name="q" value="' . self::esc($filters['q']) . '" placeholder="Name, E-Mail, Firma, Thema"></div>'
+                . '<div class="beratung-toolbar__field"><label class="form-label" for="bs-status">Status</label><select id="bs-status" class="form-select" name="status"><option value="">Alle</option>';
+            foreach ($statuses as $key => $label) {
+                echo '<option value="' . self::esc($key) . '"' . ($filters['status'] === $key ? ' selected' : '') . '>' . self::esc($label) . '</option>';
+            }
+            echo '</select></div><div class="beratung-toolbar__field"><label class="form-label" for="bs-lp">Landingpage</label><select id="bs-lp" class="form-select" name="landingpage"><option value="0">Alle</option>';
+            foreach ($storage->all_landingpages() as $page) {
+                echo '<option value="' . (int) $page['id'] . '"' . ($filters['landingpage'] === (int) $page['id'] ? ' selected' : '') . '>' . self::esc((string) ($page['internal_title'] ?? '')) . '</option>';
+            }
+            echo '</select></div><div class="beratung-toolbar__actions"><button class="btn btn-secondary" type="submit"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>'
+                . (array_filter($filters) !== [] ? '<a class="btn btn-link" href="' . self::esc(self::admin_url('cms-beratung-submissions')) . '">Zurücksetzen</a>' : '') . '</div></form>';
+
+            echo '<div class="admin-card">';
+            if ($items === []) {
+                echo '<div class="empty-state"><p><strong>Keine Anfragen gefunden.</strong></p></div></div>';
+                return;
+            }
+            echo '<div class="users-table-container"><table class="users-table"><thead><tr><th scope="col">Datum</th><th scope="col">Absender</th><th scope="col">Thema</th><th scope="col">Landingpage</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead><tbody>';
+            foreach ($items as $item) {
+                $sid = (int) $item['id'];
+                $status = (string) ($item['status'] ?? 'new');
+                echo '<tr><td class="beratung-nowrap">' . self::esc(self::format_datetime((string) ($item['created_at'] ?? ''))) . '</td>'
+                    . '<td><a class="beratung-link" href="' . self::esc(self::admin_url('cms-beratung-submissions', ['view_id' => $sid])) . '">' . self::esc((string) ($item['sender_name'] ?? '–')) . '</a><div class="beratung-muted">' . self::esc((string) ($item['sender_email'] ?? '')) . ((string) ($item['company'] ?? '') !== '' ? ' · ' . self::esc((string) $item['company']) : '') . '</div></td>'
+                    . '<td>' . self::esc((string) ($item['topic'] ?? '')) . '<div class="beratung-muted">' . self::esc((string) ($item['desired_service'] ?? '')) . '</div></td>'
+                    . '<td>' . self::esc((string) ($item['landingpage_title'] ?? '–')) . '</td>'
+                    . '<td><span class="beratung-badge beratung-badge--' . ($status === 'new' ? 'warning' : (in_array($status, ['done', 'answered'], true) ? 'success' : 'muted')) . '">' . self::esc($statuses[$status] ?? $status) . '</span></td>'
+                    . '<td><div class="beratung-row-actions"><a class="btn btn-sm btn-outline-secondary" href="' . self::esc(self::admin_url('cms-beratung-submissions', ['view_id' => $sid])) . '" title="Öffnen"><i class="ti ti-eye" aria-hidden="true"></i><span class="visually-hidden">Öffnen</span></a>'
+                    . '<form method="post" data-cms-confirm="Anfrage endgültig löschen?"><input type="hidden" name="csrf_token" value="' . self::esc($token) . '"><input type="hidden" name="beratung_admin_action" value="submission_action"><input type="hidden" name="submission_action" value="delete"><input type="hidden" name="submission_id" value="' . $sid . '"><button class="btn btn-sm btn-outline-danger" type="submit" title="Löschen"><i class="ti ti-trash" aria-hidden="true"></i><span class="visually-hidden">Löschen</span></button></form></div></td></tr>';
+            }
+            echo '</tbody></table></div></div>';
+        });
+    }
+
+    /**
+     * @param array<string,mixed>  $detail
+     * @param array<string,string> $statuses
+     */
+    private static function render_submission_detail(array $detail, array $statuses, string $token): void
+    {
+        $id = (int) $detail['id'];
+        $rows = [
+            'Eingang' => self::format_datetime((string) ($detail['created_at'] ?? '')),
+            'Name' => (string) ($detail['sender_name'] ?? ''),
+            'E-Mail' => (string) ($detail['sender_email'] ?? ''),
+            'Telefon' => (string) ($detail['phone'] ?? ''),
+            'Firma' => (string) ($detail['company'] ?? ''),
+            'Thema' => (string) ($detail['topic'] ?? ''),
+            'Gewünschte Leistung' => (string) ($detail['desired_service'] ?? ''),
+            'Landingpage' => (string) ($detail['landingpage_title'] ?? ''),
+            'Einwilligung' => !empty($detail['consent']) ? 'ja' : 'nein',
+            'Kopie an Absender' => !empty($detail['copy_to_sender']) ? 'ja' : 'nein',
+            'IP-Adresse' => (string) ($detail['ip_address'] ?? '') !== '' ? (string) $detail['ip_address'] : 'nicht gespeichert',
         ];
-        foreach ($checks as $pattern) {
-            if (preg_match($pattern, $content) === 1) {
-                return false;
-            }
+        echo '<div class="admin-page-header"><div><h2>Anfrage #' . $id . '</h2><p>' . self::esc((string) ($detail['sender_name'] ?? '')) . ' · ' . self::esc($rows['Eingang']) . '</p></div><div class="header-actions">'
+            . ((string) ($detail['sender_email'] ?? '') !== '' ? '<a class="btn btn-outline-secondary" href="mailto:' . self::esc(rawurlencode((string) $detail['sender_email'])) . '"><i class="ti ti-mail" aria-hidden="true"></i> Antworten</a>' : '')
+            . '<a class="btn btn-outline-secondary" href="' . self::esc(self::admin_url('cms-beratung-submissions')) . '"><i class="ti ti-arrow-left" aria-hidden="true"></i> Alle Anfragen</a></div></div>';
+        echo '<div class="beratung-split"><section class="admin-card"><dl class="beratung-dl">';
+        foreach ($rows as $label => $value) {
+            echo '<dt>' . self::esc($label) . '</dt><dd>' . self::esc($value !== '' ? $value : '–') . '</dd>';
         }
-        return true;
+        echo '</dl><h3 class="beratung-panel-title">Nachricht</h3><p class="beratung-prewrap">' . self::esc((string) ($detail['message'] ?? '')) . '</p></section>';
+        echo '<section class="admin-card"><form method="post" class="admin-form"><input type="hidden" name="csrf_token" value="' . self::esc($token) . '"><input type="hidden" name="beratung_admin_action" value="submission_action"><input type="hidden" name="submission_action" value="update"><input type="hidden" name="submission_id" value="' . $id . '">'
+            . '<div class="form-group"><label class="form-label" for="bsd-status">Status</label><select id="bsd-status" class="form-select" name="status">';
+        foreach ($statuses as $key => $label) {
+            echo '<option value="' . self::esc($key) . '"' . ((string) ($detail['status'] ?? '') === $key ? ' selected' : '') . '>' . self::esc($label) . '</option>';
+        }
+        echo '</select></div><div class="form-group"><label class="form-label" for="bsd-note">Interne Notiz</label><textarea id="bsd-note" class="form-control" name="internal_note" rows="6" maxlength="5000">' . self::esc((string) ($detail['internal_note'] ?? '')) . '</textarea></div>'
+            . '<button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy" aria-hidden="true"></i> Speichern</button></form>'
+            . '<form method="post" class="beratung-delete" data-cms-confirm="Anfrage endgültig löschen?"><input type="hidden" name="csrf_token" value="' . self::esc($token) . '"><input type="hidden" name="beratung_admin_action" value="submission_action"><input type="hidden" name="submission_action" value="delete"><input type="hidden" name="submission_id" value="' . $id . '"><button class="btn btn-outline-danger" type="submit"><i class="ti ti-trash" aria-hidden="true"></i> Anfrage löschen</button></form></section></div>';
     }
 
-    private static function sanitize_upload_basename(string $baseName): string
+    private static function handle_submission_export(): void
     {
-        $baseName = strtolower(trim($baseName));
-        $baseName = trim(preg_replace('/[^a-z0-9_-]+/i', '-', $baseName) ?? '', '-_');
-        return substr($baseName !== '' ? $baseName : 'beratung-bild', 0, 40);
-    }
-
-    /** Zufälliger, nicht erratbarer Dateiname (lesbarer Präfix + 12 Hex-Zeichen). */
-    private static function random_upload_filename(string $targetDir, string $baseName, string $extension): string
-    {
-        do {
-            $candidate = $baseName . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
-        } while (is_file($targetDir . DIRECTORY_SEPARATOR . $candidate));
-        return $candidate;
-    }
-
-    /** @param array<string,mixed> $payload */
-    private static function json_response(array $payload, int $status = 200): never
-    {
+        if ((string) ($_GET['export'] ?? '') !== 'submissions_csv') {
+            return;
+        }
+        self::check_access();
+        if (!class_exists('CMS\\Security') || !\CMS\Security::instance()->verifyPersistentToken((string) ($_GET['token'] ?? ''), self::EXPORT_ACTION)) {
+            self::flash(false, 'Export abgelehnt: ungültiges oder abgelaufenes Token.');
+            self::redirect('cms-beratung-submissions');
+        }
+        $statuses = CMS_Beratung_Storage::submission_statuses();
+        $rows = CMS_Beratung_Storage::instance()->find_submissions(
+            array_key_exists((string) ($_GET['status'] ?? ''), $statuses) ? (string) $_GET['status'] : '',
+            max(0, (int) ($_GET['landingpage'] ?? 0)),
+            trim(mb_substr((string) ($_GET['q'] ?? ''), 0, 100)),
+            5000
+        );
         while (ob_get_level() > 0) {
             ob_end_clean();
         }
-        if (!headers_sent()) {
-            http_response_code($status);
-            header('Content-Type: application/json; charset=utf-8');
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="beratung-anfragen-' . date('Y-m-d') . '.csv"');
+        header('Cache-Control: no-store, private');
+        header('X-Content-Type-Options: nosniff');
+        $out = fopen('php://output', 'wb');
+        if ($out === false) {
+            exit;
         }
-        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{"success":0}';
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['ID', 'Eingang', 'Status', 'Landingpage', 'Name', 'E-Mail', 'Telefon', 'Firma', 'Thema', 'Leistung', 'Nachricht', 'Einwilligung', 'Notiz'], ';', '"', '');
+        foreach ($rows as $row) {
+            fputcsv($out, array_map([self::class, 'csv_safe'], [
+                (string) $row['id'], (string) $row['created_at'], (string) ($statuses[$row['status']] ?? $row['status']), (string) ($row['landingpage_title'] ?? ''),
+                (string) ($row['sender_name'] ?? ''), (string) ($row['sender_email'] ?? ''), (string) ($row['phone'] ?? ''), (string) ($row['company'] ?? ''),
+                (string) ($row['topic'] ?? ''), (string) ($row['desired_service'] ?? ''), (string) ($row['message'] ?? ''), !empty($row['consent']) ? 'ja' : 'nein', (string) ($row['internal_note'] ?? ''),
+            ]), ';', '"', '');
+        }
+        fclose($out);
         exit;
     }
 
-    // ─── Konfiguration für den Builder ────────────────────────────────────
+    private static function csv_safe(string $value): string
+    {
+        return $value !== '' && in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true) && !is_numeric($value) ? "'" . $value : $value;
+    }
 
-    public static function render_media_config(): void
+    /** @param array<string,scalar> $query */
+    private static function export_url(string $format, array $query = []): string
+    {
+        $token = class_exists('CMS\\Security') ? \CMS\Security::instance()->generateToken(self::EXPORT_ACTION) : '';
+        $page = $format === 'landingpage_json' ? 'cms-beratung-import-export' : 'cms-beratung-submissions';
+
+        return self::admin_url($page, ['export' => $format, 'token' => $token] + $query);
+    }
+
+    private static function format_datetime(string $value): string
+    {
+        $ts = $value !== '' ? strtotime($value) : false;
+
+        return $ts !== false ? date('d.m.Y H:i', $ts) : '–';
+    }
+
+    public static function render_import_export(): void
+    {
+        if ((string) ($_GET['export'] ?? '') === 'landingpage_json') {
+            self::check_access();
+            $page = class_exists('CMS\\Security') && \CMS\Security::instance()->verifyPersistentToken((string) ($_GET['token'] ?? ''), self::EXPORT_ACTION)
+                ? CMS_Beratung_Storage::instance()->get_landingpage(max(0, (int) ($_GET['id'] ?? 0)))
+                : null;
+            if ($page === null) {
+                self::flash(false, 'Export nicht möglich: Landingpage nicht gefunden oder Token abgelaufen.');
+                self::redirect('cms-beratung-import-export');
+            }
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            header('Content-Type: application/json; charset=utf-8');
+            header('Content-Disposition: attachment; filename="landingpage-' . preg_replace('/[^a-z0-9-]/', '', (string) ($page['slug'] ?? 'export')) . '-' . date('Y-m-d') . '.json"');
+            header('Cache-Control: no-store, private');
+            header('X-Content-Type-Options: nosniff');
+            echo CMS_Beratung_Import_Export::export_json($page);
+            exit;
+        }
+
+        self::render_with_layout('cms-beratung-import-export', function (): void {
+            $notice = '';
+            $error = '';
+            $exportJson = '';
+            $exportId = max(0, (int) ($_GET['export'] ?? 0));
+            if ($exportId > 0) {
+                $page = CMS_Beratung_Storage::instance()->get_landingpage($exportId);
+                if ($page !== null) {
+                    $exportJson = CMS_Beratung_Import_Export::export_json($page);
+                }
+            }
+            if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && (string) ($_POST['beratung_admin_action'] ?? '') === 'import_json') {
+                if (!self::verify_nonce('beratung_import_json')) {
+                    $error = 'Sicherheitscheck fehlgeschlagen.';
+                } else {
+                    try {
+                        $payload = CMS_Beratung_Import_Export::decode_import_json(self::import_json_from_request());
+                        if ($payload === null) {
+                            throw new \InvalidArgumentException('Die JSON-Datei konnte nicht gelesen werden.');
+                        }
+                        if (!empty($_POST['skip_images'])) {
+                            $payload = self::strip_import_images($payload);
+                        }
+                        $mode = (string) ($_POST['import_mode'] ?? 'new');
+                        $overwriteId = max(0, (int) ($_POST['overwrite_id'] ?? 0));
+                        $payload['id'] = ($mode === 'overwrite' && $overwriteId > 0) ? $overwriteId : 0;
+                        $payload['status'] = 'draft';
+                        $originalSlug = trim((string) ($payload['slug'] ?? ''));
+                        $newId = CMS_Beratung_Storage::instance()->save_landingpage($payload);
+                        $imported = CMS_Beratung_Storage::instance()->get_landingpage($newId);
+                        $newSlug = (string) ($imported['slug'] ?? $originalSlug);
+                        $notice = ($payload['id'] > 0 ? 'Landingpage überschrieben.' : 'Landingpage als neuer Entwurf importiert.') . ' ID: ' . $newId . ($originalSlug !== '' && $newSlug !== CMS_Beratung_Settings::slug($originalSlug, '') ? ' Slug-Konflikt erkannt, neuer Slug: ' . $newSlug : '');
+                    } catch (\Throwable $e) {
+                        $error = $e->getMessage();
+                    }
+                }
+            }
+            self::render_notice($notice, $error);
+            $pages = CMS_Beratung_Storage::instance()->all_landingpages();
+            echo '<div class="beratung-grid-2"><form method="post" enctype="multipart/form-data" class="beratung-card"><input type="hidden" name="csrf_token" value="' . self::esc(self::nonce('beratung_import_json')) . '"><input type="hidden" name="beratung_admin_action" value="import_json"><h1>Import</h1><p>JSON-Datei hochladen oder JSON einfügen. Importierte Seiten werden standardmäßig als Entwurf gespeichert.</p><label class="beratung-field"><span>JSON Datei</span><input type="file" name="import_file" accept="application/json,.json"></label><label class="beratung-field"><span>Oder JSON einfügen</span><textarea name="import_json" rows="12" class="beratung-code"></textarea></label><label class="beratung-field"><span>Import Modus</span><select name="import_mode"><option value="new">Als neue Landingpage importieren</option><option value="overwrite">Bestehende Landingpage überschreiben</option></select></label><label class="beratung-field"><span>Bestehende Landingpage für Überschreiben</span><select name="overwrite_id"><option value="0">Bitte wählen</option>';
+            foreach ($pages as $existing) { echo '<option value="' . (int) ($existing['id'] ?? 0) . '">' . self::esc((string) ($existing['public_title'] ?? $existing['internal_title'] ?? 'Landingpage')) . '</option>'; }
+            echo '</select></label><label class="beratung-check"><input type="checkbox" name="skip_images" value="1"> <span>Bilder beim Import überspringen, wenn Pfade nicht sicher übernommen werden sollen</span></label><button class="beratung-btn" type="submit">JSON importieren</button></form>';
+            echo '<div class="beratung-card"><h1>Export</h1><p>Landingpage als JSON-Datei herunterladen oder den Inhalt kopieren.</p><ul class="beratung-export-list">';
+            foreach ($pages as $existing) {
+                $eid = (int) ($existing['id'] ?? 0);
+                echo '<li><span>' . self::esc((string) ($existing['internal_title'] ?? 'Landingpage')) . '</span><span class="beratung-row-actions"><a class="btn btn-sm btn-outline-secondary" href="' . self::esc(self::admin_url('cms-beratung-import-export', ['export' => $eid])) . '">Anzeigen</a><a class="btn btn-sm btn-outline-primary" href="' . self::esc(self::export_url('landingpage_json', ['id' => $eid])) . '"><i class="ti ti-download" aria-hidden="true"></i> JSON</a></span></li>';
+            }
+            echo '</ul><textarea readonly rows="16" class="beratung-code" aria-label="JSON-Export">' . self::esc($exportJson) . '</textarea></div></div>';
+        });
+    }
+
+    /** Alte Admin-Vorschau-URL: Weiterleitung auf die Vorschau-Route der Theme-Pipeline. */
+    public static function render_preview(): void
+    {
+        self::check_access();
+        header('Location: ' . self::preview_url(max(0, (int) ($_GET['id'] ?? 0))), true, 303);
+        exit;
+    }
+
+    public static function preview_url(int $id): string
+    {
+        return '/beratung-vorschau/' . max(0, $id);
+    }
+
+    public static function render_help(): void
+    {
+        self::render_with_layout('cms-beratung-help', function (): void {
+            echo '<div class="beratung-card"><h1>Hilfe und Dokumentation</h1><ul class="beratung-doc-list"><li><strong>Routing:</strong> Veröffentlichte Seiten sind unter <code>/beratung/{slug}</code> erreichbar (auch <code>/en/…</code>); Standalone-Varianten unter ihrem eigenen Slug. Entwürfe zeigt die Vorschau <code>/beratung-vorschau/{id}</code> nur Administratoren.</li><li><strong>Integration:</strong> Veröffentlichte, indexierbare Seiten stehen in der Sitemap (<code>plugins.xml</code>) und der Seitensuche; Formular-Anfragen unterliegen der Löschfrist unter System › Datenaufbewahrung.</li><li><strong>Bereiche:</strong> Jeder Bereich kann aktiviert, dupliziert, gelöscht und verschoben werden. Cards unterstützen 1 bis 4 Desktop-Spalten.</li><li><strong>Responsivität:</strong> Desktop bis 4 Spalten, Tablet 2 Spalten, Mobil 1 Spalte.</li><li><strong>SEO:</strong> Meta, Open Graph, Twitter Card, Canonical, Noindex/Nofollow und Schema sind vorbereitet.</li><li><strong>Sicherheit:</strong> Admin-Aktionen verwenden Rechteprüfung und CSRF-Token; Frontend-Formulare nutzen Honeypot und Token.</li><li><strong>Mandantenfähigkeit:</strong> Tabellen enthalten <code>tenant_id</code> und sind für spätere Rollen-/Tenant-Filter vorbereitet.</li></ul></div>';
+        });
+    }
+
+    private static function render_landingpage_form(array $page): void
+    {
+        $statuses = CMS_Beratung_Settings::statuses();
+        $templates = CMS_Beratung_Settings::templates();
+        CMS_Beratung_Installer::ensure_for_admin_save();
+        $presets = CMS_Beratung_Storage::instance()->all_presets();
+        $heroJson = json_encode($page['hero'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
+        $heroSettings = is_array($page['hero'] ?? null) ? $page['hero'] : [];
+        $contactJson = json_encode($page['contact'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
+        $editableSections = array_values(array_filter(is_array($page['sections'] ?? null) ? $page['sections'] : [], static fn($section): bool => is_array($section) && ($section['type'] ?? '') !== 'faq'));
+        $sectionsJson = json_encode($editableSections, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]';
+        $designJson = json_encode($page['design'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
+        self::render_media_config();
+        self::render_expert_options_config();
+        echo '<form method="post" class="beratung-editor"><input type="hidden" name="csrf_token" value="' . self::esc(self::nonce('beratung_save_landingpage')) . '"><input type="hidden" name="beratung_admin_action" value="save_landingpage"><input type="hidden" name="id" value="' . (int) ($page['id'] ?? 0) . '">';
+        echo '<section class="beratung-card beratung-general-settings" data-always-open="1"><h1>Allgemeine Einstellungen</h1>';
+        self::field('Interner Titel', 'internal_title', (string) ($page['internal_title'] ?? ''));
+        self::field('Öffentlicher Titel / Website-Titel', 'public_title', (string) ($page['public_title'] ?? ''), 'text', 'Dieser Titel wird für die Public-Landingpage verwendet: Website-Titel, Breadcrumb, Header-Fallback und öffentliche Listenansicht.');
+        self::field('URL Slug', 'slug', (string) ($page['slug'] ?? ''));
+        self::field('Meta Title', 'meta_title', (string) ($page['meta_title'] ?? ''), 'text', 'Optionaler SEO-Titel. Leer lassen, wenn der öffentliche Website-Titel auch als Meta-/Browser-Titel ausgegeben werden soll.');
+        self::textarea('Meta Description', 'meta_description', (string) ($page['meta_description'] ?? ''), 3);
+        self::field('Fokus Keyword', 'focus_keyword', (string) ($page['focus_keyword'] ?? ''));
+        self::select('Template Auswahl', 'template', (string) ($page['template'] ?? 'standard'), $templates);
+        self::field('Maximale Inhaltsbreite', 'max_content_width', (string) ($page['max_content_width'] ?? '1160'), 'number');
+        self::field('Canonical URL', 'canonical_url', (string) ($page['canonical_url'] ?? ''));
+        self::field('Eigene CSS Klasse', 'custom_css_class', (string) ($page['custom_css_class'] ?? ''));
+        if ((int) ($page['id'] ?? 0) > 0) {
+            $publicUrl = ((string) ($page['status'] ?? 'draft')) === 'published' ? self::public_landingpage_url((string) ($page['slug'] ?? '')) : '';
+            $standaloneUrl = ((string) ($page['status'] ?? 'draft')) === 'published' && !empty($heroSettings['standalone_header_enabled']) && !empty($heroSettings['standalone_header_slug']) ? self::public_landingpage_url((string) $heroSettings['standalone_header_slug']) : '';
+            echo '<p class="beratung-general-settings__links"><a class="beratung-link" target="_blank" rel="noopener noreferrer" href="' . self::esc(self::admin_url('cms-beratung-preview', ['id' => (int) $page['id']])) . '">Entwurfs-Vorschau öffnen</a>';
+            if ($publicUrl !== '') {
+                echo '<a class="beratung-btn" target="_blank" rel="noopener noreferrer" href="' . self::esc($publicUrl) . '">Publicseite mit Theme öffnen</a>';
+            }
+            if ($standaloneUrl !== '') {
+                echo '<a class="beratung-link" target="_blank" rel="noopener noreferrer" href="' . self::esc($standaloneUrl) . '">Standalone Publicsite öffnen</a>';
+            }
+            echo '</p>';
+        }
+        echo '</section><section class="beratung-card beratung-publicsite-card"><h1>Publicsite Anzeige</h1><p>Hier steuerst du pro Landingpage die normale Publicsite mit Theme-Rahmen und optional eine zusätzliche Standalone-Publicsite ohne Theme Header und Footer.</p><div class="beratung-grid-2"><div><h2>Aktivierung</h2>';
+        self::select('Publicsite Status', 'status', (string) ($page['status'] ?? 'draft'), $statuses);
+        echo '<p class="description">Nur veröffentlichte Publicsites sind unter <code>/beratung/{slug}</code> erreichbar. Entwürfe bleiben im Admin und in der Vorschau.</p></div><div><h2>Standard Publicsite</h2><input type="hidden" name="show_header" value="1"><input type="hidden" name="show_footer" value="1">';
+        $standaloneSlug = (string) ($heroSettings['standalone_header_slug'] ?? '');
+        echo '<p class="description">Der normale Publicsite-Slug <code>/beratung/' . self::esc((string) ($page['slug'] ?? 'slug')) . '</code> rendert immer mit Theme Header und Theme Footer. Die zusätzliche Standalone-Variante nutzt einen eigenen Slug, z. B. <code>/beratung/' . self::esc($standaloneSlug !== '' ? $standaloneSlug : 'eigener-standalone-slug') . '</code>.</p></div></div><div class="beratung-publicsite-standalone"><h2>Zusätzliche Standalone-Publicsite</h2><p>Diese zweite Publicsite nutzt keinen Theme Header und keinen Theme Footer, lädt aber weiterhin die Standard-Assets des aktiven Themes und alle Plugin-Styles. Der eigene Slug ist Pflicht und muss sich vom normalen Publicsite-Slug unterscheiden.</p>';
+        self::checkbox('Zusätzliche Standalone-Publicsite aktivieren', 'standalone_header_enabled', !empty($heroSettings['standalone_header_enabled']));
+        self::field('Eigener Standalone Slug', 'standalone_header_slug', $standaloneSlug, 'text', 'Pflicht bei aktiver Standalone-Publicsite. Beispiel: microsoft-365-beratung-clean. Erreichbar unter /beratung/{standalone-slug}.');
+        echo '<div class="beratung-grid-2"><label class="beratung-field"><span>Blog Logo</span><input data-media-field name="standalone_header_blog_logo_url" value="' . self::esc((string) ($heroSettings['standalone_header_blog_logo_url'] ?? '')) . '" placeholder="/uploads/beratung/... oder https://..."></label><label class="beratung-field"><span>Partner Logo</span><input data-media-field name="standalone_header_partner_logo_url" value="' . self::esc((string) ($heroSettings['standalone_header_partner_logo_url'] ?? '')) . '" placeholder="/uploads/beratung/... oder https://..."></label></div>';
+        self::field('Header Titel', 'standalone_header_title', (string) ($heroSettings['standalone_header_title'] ?? ''), 'text', 'Wird nur angezeigt, wenn ein eigener Titel hinterlegt ist.');
+        self::textarea('Header Untertitel', 'standalone_header_subtitle', (string) ($heroSettings['standalone_header_subtitle'] ?? ''), 2);
+        self::checkbox('Menüband im eigenen Header anzeigen', 'standalone_header_menu_enabled', array_key_exists('standalone_header_menu_enabled', $heroSettings) ? !empty($heroSettings['standalone_header_menu_enabled']) : true);
+        $standaloneMenuItems = is_array($heroSettings['standalone_header_menu_items'] ?? null) ? array_values($heroSettings['standalone_header_menu_items']) : [];
+        echo '<div class="beratung-publicsite-menu-items"><h3>Menüband Links</h3>';
+        for ($i = 1; $i <= 4; $i++) {
+            $item = is_array($standaloneMenuItems[$i - 1] ?? null) ? $standaloneMenuItems[$i - 1] : [];
+            echo '<div class="beratung-publicsite-menu-row"><label class="beratung-field"><span>Menü Label ' . $i . '</span><input name="standalone_header_menu_label_' . $i . '" value="' . self::esc((string) ($item['label'] ?? '')) . '" placeholder="z. B. Leistungen"></label><label class="beratung-field"><span>Menü Ziel ' . $i . '</span><input name="standalone_header_menu_target_' . $i . '" value="' . self::esc((string) ($item['target'] ?? '')) . '" placeholder="#leistungen oder https://..."></label></div>';
+        }
+        echo '</div></div><div class="beratung-grid-2"><div><h2>Navigation</h2>';
+        self::checkbox('Breadcrumb anzeigen', 'show_breadcrumb', !empty($page['show_breadcrumb']));
+        self::checkbox('Inhaltsverzeichnis anzeigen', 'show_toc', !empty($page['show_toc']));
+        echo '</div><div><h2>Suchmaschinen</h2>';
+        self::checkbox('Noindex aktivieren', 'noindex', !empty($page['noindex']));
+        self::checkbox('Nofollow aktivieren', 'nofollow', !empty($page['nofollow']));
+        echo '</div></div></section><section class="beratung-card"><h1>Design und System Optionen</h1>';
+        foreach (['custom_design_enabled' => 'Individuelles Design aktivieren', 'use_global_settings' => 'Globale Plugin Einstellungen verwenden', 'use_global_design' => 'Globales Design Modul verwenden'] as $name => $label) {
+            self::checkbox($label, $name, !empty($page[$name]));
+        }
+        echo '</section>';
+        echo '<section class="beratung-card"><h1>Hero / Content Header</h1><p>Bild links oder rechts, nahtloser Bildrand, Badge, Titel, Text, bis zu 3 Buttons und Trust-Hinweis.</p><div id="beratung-hero-builder" data-target="hero_json"></div><textarea id="hero_json" name="hero_json" rows="12" class="beratung-code is-technical-json" aria-hidden="true" tabindex="-1">' . self::esc($heroJson) . '</textarea></section>';
+        echo '<section class="beratung-card"><h1>Anker Navigation / Navigation</h1><p>Die Navigation zwischen Content Header und den Inhaltsbereichen ist hier direkt einstellbar.</p>';
+        self::checkbox('Anker Navigation unter dem Content Header anzeigen', 'show_anchor_nav', !empty($page['show_anchor_nav']));
+        echo '<div id="beratung-anchor-nav-builder" data-target="hero_json"></div></section>';
+        echo '<section class="beratung-card"><h1>Kontaktbereich</h1><p>Der Anfragebereich am Ende der Landingpage kann hier direkt gepflegt werden: Texte, Bild, Farben, Buttons, Datenschutz und Captcha.</p>';
+        self::checkbox('Kontaktbereich anzeigen', 'contact_enabled', ($page['contact']['enabled'] ?? true) !== false);
+        echo '<div id="beratung-contact-builder" data-target="contact_json"></div><textarea id="contact_json" name="contact_json" rows="10" class="beratung-code is-technical-json" aria-hidden="true" tabindex="-1">' . self::esc($contactJson) . '</textarea></section>';
+        echo '<section class="beratung-card beratung-root-builder-intro"><h1>Landingpage Bereiche nach Content Header</h1><p>Jeder Bereich nach dem Content Header erscheint darunter als eigener, auf-/zuklappbarer Root-Abschnitt. Es gibt keinen großen Sammelbereich mehr: Partnerband, Belegbare Grundlagen, Terminbuchung, Zusammenarbeit, Cards, CTA, Trenner und weitere Inhaltsbereiche stehen jeweils eigenständig auf Root-Ebene.</p></section><div id="beratung-builder" data-target="sections_json"></div><textarea id="sections_json" name="sections_json" rows="16" class="beratung-code is-technical-json" aria-hidden="true" tabindex="-1">' . self::esc($sectionsJson) . '</textarea>';
+        echo '<section class="beratung-card"><h1>Design Preset und individuelles Design</h1><p>Preset wählen und Farben direkt über die Felder anpassen.</p><label class="beratung-field"><span>Design Preset anwenden</span><select id="beratung-design-preset"><option value="">Bitte wählen</option>';
+        foreach ($presets as $preset) { echo '<option value="' . self::esc((string) ($preset['slug'] ?? '')) . '" data-design="' . self::esc((string) ($preset['design_json'] ?? '{}')) . '">' . self::esc((string) ($preset['name'] ?? 'Preset')) . '</option>'; }
+        echo '</select></label><div id="beratung-design-builder" data-target="design_json"></div><textarea id="design_json" name="design_json" rows="8" class="beratung-code is-technical-json" aria-hidden="true" tabindex="-1">' . self::esc($designJson) . '</textarea></section>';
+        echo '<p><button type="submit" class="beratung-btn">Landingpage speichern</button> <a class="beratung-link" href="' . self::esc(self::admin_url('cms-beratung-landingpages')) . '">Zur Übersicht</a></p></form>';
+    }
+
+    /** @param array<string,string> $settings */
+    private static function render_settings_form(array $settings): void
+    {
+        $groups = [
+            'Globale Design Einstellungen' => ['primary_color', 'secondary_color', 'accent_color', 'background_color', 'text_color', 'heading_color', 'button_color', 'button_text_color', 'card_background_color', 'card_border_color', 'card_shadow_enabled', 'border_radius', 'spacing', 'content_width', 'font_size_base', 'font_size_hero', 'font_size_section_title', 'font_size_card_title', 'header_spacing', 'footer_spacing', 'card_spacing', 'section_content_spacing', 'use_default_font', 'allow_custom_page_css_class'],
+            'Kontakt Einstellungen' => ['contact_recipient_email', 'contact_subject_prefix', 'privacy_text', 'success_message', 'error_message', 'form_storage_enabled', 'notification_enabled', 'sender_copy_enabled', 'honeypot_enabled', 'captcha_prepared', 'show_submissions_backend'],
+            'Datenschutz' => ['store_ip_enabled', 'store_user_agent_enabled', 'auto_delete_submissions_enabled', 'retention_days'],
+            'SEO Einstellungen' => ['seo_meta_title_enabled', 'seo_meta_description_enabled', 'seo_open_graph_enabled', 'seo_twitter_card_enabled', 'seo_faq_schema_enabled', 'seo_service_schema_enabled', 'seo_breadcrumb_schema_enabled', 'seo_canonical_enabled', 'seo_noindex_per_page_enabled', 'seo_nofollow_per_page_enabled'],
+            'Tracking Einstellungen' => ['tracking_button_clicks_enabled', 'tracking_form_submit_enabled', 'tracking_anchor_clicks_enabled', 'tracking_only_when_system_active'],
+        ];
+        echo '<form method="post"><input type="hidden" name="csrf_token" value="' . self::esc(self::nonce('beratung_settings')) . '"><input type="hidden" name="beratung_admin_action" value="save_settings"><div class="beratung-settings-grid">';
+        foreach ($groups as $title => $keys) {
+            echo '<section class="beratung-card"><h1>' . self::esc($title) . '</h1>';
+            foreach ($keys as $key) {
+                $label = ucwords(str_replace('_', ' ', $key));
+                if (str_ends_with($key, '_enabled') || str_starts_with($key, 'seo_') || str_starts_with($key, 'tracking_') || in_array($key, ['use_default_font', 'allow_custom_page_css_class', 'captcha_prepared', 'show_submissions_backend'], true)) {
+                    self::checkbox($label, $key, ($settings[$key] ?? '0') === '1');
+                } elseif (str_contains($key, 'color')) {
+                    self::field($label, $key, $settings[$key] ?? '', 'color');
+                } elseif (str_contains($key, 'message') || str_contains($key, 'privacy')) {
+                    self::textarea($label, $key, $settings[$key] ?? '', 3);
+                } else {
+                    self::field($label, $key, $settings[$key] ?? '', in_array($key, ['retention_days', 'border_radius', 'spacing', 'content_width', 'font_size_base', 'font_size_hero', 'font_size_section_title', 'font_size_card_title', 'header_spacing', 'footer_spacing', 'card_spacing', 'section_content_spacing'], true) ? 'number' : 'text');
+                }
+            }
+            echo '</section>';
+        }
+        echo '</div><p class="beratung-muted">„Auto Delete Submissions Enabled“ aktiviert die Regel „Beratung: Formular-Anfragen“ unter System › Datenaufbewahrung; Anfragen werden nach „Retention Days“ Tagen gelöscht.</p><p><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy" aria-hidden="true"></i> Einstellungen speichern</button></p></form>';
+    }
+
+    private static function handle_landingpage_actions(): void
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || (string) ($_POST['beratung_admin_action'] ?? '') !== 'landingpage_action') {
+            return;
+        }
+        if (!self::verify_nonce('beratung_landingpage_action')) {
+            self::flash(false, 'Sicherheitsprüfung fehlgeschlagen.');
+            self::redirect('cms-beratung-landingpages');
+        }
+        $id = max(0, (int) ($_POST['id'] ?? 0));
+        $action = (string) ($_POST['landingpage_action'] ?? '');
+        $storage = CMS_Beratung_Storage::instance();
+        $messages = ['publish' => 'Landingpage veröffentlicht.', 'deactivate' => 'Landingpage auf Entwurf gesetzt.', 'duplicate' => 'Landingpage als Entwurf dupliziert.', 'delete' => 'Landingpage gelöscht.'];
+        $ok = match ($action) {
+            'publish' => $storage->update_status($id, 'published'),
+            'deactivate' => $storage->update_status($id, 'draft'),
+            'duplicate' => $storage->duplicate_landingpage($id) > 0,
+            'delete' => $storage->delete_landingpage($id),
+            default => false,
+        };
+        self::flash($ok, $ok ? ($messages[$action] ?? 'Aktion ausgeführt.') : 'Die Aktion konnte nicht ausgeführt werden.');
+        self::redirect('cms-beratung-landingpages');
+    }
+
+    private static function action_form(int $id, string $action, string $label, bool $danger = false): string
+    {
+        return '<form method="post" class="beratung-inline-form"' . ($danger ? ' data-cms-confirm="Landingpage endgültig löschen?"' : '') . '><input type="hidden" name="csrf_token" value="' . self::esc(self::nonce('beratung_landingpage_action')) . '"><input type="hidden" name="beratung_admin_action" value="landingpage_action"><input type="hidden" name="landingpage_action" value="' . self::esc($action) . '"><input type="hidden" name="id" value="' . $id . '"><button class="' . ($danger ? 'is-danger' : '') . '" type="submit">' . self::esc($label) . '</button></form>';
+    }
+
+    private static function render_landingpage_proposals(string $active): void
+    {
+        echo '<section class="beratung-card beratung-template-library"><div class="beratung-template-library__head"><div><h1>Landingpage Vorschläge</h1><p>Wähle eine Vorlage aus. Die komplette Platzhalterseite wird direkt in den Editor geladen und kann anschließend als Entwurf gespeichert werden.</p></div><span>5 Vorlagen</span></div><div class="beratung-template-grid">';
+        foreach (self::landingpage_proposals() as $slug => $proposal) {
+            $isActive = $slug === $active;
+            echo '<a class="beratung-template-card ' . ($isActive ? 'is-active' : '') . '" href="' . self::esc(self::admin_url('cms-beratung-new', ['proposal' => $slug])) . '">';
+            echo '<span class="beratung-template-card__icon">' . self::esc((string) ($proposal['icon'] ?? '📄')) . '</span>';
+            echo '<strong>' . self::esc((string) ($proposal['title'] ?? $slug)) . '</strong>';
+            echo '<small>' . self::esc((string) ($proposal['badge'] ?? 'Vorlage')) . '</small>';
+            echo '<p>' . self::esc((string) ($proposal['description'] ?? '')) . '</p>';
+            echo '<em>' . ($isActive ? 'Aktuell geladen' : 'Diese Vorlage laden') . '</em>';
+            echo '</a>';
+        }
+        echo '</div></section>';
+    }
+
+    /** @return array<string,array<string,string>> */
+    private static function landingpage_proposals(): array
+    {
+        return [
+            'microsoft-365-copilot' => ['icon' => '🤖', 'title' => 'Microsoft 365 und Copilot Beratung', 'badge' => 'Vollständige Beispielseite', 'description' => 'Hero, Herausforderungen, Leistungen, GenAI vs. Agentic AI, Ablauf, Technologien, Trust, CTA und Kontakt. FAQs werden zentral gepflegt.'],
+            'copilot-readiness' => ['icon' => '✅', 'title' => 'Copilot Readiness Check', 'badge' => 'Copilot Vorlage', 'description' => 'Für Tenant-Readiness, Berechtigungen, Datenstruktur, Governance und Pilotierung.'],
+            'security-review' => ['icon' => '🛡️', 'title' => 'Microsoft 365 Security Review', 'badge' => 'Security Vorlage', 'description' => 'Für Entra ID, Conditional Access, Defender, MFA, Rollen und Maßnahmenplan.'],
+            'governance-workshop' => ['icon' => '🧭', 'title' => 'SharePoint Governance Workshop', 'badge' => 'Governance Vorlage', 'description' => 'Für SharePoint, OneDrive, Teams, Lifecycle, Berechtigungen und Namenskonzepte.'],
+            'admin-automation' => ['icon' => '⚙️', 'title' => 'Admin Workshop & PowerShell', 'badge' => 'Admin Vorlage', 'description' => 'Für Admin Enablement, Dokumentation, Automatisierung und Betriebsübergabe.'],
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private static function default_landingpage(string $proposal = 'microsoft-365-copilot'): array
+    {
+        $proposal = array_key_exists($proposal, self::landingpage_proposals()) ? $proposal : 'microsoft-365-copilot';
+        $page = [
+            'internal_title' => 'Microsoft 365 Beratung',
+            'public_title' => 'Microsoft 365 und Copilot Beratung',
+            'slug' => 'microsoft-365-und-copilot-beratung',
+            'status' => 'draft',
+            'template' => 'modern',
+            'max_content_width' => 1160,
+            'use_global_settings' => 1,
+            'use_global_design' => 1,
+            'show_header' => 1,
+            'show_footer' => 1,
+            'show_breadcrumb' => 1,
+            'show_toc' => 1,
+            'show_anchor_nav' => 1,
+            'hero' => [
+                'enabled' => true,
+                'image_url' => '',
+                'image_position' => 'left',
+                'image_flush' => true,
+                'image_height' => 520,
+                'image_width' => 46,
+                'image_fit' => 'cover',
+                'image_alt' => 'Microsoft 365 Beratung',
+                'badge_text' => 'Microsoft 365 und Copilot Beratung',
+                'badge_show' => true,
+                'standalone_header_enabled' => false,
+                'standalone_header_slug' => 'microsoft-365-und-copilot-beratung-standalone',
+                'standalone_header_blog_logo_url' => '',
+                'standalone_header_partner_logo_url' => '',
+                'standalone_header_title' => 'Microsoft 365 und Copilot Beratung',
+                'standalone_header_subtitle' => 'Standalone Publicsite ohne Theme Header und Footer.',
+                'standalone_header_menu_enabled' => true,
+                'standalone_header_menu_items' => [
+                    ['label' => 'Leistungen', 'target' => '#leistungen'],
+                    ['label' => 'Ablauf', 'target' => '#ablauf'],
+                    ['label' => 'Termin', 'target' => '#termin-buchen'],
+                    ['label' => 'Kontakt', 'target' => '#kontakt'],
+                ],
+                'title' => 'Microsoft 365 und Copilot sauber einführen, statt einfach nur Lizenzen zu verteilen',
+                'subtitle' => 'Microsoft 365, Copilot, Security und Governance technisch sauber bewerten und praxisnah umsetzen.',
+                'description' => 'Ich unterstütze Dich dabei, Microsoft 365, Copilot, Security und Governance technisch sauber zu bewerten, sinnvoll zu strukturieren und praxisnah umzusetzen.',
+                'button_1' => ['text' => 'Beratung anfragen', 'target' => '#kontakt', 'target_type' => 'contact', 'style' => 'primary'],
+                'button_2' => ['text' => 'Leistungen ansehen', 'target' => '#leistungen', 'target_type' => 'anchor', 'style' => 'ghost'],
+                'button_3' => ['text' => 'Copilot Readiness prüfen', 'target' => '#copilot-readiness', 'target_type' => 'anchor', 'style' => 'secondary'],
+                'trust_badges' => ['Ex-Microsoft MVP', '20+ Jahre', 'LPIC 1 & 2', 'Microsoft zertifiziert'],
+                'trust_image_enabled' => true,
+                'trust_image_url' => '',
+                'trust_image_alt' => 'Portrait eines Microsoft 365 Beraters',
+                'partner_band_enabled' => false,
+                'partner_band_text' => 'Zugehörig zum copilotberater.de Netzwerk',
+                'partner_band_website_label' => 'copilotberater.de',
+                'partner_band_website_url' => 'https://copilotberater.de',
+                'partner_band_map_label' => 'Copilotberater Deutschland Karte',
+                'partner_band_map_url' => 'https://copilotberater.de/copilotberater-deutschland-karte/',
+                'anchor_nav_layout' => 'pills',
+                'toc_right_display' => 'card',
+                'toc_right_layout' => 'card',
+                'trust_text' => 'Praxisnahe Beratung für Microsoft 365, Copilot, Security und Compliance.',
+                'background_color' => '#f8fafc',
+                'text_color' => '#111827',
+                'vertical_align' => 'center',
+                'mobile_order' => 'image-first',
+            ],
+            'sections' => [[
+                'id' => 'intro',
+                'anchor_id' => 'intro',
+                'enabled' => true,
+                'type' => 'text',
+                'internal_name' => 'Intro Bereich',
+                'eyebrow' => 'Einordnung',
+                'title' => 'Microsoft 365 Beratung beginnt bei Struktur, Sicherheit und Alltagstauglichkeit',
+                'intro' => 'Bevor neue Tools wie Copilot echten Mehrwert liefern, müssen Berechtigungen, Datenqualität, Governance und Betriebsprozesse zusammenpassen. Diese Beispielseite zeigt eine vollständige Beratungs-Landingpage mit austauschbaren Platzhalterinhalten.',
+                'columns' => 1,
+                'background_color' => '#ffffff',
+                'text_color' => '#111827',
+                'cards' => [],
+            ], [
+                'id' => 'herausforderungen',
+                'anchor_id' => 'herausforderungen',
+                'enabled' => true,
+                'type' => 'card_grid',
+                'internal_name' => 'Typische Herausforderungen',
+                'eyebrow' => 'Ausgangslage',
+                'title' => 'Typische Herausforderungen vor Microsoft 365 und Copilot Projekten',
+                'intro' => 'Diese Punkte tauchen in gewachsenen Microsoft 365 Umgebungen besonders häufig auf.',
+                'columns' => 3,
+                'card_type' => 'text',
+                'card_design' => 'accent',
+                'equal_height' => true,
+                'background_color' => '#f8fafc',
+                'text_color' => '#111827',
+                'cards' => [
+                    ['enabled' => true, 'icon' => '🔓', 'title' => 'Zu viele Berechtigungen', 'text' => 'Zu viele Berechtigungen in SharePoint und OneDrive machen Datenzugriffe schwer nachvollziehbar.'],
+                    ['enabled' => true, 'icon' => '💬', 'title' => 'Unklare Teams Governance', 'text' => 'Microsoft Teams ist produktiv, aber Namenskonzepte, Lebenszyklen und Verantwortlichkeiten sind unklar.'],
+                    ['enabled' => true, 'icon' => '🤖', 'title' => 'Copilot ohne Vorbereitung', 'text' => 'Copilot wird eingeführt, aber der Tenant ist technisch und organisatorisch noch nicht vorbereitet.'],
+                    ['enabled' => true, 'icon' => '🚦', 'title' => 'Historischer Conditional Access', 'text' => 'Conditional Access und MFA sind historisch gewachsen und enthalten Ausnahmen oder blinde Flecken.'],
+                    ['enabled' => true, 'icon' => '🏷️', 'title' => 'Purview nicht sauber konfiguriert', 'text' => 'DLP, Sensitivity Labels und Aufbewahrung sind vorhanden, aber nicht konsistent nutzbar.'],
+                ],
+            ], [
+                'id' => 'leistungen',
+                'anchor_id' => 'leistungen',
+                'enabled' => true,
+                'type' => 'services',
+                'internal_name' => 'Meine Leistungen',
+                'eyebrow' => 'Meine Leistungen',
+                'title' => 'Microsoft 365 und Copilot Beratung aus der Praxis',
+                'intro' => 'Frei sortierbare Leistungen für Tenant, Security, Compliance, Governance, Automatisierung und Workshops.',
+                'columns' => 4,
+                'card_type' => 'text',
+                'card_design' => 'accent',
+                'equal_height' => true,
+                'categories_enabled' => true,
+                'note_text' => 'Alle Leistungen können als Einzeltermin, Workshop oder Projektbegleitung kombiniert werden.',
+                'button_1_text' => 'Beratung anfragen',
+                'button_1_target' => '#kontakt',
+                'button_1_target_type' => 'contact',
+                'button_1_style' => 'primary',
+                'background_color' => '#ffffff',
+                'text_color' => '#111827',
+                'padding_top' => 56,
+                'padding_bottom' => 56,
+                'max_width' => 1160,
+                'text_align' => 'left',
+                'cards' => [
+                    ['enabled' => true, 'icon' => '🏢', 'category' => 'Tenant', 'title' => 'Microsoft 365 Tenant Check', 'text' => 'Du bekommst eine klare Risiko- und Lizenzeinschätzung deines Tenants und weißt, wo Governance fehlt.'],
+                    ['enabled' => true, 'icon' => '🤖', 'category' => 'Copilot', 'title' => 'Copilot Readiness Check', 'text' => 'Du erkennst, ob Datenzugriffe, Inhalte und Compliance für Copilot belastbar vorbereitet sind. So startest du kontrolliert statt mit blinden Flecken.'],
+                    ['enabled' => true, 'icon' => '🔐', 'category' => 'Identity', 'title' => 'Entra ID Security Review', 'text' => 'Du siehst, welche Identitätsrisiken deinen Tenant wirklich betreffen. Daraus entstehen konkrete Schritte für MFA, Rollen und Zugriffsschutz.'],
+                    ['enabled' => true, 'icon' => '📜', 'category' => 'Compliance', 'title' => 'Microsoft Purview Beratung', 'text' => 'Du weißt, welche Purview-Funktionen für deine Daten sinnvoll sind und wie Schutz, DLP und Aufbewahrung zusammenwirken.'],
+                    ['enabled' => true, 'icon' => '🧭', 'category' => 'Governance', 'title' => 'SharePoint und OneDrive Governance', 'text' => 'Du bekommst klare Regeln für Sites, Freigaben und Berechtigungen. So reduzierst du Wildwuchs und schaffst eine bessere Grundlage für Copilot.'],
+                    ['enabled' => true, 'icon' => '✉️', 'category' => 'Exchange', 'title' => 'Exchange Online Analyse', 'text' => 'Du erkennst Risiken in Mailfluss, Postfächern und Schutzfunktionen. Danach weißt du, welche Anpassungen Betrieb und Sicherheit verbessern.'],
+                    ['enabled' => true, 'icon' => '🛡️', 'category' => 'Security', 'title' => 'Microsoft Defender Review', 'text' => 'Du bekommst priorisierte Findings zu Defender und Secure Score. So weißt du, welche Schutzmaßnahmen zuerst Wirkung bringen.'],
+                    ['enabled' => true, 'icon' => '🚦', 'category' => 'Access', 'title' => 'Conditional Access Bewertung', 'text' => 'Du erkennst unsichere Ausnahmen, Lücken und Konflikte in deinen Richtlinien. Daraus entsteht ein belastbarer Zugriffsschutz für Benutzer und Admins.'],
+                    ['enabled' => true, 'icon' => '🎓', 'category' => 'Enablement', 'title' => 'Admin Workshops', 'text' => 'Dein Admin-Team versteht die Entscheidungen und kann sie selbstständig weiterführen. Die Inhalte richten sich an euren echten Aufgaben aus.'],
+                    ['enabled' => true, 'icon' => '⚙️', 'category' => 'Automation', 'title' => 'PowerShell Automatisierung', 'text' => 'Du reduzierst wiederkehrende Admin-Arbeit und bekommst nachvollziehbare Skripte für stabile Abläufe.'],
+                    ['enabled' => true, 'icon' => '📘', 'category' => 'Betrieb', 'title' => 'Dokumentation und Übergabe', 'text' => 'Du erhältst verständliche Ergebnisse, Entscheidungen und nächste Schritte. Damit bleiben Wissen und Verantwortung im Team nutzbar.'],
+                    ['enabled' => true, 'icon' => '🤝', 'category' => 'Projekt', 'title' => 'Projektbegleitung', 'text' => 'Du bekommst technische Begleitung während Umsetzung, Review und Übergabe. So bleiben Entscheidungen sauber und Risiken früh sichtbar.'],
+                ],
+            ], [
+                'id' => 'zusammenarbeit',
+                'anchor_id' => 'zusammenarbeit',
+                'enabled' => true,
+                'type' => 'collaboration',
+                'internal_name' => 'Zusammenarbeit',
+                'eyebrow' => 'Zusammenarbeit',
+                'title' => 'Expertinnen und Experten, mit denen ich bei dieser Dienstleistung zusammenarbeite',
+                'intro' => 'Für Spezialthemen kann die Dienstleistung durch ausgewählte Experts aus dem 365 Network ergänzt werden.',
+                'columns' => 3,
+                'card_design' => 'accent',
+                'expert_ids' => [],
+                'mvp_note_enabled' => true,
+                'mvp_note_text' => 'Darunter auch Microsoft MVPs aus dem 365 Network.',
+                'background_color' => '#ffffff',
+                'text_color' => '#111827',
+                'padding_top' => 56,
+                'padding_bottom' => 56,
+                'max_width' => 1160,
+                'text_align' => 'left',
+            ], [
+                'id' => 'ablauf',
+                'anchor_id' => 'ablauf',
+                'enabled' => true,
+                'type' => 'steps',
+                'internal_name' => 'Beratungsablauf',
+                'eyebrow' => 'Vorgehen',
+                'title' => 'So läuft die Zusammenarbeit ab',
+                'intro' => 'Ein klarer Ablauf macht Beratung planbar, nachvollziehbar und technisch belastbar.',
+                'columns' => 4,
+                'card_type' => 'step',
+                'display_style' => 'horizontal',
+                'auto_number' => true,
+                'connector' => true,
+                'equal_height' => true,
+                'button_1_text' => 'Erstgespräch anfragen',
+                'button_1_target' => '#kontakt',
+                'button_1_target_type' => 'contact',
+                'background_color' => '#f8fafc',
+                'text_color' => '#111827',
+                'cards' => [
+                    ['enabled' => true, 'card_type' => 'step', 'auto_number' => true, 'title' => 'Erstgespräch', 'text' => 'Rahmen, Ausgangslage und gewünschtes Ergebnis klären.', 'connector' => true],
+                    ['enabled' => true, 'card_type' => 'step', 'auto_number' => true, 'title' => 'Zielklärung', 'text' => 'Prioritäten, Risiken und betroffene Microsoft 365 Bereiche festlegen.', 'connector' => true],
+                    ['enabled' => true, 'card_type' => 'step', 'auto_number' => true, 'title' => 'Technische Analyse', 'text' => 'Tenant, Entra ID, Security, Compliance und Governance prüfen.', 'connector' => true],
+                    ['enabled' => true, 'card_type' => 'step', 'auto_number' => true, 'title' => 'Bewertung', 'text' => 'Findings einordnen und realistische Handlungsoptionen ableiten.', 'connector' => true],
+                    ['enabled' => true, 'card_type' => 'step', 'auto_number' => true, 'title' => 'Maßnahmenplan', 'text' => 'Konkrete Roadmap mit Quick Wins und sauberer Priorisierung erstellen.', 'connector' => true],
+                    ['enabled' => true, 'card_type' => 'step', 'auto_number' => true, 'title' => 'Umsetzung', 'text' => 'Konfigurationen, Pilotierung und Admin Enablement begleiten.', 'connector' => true],
+                    ['enabled' => true, 'card_type' => 'step', 'auto_number' => true, 'title' => 'Dokumentation', 'text' => 'Ergebnisse, Entscheidungen und Betriebswissen verständlich festhalten.', 'connector' => true],
+                    ['enabled' => true, 'card_type' => 'step', 'auto_number' => true, 'title' => 'Übergabe', 'text' => 'Nächste Schritte, Betrieb und Verantwortlichkeiten sauber übergeben.', 'connector' => false],
+                ],
+            ], [
+                'id' => 'vergleich-genai-agentic-ai',
+                'anchor_id' => 'vergleich',
+                'enabled' => true,
+                'type' => 'comparison',
+                'internal_name' => 'Vergleich GenAI Agentic AI',
+                'eyebrow' => 'Einordnung',
+                'title' => 'Vergleiche und Infografik Inhalte',
+                'intro' => 'Komplexe KI- und Governance-Themen verständlich gegenüberstellen.',
+                'columns' => 2,
+                'comparison_variant' => 'genai_agentic',
+                'title_band_enabled' => true,
+                'title_band_text' => 'GenAI vs. Agentic AI: Die wichtigsten Unterschiede',
+                'title_band_background_color' => '#1e3a8a',
+                'title_band_text_color' => '#ffffff',
+                'border_enabled' => true,
+                'shadow_enabled' => true,
+                'mobile_stack' => true,
+                'background_color' => '#ffffff',
+                'text_color' => '#111827',
+                'cards' => [
+                    ['enabled' => true, 'icon' => '✨', 'title' => 'Generative KI', 'text' => 'Erstellt Inhalte wie Texte, Bilder oder Code auf Basis großer Sprachmodelle. Kreativ und leistungsfähig, aber oft isoliert und ohne direkten Bezug zu Unternehmensprozessen.', 'extra_text' => 'Typischer Einsatz: Content Erstellung, Ideenfindung, Automatisierung einfacher Aufgaben'],
+                    ['enabled' => true, 'icon' => '🧠', 'title' => 'Agentic AI', 'text' => 'Geht einen Schritt weiter, handelt proaktiv, integriert sich in bestehende Systeme und führt Aufgaben je nach Anforderung teilautonom aus.', 'extra_text' => 'Typischer Einsatz: Prozessautomatisierung, intelligente Assistenz, datenbasierte Entscheidungsunterstützung'],
+                ],
+            ], [
+                'id' => 'faq',
+                'anchor_id' => 'faq',
+                'enabled' => true,
+                'type' => 'faq',
+                'internal_name' => 'FAQ Modul',
+                'eyebrow' => 'FAQ',
+                'title' => 'Häufige Fragen zur Microsoft 365 und Copilot Beratung',
+                'intro' => 'Antworten auf typische Fragen vor einem Beratungsprojekt.',
+                'faq_allow_multiple' => false,
+                'faq_icon_style' => 'plus',
+                'faq_open_behavior' => 'first',
+                'faq_schema_enabled' => true,
+                'faq_question_background_color' => '#ffffff',
+                'faq_question_text_color' => '#111827',
+                'faq_answer_background_color' => '#f8fafc',
+                'background_color' => '#f8fafc',
+                'cards' => [
+                    ['enabled' => true, 'question' => 'Was ist Microsoft 365 Copilot?', 'answer' => 'Microsoft 365 Copilot verbindet KI-Funktionen mit Microsoft 365 Apps und Unternehmensdaten, sofern Berechtigungen, Datenstruktur und Compliance sauber vorbereitet sind.', 'default_open' => true],
+                    ['enabled' => true, 'question' => 'Für wen eignet sich Microsoft Copilot?', 'answer' => 'Copilot eignet sich für Organisationen, die Microsoft 365 aktiv nutzen und ihre Daten, Berechtigungen und Prozesse transparent im Griff haben möchten.'],
+                    ['enabled' => true, 'question' => 'Ist Microsoft Copilot DSGVO konform einsetzbar?', 'answer' => 'Ein DSGVO-konformer Einsatz hängt von Konfiguration, Datenklassifizierung, Governance, Betriebsprozessen und rechtlicher Bewertung ab. Die Beratung hilft bei der technischen Einordnung.'],
+                    ['enabled' => true, 'question' => 'Welche Voraussetzungen braucht mein Tenant?', 'answer' => 'Wichtig sind saubere Identitäten, Berechtigungen, Informationsschutz, SharePoint Governance, Auditierbarkeit und passende Lizenzierung.'],
+                    ['enabled' => true, 'question' => 'Wie läuft ein Copilot Readiness Check ab?', 'answer' => 'Der Check bewertet Tenant-Konfiguration, Datenzugriffe, Security, Compliance, Governance und organisatorische Bereitschaft.'],
+                    ['enabled' => true, 'question' => 'Was kostet eine Microsoft 365 Beratung?', 'answer' => 'Das hängt von Umfang, Zielen und gewünschter Tiefe ab. Nach einem Erstgespräch kann der Aufwand realistisch eingegrenzt werden.'],
+                    ['enabled' => true, 'question' => 'Kann die Beratung remote stattfinden?', 'answer' => 'Ja, viele Checks, Workshops und Reviews können remote durchgeführt werden.'],
+                    ['enabled' => true, 'question' => 'Unterstützt du auch bei der technischen Umsetzung?', 'answer' => 'Ja, neben Analyse und Konzept kann auch die technische Umsetzung begleitet werden.'],
+                    ['enabled' => true, 'question' => 'Gibt es eine Dokumentation nach der Beratung?', 'answer' => 'Ja, Ergebnisse, Empfehlungen und nächste Schritte werden verständlich dokumentiert.'],
+                    ['enabled' => true, 'question' => 'Können Workshops für Admin Teams durchgeführt werden?', 'answer' => 'Ja, Workshops für Admin Teams sind ein zentraler Bestandteil des Angebots.'],
+                ],
+            ], [
+                'id' => 'trust',
+                'anchor_id' => 'vertrauen',
+                'enabled' => true,
+                'type' => 'trust',
+                'internal_name' => 'Trust Bereich',
+                'eyebrow' => 'Vertrauen',
+                'title' => 'Technische Beratung statt reines Folien Consulting',
+                'intro' => 'Praxis, Betrieb und Sicherheit stehen im Mittelpunkt.',
+                'columns' => 3,
+                'button_1_text' => 'Projekt besprechen',
+                'button_1_target' => '#kontakt',
+                'background_color' => '#ffffff',
+                'cards' => [
+                    ['enabled' => true, 'icon' => '⏱️', 'metric' => '20+ Jahre', 'title' => 'IT Erfahrung', 'text' => 'Langjährige Praxis in Infrastruktur, Microsoft 365 und Administration.'],
+                    ['enabled' => true, 'icon' => '🏢', 'title' => 'Echte Admin Umgebungen', 'text' => 'Microsoft 365 Praxis aus produktiven Szenarien statt Labortheorie.'],
+                    ['enabled' => true, 'icon' => '🛡️', 'title' => 'Security und Governance', 'text' => 'Fokus auf Sicherheit, Governance und nachhaltigen Betrieb.'],
+                    ['enabled' => true, 'icon' => '🛠️', 'title' => 'Technische Beratung', 'text' => 'Konkrete Konfiguration, Bewertung und Umsetzung statt Folienfriedhof.'],
+                    ['enabled' => true, 'icon' => '📘', 'title' => 'Verständliche Dokumentation', 'text' => 'Ergebnisse so dokumentiert, dass Teams damit weiterarbeiten können.'],
+                    ['enabled' => true, 'icon' => '🎓', 'title' => 'Admin Workshops', 'text' => 'Praxisnahe Workshops für Admin Teams und Betrieb.'],
+                ],
+            ], [
+                'id' => 'technologien',
+                'anchor_id' => 'technologien',
+                'enabled' => true,
+                'type' => 'technology',
+                'internal_name' => 'Technologie Bereich',
+                'eyebrow' => 'Technologien',
+                'title' => 'Relevante Microsoft Technologien',
+                'intro' => 'Beratung entlang der Plattformen, die im Microsoft 365 Betrieb wirklich zusammenspielen.',
+                'columns' => 4,
+                'display_style' => 'icon_grid',
+                'background_color' => '#f8fafc',
+                'cards' => [
+                    ['enabled' => true, 'icon' => '☁️', 'name' => 'Microsoft 365'], ['enabled' => true, 'icon' => '🤖', 'name' => 'Microsoft Copilot'], ['enabled' => true, 'icon' => '🔐', 'name' => 'Microsoft Entra ID'], ['enabled' => true, 'icon' => '📜', 'name' => 'Microsoft Purview'],
+                    ['enabled' => true, 'icon' => '🛡️', 'name' => 'Microsoft Defender'], ['enabled' => true, 'icon' => '🧭', 'name' => 'SharePoint Online'], ['enabled' => true, 'icon' => '📁', 'name' => 'OneDrive for Business'], ['enabled' => true, 'icon' => '✉️', 'name' => 'Exchange Online'],
+                    ['enabled' => true, 'icon' => '💬', 'name' => 'Microsoft Teams'], ['enabled' => true, 'icon' => '⚙️', 'name' => 'PowerShell'], ['enabled' => true, 'icon' => '🌐', 'name' => 'Azure'], ['enabled' => true, 'icon' => '🚦', 'name' => 'Conditional Access'],
+                ],
+            ], [
+                'id' => 'cta-copilot-readiness',
+                'anchor_id' => 'copilot-readiness',
+                'enabled' => true,
+                'type' => 'cta',
+                'internal_name' => 'CTA Band Copilot Readiness',
+                'eyebrow' => 'Copilot Readiness',
+                'title' => 'Du möchtest wissen, ob dein Microsoft 365 Tenant bereit für Copilot ist?',
+                'intro' => 'Dann lass uns gemeinsam prüfen, wo Berechtigungen, Datenstruktur, Governance und Compliance wirklich stehen.',
+                'display_style' => 'compact',
+                'button_1_text' => 'Beratung anfragen',
+                'button_1_target' => '#kontakt',
+                'button_1_target_type' => 'contact',
+                'button_1_style' => 'primary',
+                'button_2_text' => 'Leistungen ansehen',
+                'button_2_target' => '#leistungen',
+                'button_2_target_type' => 'anchor',
+                'button_2_style' => 'ghost',
+                'background_color' => '#1e3a8a',
+                'text_color' => '#ffffff',
+            ], [
+                'id' => 'trenner',
+                'anchor_id' => 'trenner',
+                'enabled' => true,
+                'type' => 'divider',
+                'internal_name' => 'Zitat Trenner',
+                'divider_type' => 'quote',
+                'divider_title' => 'Gute Copilot Einführung beginnt nicht beim Prompt, sondern bei Daten, Identitäten und Governance.',
+                'divider_icon' => '💬',
+                'background_color' => '#eff6ff',
+                'text_color' => '#111827',
+                'divider_line_color' => '#93c5fd',
+                'divider_width' => 80,
+                'divider_padding_left' => 20,
+                'divider_padding_right' => 20,
+            ], [
+                'id' => 'html-hinweis',
+                'anchor_id' => 'html-hinweis',
+                'enabled' => false,
+                'type' => 'html',
+                'internal_name' => 'Freier HTML Bereich',
+                'eyebrow' => 'Optional',
+                'title' => 'Freier HTML Bereich',
+                'intro' => 'Nur für berechtigte Benutzer. Unsichere Skripte werden gefiltert.',
+                'html' => '<p><strong>Optionaler Hinweis:</strong> Dieser Bereich kann für geprüfte HTML-Inhalte verwendet werden.</p>',
+            ]],
+            'design' => [],
+        ];
+
+        $updateSection = static function (array &$landingpage, string $id, array $updates): void {
+            foreach ($landingpage['sections'] as &$section) {
+                if (($section['id'] ?? '') !== $id) {
+                    continue;
+                }
+                foreach ($updates as $key => $value) {
+                    $section[$key] = $value;
+                }
+                break;
+            }
+            unset($section);
+        };
+
+        if ($proposal === 'copilot-readiness') {
+            $page['internal_title'] = 'Copilot Readiness Check';
+            $page['public_title'] = 'Copilot Readiness Check';
+            $page['slug'] = 'copilot-readiness-check';
+            $page['hero']['badge_text'] = 'Copilot Readiness';
+            $page['hero']['title'] = 'Microsoft 365 Copilot vorbereiten, bevor sensible Daten sichtbar werden';
+            $page['hero']['subtitle'] = 'Tenant, Berechtigungen, Governance und Compliance als Grundlage für Copilot.';
+            $page['hero']['description'] = 'Diese Vorlage zeigt eine Landingpage für Copilot Readiness Checks mit Platzhaltertexten zu Datenzugriffen, SharePoint, Purview, Entra ID und Pilotierung.';
+            $updateSection($page, 'herausforderungen', [
+                'title' => 'Typische Risiken vor einer Copilot Einführung',
+                'intro' => 'Copilot verstärkt vorhandene Daten- und Berechtigungsstrukturen. Genau deshalb lohnt sich der Readiness Check vor dem Rollout.',
+                'cards' => [
+                    ['enabled' => true, 'icon' => '🔎', 'title' => 'Unklare Datenzugriffe', 'text' => 'Zu viele Personen können sensible SharePoint- oder OneDrive-Inhalte finden.'],
+                    ['enabled' => true, 'icon' => '📚', 'title' => 'Veraltete Inhalte', 'text' => 'Alte Dokumente, Dubletten und Testdaten verschlechtern Copilot-Antworten.'],
+                    ['enabled' => true, 'icon' => '🏷️', 'title' => 'Fehlende Klassifizierung', 'text' => 'Sensitivity Labels, DLP und Aufbewahrung sind nicht konsequent umgesetzt.'],
+                    ['enabled' => true, 'icon' => '👥', 'title' => 'Pilotgruppe unklar', 'text' => 'Ohne sinnvolle Pilotgruppen entstehen falsche Erwartungen und wenig messbarer Nutzen.'],
+                ],
+            ]);
+            $updateSection($page, 'leistungen', [
+                'title' => 'Copilot Readiness Bausteine',
+                'intro' => 'Konkrete Prüfpunkte für einen kontrollierten Microsoft 365 Copilot Start.',
+                'columns' => 3,
+                'cards' => [
+                    ['enabled' => true, 'icon' => '🧭', 'category' => 'Readiness', 'title' => 'Tenant Readiness', 'text' => 'Lizenzierung, Admin Center, Basiskonfiguration und technische Voraussetzungen prüfen.'],
+                    ['enabled' => true, 'icon' => '🔐', 'category' => 'Datenzugriff', 'title' => 'Permission Review', 'text' => 'SharePoint, OneDrive und Teams Berechtigungen risikoorientiert bewerten.'],
+                    ['enabled' => true, 'icon' => '🏷️', 'category' => 'Compliance', 'title' => 'Purview Quick Check', 'text' => 'Labels, DLP, Audit und Aufbewahrung als Copilot-Schutzschicht einordnen.'],
+                    ['enabled' => true, 'icon' => '🧪', 'category' => 'Pilot', 'title' => 'Pilotkonzept', 'text' => 'Pilotgruppen, Use Cases, Erfolgskriterien und Feedbackprozess definieren.'],
+                    ['enabled' => true, 'icon' => '📈', 'category' => 'Adoption', 'title' => 'Enablement Plan', 'text' => 'Admin- und Anwenderkommunikation für realistische Copilot-Nutzung vorbereiten.'],
+                    ['enabled' => true, 'icon' => '📘', 'category' => 'Ergebnis', 'title' => 'Readiness Report', 'text' => 'Priorisierte Maßnahmen, Quick Wins und konkrete nächste Schritte dokumentieren.'],
+                ],
+            ]);
+            $updateSection($page, 'faq', ['title' => 'FAQ zum Copilot Readiness Check', 'cards' => [
+                ['enabled' => true, 'question' => 'Warum vor Copilot einen Readiness Check durchführen?', 'answer' => 'Weil Copilot vorhandene Berechtigungen und Datenqualität nutzt. Schwächen werden dadurch sichtbarer.'],
+                ['enabled' => true, 'question' => 'Wird Copilot dabei bereits aktiviert?', 'answer' => 'Nein, der Check bewertet die Voraussetzungen und bereitet einen kontrollierten Pilot vor.'],
+                ['enabled' => true, 'question' => 'Welche Bereiche werden geprüft?', 'answer' => 'SharePoint, OneDrive, Teams, Entra ID, Purview, Lizenzierung, Governance und Pilotfähigkeit.'],
+            ]]);
+        } elseif ($proposal === 'security-review') {
+            $page['internal_title'] = 'Microsoft 365 Security Review';
+            $page['public_title'] = 'Microsoft 365 Security Review';
+            $page['slug'] = 'microsoft-365-security-review';
+            $page['template'] = 'security';
+            $page['hero']['badge_text'] = 'Security · Entra ID · Defender';
+            $page['hero']['title'] = 'Microsoft 365 Security sichtbar machen und Risiken priorisieren';
+            $page['hero']['subtitle'] = 'Entra ID, Conditional Access, MFA, Defender und Adminrollen strukturiert prüfen.';
+            $page['hero']['description'] = 'Diese Vorlage ist für Security Reviews mit Platzhaltertexten zu Identitäten, Zugriffen, Schutzfunktionen und Maßnahmenplan vorbereitet.';
+            $page['hero']['background_color'] = '#0f172a';
+            $page['hero']['text_color'] = '#ffffff';
+            $updateSection($page, 'herausforderungen', [
+                'title' => 'Typische Security-Schwachstellen in Microsoft 365',
+                'intro' => 'Diese Vorlage fokussiert Identitäten, Adminrollen, Zugriffe und Schutzfunktionen.',
+                'cards' => [
+                    ['enabled' => true, 'icon' => '🔑', 'title' => 'Zu viele Adminrollen', 'text' => 'Privilegierte Konten sind nicht sauber getrennt, dokumentiert oder überwacht.'],
+                    ['enabled' => true, 'icon' => '🚪', 'title' => 'Conditional Access Lücken', 'text' => 'Ausnahmen, Legacy Authentication oder fehlende Gerätesignale erzeugen Risiko.'],
+                    ['enabled' => true, 'icon' => '🛡️', 'title' => 'Defender nicht ausgeschöpft', 'text' => 'Schutzfunktionen sind vorhanden, aber nicht konsistent aktiviert oder überwacht.'],
+                    ['enabled' => true, 'icon' => '👤', 'title' => 'Gastzugriffe unklar', 'text' => 'Externe Benutzer, Freigaben und Kollaboration sind nicht transparent.'],
+                ],
+            ]);
+            $updateSection($page, 'leistungen', [
+                'title' => 'Security Review Module',
+                'intro' => 'Gezielte Analyse für Entra ID, Conditional Access, Defender und Admin-Betrieb.',
+                'columns' => 3,
+                'cards' => [
+                    ['enabled' => true, 'icon' => '🪪', 'category' => 'Identity', 'title' => 'Entra ID Rollencheck', 'text' => 'Adminrollen, PIM-Vorbereitung, Break-Glass und privilegierte Konten bewerten.'],
+                    ['enabled' => true, 'icon' => '🚦', 'category' => 'Access', 'title' => 'Conditional Access Review', 'text' => 'Richtlinien, Ausnahmen, MFA, Geräte und Risiko-Signale prüfen.'],
+                    ['enabled' => true, 'icon' => '🛡️', 'category' => 'Defender', 'title' => 'Defender Konfigurationscheck', 'text' => 'E-Mail, Endpoint, Identity und Cloud Apps Schutzfunktionen einordnen.'],
+                    ['enabled' => true, 'icon' => '📊', 'category' => 'Secure Score', 'title' => 'Priorisierung', 'text' => 'Findings nach Risiko, Aufwand und Wirkung sortieren.'],
+                    ['enabled' => true, 'icon' => '📘', 'category' => 'Dokumentation', 'title' => 'Maßnahmenplan', 'text' => 'Konkreter Maßnahmenplan mit Quick Wins und Verantwortlichkeiten.'],
+                    ['enabled' => true, 'icon' => '🎓', 'category' => 'Enablement', 'title' => 'Admin Briefing', 'text' => 'Ergebnisse verständlich erklären und Betriebsteam befähigen.'],
+                ],
+            ]);
+            $updateSection($page, 'faq', ['title' => 'FAQ zum Microsoft 365 Security Review', 'cards' => [
+                ['enabled' => true, 'question' => 'Ist der Review invasiv?', 'answer' => 'Nein, im Fokus stehen Konfiguration, Export/Ansicht vorhandener Einstellungen und nachvollziehbare Bewertung.'],
+                ['enabled' => true, 'question' => 'Wer sollte teilnehmen?', 'answer' => 'Mindestens Microsoft 365 Admins, Security-Verantwortliche und Personen mit Entscheidungsbefugnis.'],
+                ['enabled' => true, 'question' => 'Gibt es konkrete Empfehlungen?', 'answer' => 'Ja, die Ergebnisse werden priorisiert und mit Quick Wins sowie Folgeaufgaben dokumentiert.'],
+            ]]);
+        } elseif ($proposal === 'governance-workshop') {
+            $page['internal_title'] = 'SharePoint Governance Workshop';
+            $page['public_title'] = 'SharePoint und OneDrive Governance Workshop';
+            $page['slug'] = 'sharepoint-governance-workshop';
+            $page['hero']['badge_text'] = 'SharePoint · OneDrive · Teams';
+            $page['hero']['title'] = 'SharePoint, OneDrive und Teams sauber strukturieren';
+            $page['hero']['subtitle'] = 'Governance, Berechtigungen, Lifecycle und Namenskonzepte verständlich aufbauen.';
+            $page['hero']['description'] = 'Diese Vorlage ist für Governance Workshops mit Platzhaltertexten zu Freigaben, Sites, Teams, Lifecycle und Rollenmodell vorbereitet.';
+            $updateSection($page, 'herausforderungen', [
+                'title' => 'Typische Governance-Probleme in SharePoint und Teams',
+                'intro' => 'Diese Vorlage richtet sich an Organisationen mit gewachsenen Sites, Teams und Freigaben.',
+                'cards' => [
+                    ['enabled' => true, 'icon' => '🗂️', 'title' => 'Unklare Site-Struktur', 'text' => 'Sites, Hubs und Teams sind historisch gewachsen und schwer nachvollziehbar.'],
+                    ['enabled' => true, 'icon' => '🔗', 'title' => 'Freigaben ohne Leitplanken', 'text' => 'Externe Links und Gastzugriffe werden nicht einheitlich gesteuert.'],
+                    ['enabled' => true, 'icon' => '♻️', 'title' => 'Kein Lifecycle', 'text' => 'Alte Teams und Sites bleiben bestehen, obwohl sie nicht mehr genutzt werden.'],
+                    ['enabled' => true, 'icon' => '🏷️', 'title' => 'Fehlende Namenskonzepte', 'text' => 'Teams, Gruppen und Sites folgen keinem verständlichen Muster.'],
+                ],
+            ]);
+            $updateSection($page, 'leistungen', [
+                'title' => 'Governance Workshop Inhalte',
+                'intro' => 'Praktische Bausteine für SharePoint, OneDrive und Teams Governance.',
+                'columns' => 3,
+                'cards' => [
+                    ['enabled' => true, 'icon' => '🧭', 'category' => 'Struktur', 'title' => 'Informationsarchitektur', 'text' => 'Sites, Hubs, Teams und Ablagebereiche verständlich strukturieren.'],
+                    ['enabled' => true, 'icon' => '🔐', 'category' => 'Zugriff', 'title' => 'Berechtigungsmodell', 'text' => 'Rollen, Freigaben, Gäste und Verantwortlichkeiten sauber festlegen.'],
+                    ['enabled' => true, 'icon' => '♻️', 'category' => 'Lifecycle', 'title' => 'Lebenszyklus-Konzept', 'text' => 'Erstellung, Prüfung, Archivierung und Löschung von Arbeitsbereichen definieren.'],
+                    ['enabled' => true, 'icon' => '🏷️', 'category' => 'Naming', 'title' => 'Namenskonventionen', 'text' => 'Benennung, Vorlagen und Metadaten praxisnah festlegen.'],
+                    ['enabled' => true, 'icon' => '📜', 'category' => 'Regeln', 'title' => 'Governance Leitfaden', 'text' => 'Kurze, verständliche Regeln statt unlesbarer Richtliniendokumente.'],
+                    ['enabled' => true, 'icon' => '🎓', 'category' => 'Workshop', 'title' => 'Admin Enablement', 'text' => 'Admins und Site Owner für den Alltag befähigen.'],
+                ],
+            ]);
+            $updateSection($page, 'faq', ['title' => 'FAQ zum Governance Workshop', 'cards' => [
+                ['enabled' => true, 'question' => 'Geht es nur um SharePoint?', 'answer' => 'Nein, betrachtet werden SharePoint, OneDrive, Teams, Gruppen, Freigaben und Verantwortlichkeiten gemeinsam.'],
+                ['enabled' => true, 'question' => 'Entsteht ein Governance Dokument?', 'answer' => 'Ja, als verständlicher Leitfaden mit Regeln, Rollen und nächsten Schritten.'],
+                ['enabled' => true, 'question' => 'Kann ein bestehender Wildwuchs bereinigt werden?', 'answer' => 'Ja, der Workshop kann eine Bereinigungs-Roadmap und Quick Wins vorbereiten.'],
+            ]]);
+        } elseif ($proposal === 'admin-automation') {
+            $page['internal_title'] = 'Admin Workshop und PowerShell Automatisierung';
+            $page['public_title'] = 'Admin Workshop und PowerShell Automatisierung';
+            $page['slug'] = 'admin-workshop-powershell-automatisierung';
+            $page['template'] = 'technical';
+            $page['hero']['badge_text'] = 'Admin Workshop · PowerShell · Betrieb';
+            $page['hero']['title'] = 'Microsoft 365 Administration verständlich machen und wiederkehrende Aufgaben automatisieren';
+            $page['hero']['subtitle'] = 'Workshops, Skripte, Dokumentation und Übergabe für Admin Teams.';
+            $page['hero']['description'] = 'Diese Vorlage ist für Admin Enablement, PowerShell-Automatisierung und Betriebsübergabe mit passenden Platzhalterbereichen vorbereitet.';
+            $updateSection($page, 'herausforderungen', [
+                'title' => 'Typische Herausforderungen im Microsoft 365 Admin-Alltag',
+                'intro' => 'Diese Vorlage ist für Admin Teams, die Wissen, Prozesse und wiederkehrende Aufgaben stabilisieren möchten.',
+                'cards' => [
+                    ['enabled' => true, 'icon' => '🧑‍💻', 'title' => 'Wissen verteilt', 'text' => 'Admin-Wissen steckt in Köpfen, Chats und alten Notizen statt in klaren Abläufen.'],
+                    ['enabled' => true, 'icon' => '🔁', 'title' => 'Manuelle Routinen', 'text' => 'Wiederkehrende Prüfungen und Exporte werden manuell und uneinheitlich erledigt.'],
+                    ['enabled' => true, 'icon' => '📉', 'title' => 'Fehlende Standards', 'text' => 'Skripte, Namensregeln und Dokumentation folgen keinem gemeinsamen Muster.'],
+                    ['enabled' => true, 'icon' => '🚚', 'title' => 'Schwierige Übergabe', 'text' => 'Betrieb und Projektwissen lassen sich schwer an Teams übergeben.'],
+                ],
+            ]);
+            $updateSection($page, 'leistungen', [
+                'title' => 'Admin Workshop und Automation Bausteine',
+                'intro' => 'Praxisnahe Inhalte für Microsoft 365 Admin Teams und Betriebsübergaben.',
+                'columns' => 3,
+                'cards' => [
+                    ['enabled' => true, 'icon' => '🎓', 'category' => 'Workshop', 'title' => 'Admin Enablement', 'text' => 'Microsoft 365 Admin Center, Entra ID, Exchange, Teams und SharePoint praxisnah erklären.'],
+                    ['enabled' => true, 'icon' => '⚙️', 'category' => 'PowerShell', 'title' => 'Skript Grundlagen', 'text' => 'Wiederverwendbare PowerShell-Strukturen, Logging und sichere Ausführung aufbauen.'],
+                    ['enabled' => true, 'icon' => '📊', 'category' => 'Reporting', 'title' => 'Admin Reports', 'text' => 'Benutzer, Gruppen, Lizenzen, Gastzugriffe und Berechtigungen nachvollziehbar auswerten.'],
+                    ['enabled' => true, 'icon' => '🧪', 'category' => 'Betrieb', 'title' => 'Runbooks', 'text' => 'Wiederkehrende Aufgaben als klare Runbooks und Checklisten dokumentieren.'],
+                    ['enabled' => true, 'icon' => '🔐', 'category' => 'Sicherheit', 'title' => 'Sichere Automatisierung', 'text' => 'Berechtigungen, App-Registrierungen und Secrets sauber einordnen.'],
+                    ['enabled' => true, 'icon' => '📘', 'category' => 'Übergabe', 'title' => 'Dokumentation', 'text' => 'Wissen so festhalten, dass das Admin Team es im Alltag nutzen kann.'],
+                ],
+            ]);
+            $updateSection($page, 'faq', ['title' => 'FAQ zu Admin Workshop und PowerShell', 'cards' => [
+                ['enabled' => true, 'question' => 'Müssen PowerShell-Kenntnisse vorhanden sein?', 'answer' => 'Nein, Inhalte können von Grundlagen bis zu fortgeschrittener Automatisierung angepasst werden.'],
+                ['enabled' => true, 'question' => 'Werden echte Skripte erstellt?', 'answer' => 'Ja, auf Wunsch entstehen wiederverwendbare Beispiele, Reports oder Runbooks für den Alltag.'],
+                ['enabled' => true, 'question' => 'Ist die Übergabe dokumentiert?', 'answer' => 'Ja, Ziel ist eine verständliche Dokumentation für Betrieb und Weiterentwicklung.'],
+            ]]);
+        }
+
+        $targetSectionOrder = ['proof', 'partner_band', 'comparison', 'services', 'steps', 'collaboration', 'trust', 'technology', 'html', 'booking', 'divider', 'cta'];
+        $targetSectionNames = [
+            'proof' => 'Grundlagen',
+            'partner_band' => 'Partnerband',
+            'comparison' => 'Vergleich GenAI Agentic AI',
+            'services' => 'Meine Leistungen',
+            'steps' => 'Beratungsablauf',
+            'collaboration' => 'Zusammenarbeit',
+            'trust' => 'Trust Bereich',
+            'technology' => 'Technologie Bereich',
+            'html' => 'Freier HTML Bereich',
+            'booking' => 'Terminbuchung',
+            'divider' => 'Zitat Trenner',
+            'cta' => 'CTA Band Copilot Readiness',
+        ];
+        $ensureSection = static function (array &$sections, string $type, array $defaults): void {
+            foreach ($sections as $section) {
+                if (($section['type'] ?? '') === $type) {
+                    return;
+                }
+            }
+            $sections[] = $defaults + ['enabled' => true, 'type' => $type, 'cards' => []];
+        };
+        $ensureSection($page['sections'], 'proof', [
+            'id' => 'belegbare-grundlagen',
+            'anchor_id' => 'belegbare-grundlagen',
+            'internal_name' => 'Grundlagen',
+            'eyebrow' => 'Belegbare Grundlagen',
+            'title' => 'Was nach Beratung greifbar wird',
+            'intro' => 'Keine erfundenen Kundenzitate. Hier stehen nur nachvollziehbare Erfahrung, klare Projektbelege und später echte freigegebene Referenzen.',
+            'columns' => 3,
+            'card_type' => 'text',
+            'card_design' => 'accent',
+            'background_color' => '#ffffff',
+            'text_color' => '#111827',
+            'cards' => [
+                ['enabled' => true, 'badge' => 'Erfahrung', 'title' => '20+ Jahre Microsoft-Infrastruktur', 'text' => 'Senior IT-Admin mit Schwerpunkt Microsoft 365, Azure, Exchange, PowerShell, IT-Security und Datenschutz/Compliance.'],
+                ['enabled' => true, 'badge' => 'Prüfung', 'title' => 'IHK-Prüfer', 'text' => 'Prüfungsperspektive aus Ausbildung und Praxis. Das hilft bei klaren Standards, verständlicher Übergabe und sauberer Dokumentation.'],
+                ['enabled' => true, 'badge' => 'Zertifizierung', 'title' => 'Mehrfach zertifiziert', 'text' => 'LPIC 1 & 2 sowie Microsoft-Zertifizierungen ergänzen die praktische Erfahrung.'],
+            ],
+        ]);
+        $ensureSection($page['sections'], 'partner_band', [
+            'id' => 'partnerband',
+            'anchor_id' => 'partnerband',
+            'enabled' => false,
+            'internal_name' => 'Partnerband',
+            'eyebrow' => 'Netzwerk',
+            'title' => 'Zugehörig zum copilotberater.de Netzwerk',
+            'intro' => 'Einordnung, Netzwerkbezug und weiterführende Links zum Partnerangebot.',
+            'partner_layout' => 'network-card',
+            'button_1_text' => 'copilotberater.de',
+            'button_1_target' => 'https://copilotberater.de',
+            'button_1_target_type' => 'external',
+            'button_1_style' => 'primary',
+            'button_2_text' => 'Copilotberater Deutschland Karte',
+            'button_2_target' => 'https://copilotberater.de/copilotberater-deutschland-karte/',
+            'button_2_target_type' => 'external',
+            'button_2_style' => 'ghost',
+        ]);
+        $ensureSection($page['sections'], 'booking', [
+            'id' => 'termin-buchen',
+            'anchor_id' => 'termin-buchen',
+            'internal_name' => 'Terminbuchung',
+            'eyebrow' => 'Termin',
+            'title' => 'Direkt einen Termin buchen',
+            'intro' => 'Wähle einen passenden Slot für ein erstes Gespräch zu Microsoft 365, Copilot oder Security. Danach klären wir Ziel, Ausgangslage und den nächsten sinnvollen Schritt.',
+            'booking_url' => '',
+            'booking_display' => 'embed',
+            'booking_button_text' => 'Termin buchen',
+            'background_color' => '#ffffff',
+            'text_color' => '#111827',
+        ]);
+        $page['sections'] = array_values(array_filter($page['sections'], static fn(array $section): bool => in_array((string) ($section['type'] ?? ''), $targetSectionOrder, true)));
+        usort($page['sections'], static function (array $a, array $b) use ($targetSectionOrder): int {
+            $rankA = array_search((string) ($a['type'] ?? ''), $targetSectionOrder, true);
+            $rankB = array_search((string) ($b['type'] ?? ''), $targetSectionOrder, true);
+            return ($rankA === false ? 999 : $rankA) <=> ($rankB === false ? 999 : $rankB);
+        });
+        foreach ($page['sections'] as $index => &$section) {
+            $section['sort_order'] = $index + 1;
+            $type = (string) ($section['type'] ?? '');
+            if (isset($targetSectionNames[$type])) {
+                $section['internal_name'] = $targetSectionNames[$type];
+            }
+        }
+        unset($section);
+        return $page;
+    }
+
+    private static function render_with_layout(string $activePage, callable $renderer): void
+    {
+        self::check_access();
+        if (!function_exists('cms_plugin_workspace_open') && is_file(ABSPATH . 'admin/partials/plugin-workspace.php')) {
+            require_once ABSPATH . 'admin/partials/plugin-workspace.php';
+        }
+
+        $storage = CMS_Beratung_Storage::instance();
+        $counts = $storage->landingpage_counts();
+        $subCounts = $storage->submission_counts();
+        $newSubmissions = (int) ($subCounts['new'] ?? 0);
+        $openSubmissions = $newSubmissions + (int) ($subCounts['read'] ?? 0) + (int) ($subCounts['in_progress'] ?? 0);
+        $activeNav = match ($activePage) {
+            'cms-beratung-new', 'cms-beratung-preview' => 'cms-beratung-landingpages',
+            'cms-beratung' => 'cms-beratung-dashboard',
+            default => $activePage,
+        };
+
+        $nav = [];
+        foreach (self::NAV as $slug => [$label, $icon]) {
+            $nav[] = [
+                'slug' => $slug,
+                'label' => $label,
+                'icon' => $icon,
+                'url' => self::admin_url($slug),
+                'active' => $slug === $activeNav,
+                'badge' => match ($slug) {
+                    'cms-beratung-landingpages' => $counts['total'],
+                    'cms-beratung-submissions' => $newSubmissions > 0 ? $newSubmissions : null,
+                    default => null,
+                },
+                'badge_tone' => $slug === 'cms-beratung-submissions' ? 'warning' : '',
+            ];
+        }
+
+        self::enqueue_admin_assets();
+        echo cms_plugin_workspace_open([
+            'plugin' => self::MENU_SLUG,
+            'title' => '365CMS | Beratung',
+            'icon' => 'ti ti-presentation',
+            'version' => CMS_BERATUNG_VERSION,
+            'status' => $newSubmissions > 0 ? ['label' => $newSubmissions . ' neue Anfrage(n)', 'tone' => 'warning'] : ['label' => $counts['published'] . ' online', 'tone' => $counts['published'] > 0 ? 'success' : 'muted'],
+            'description' => 'Landingpage-Builder für Microsoft 365, Copilot, KI, Security und Compliance-Beratung.',
+            'stats' => [
+                ['label' => 'Landingpages', 'value' => $counts['total'], 'icon' => 'ti ti-layout-rows', 'url' => self::admin_url('cms-beratung-landingpages')],
+                ['label' => 'Veröffentlicht', 'value' => $counts['published'], 'icon' => 'ti ti-world', 'tone' => 'success', 'url' => self::admin_url('cms-beratung-landingpages', ['status' => 'published'])],
+                ['label' => 'Neue Anfragen', 'value' => $newSubmissions, 'icon' => 'ti ti-inbox', 'tone' => $newSubmissions > 0 ? 'warning' : 'muted', 'url' => self::admin_url('cms-beratung-submissions', ['status' => 'new'])],
+                ['label' => 'Offene Anfragen', 'value' => $openSubmissions, 'icon' => 'ti ti-message-dots', 'url' => self::admin_url('cms-beratung-submissions')],
+            ],
+            'nav' => $nav,
+            'nav_explicit' => true,
+        ]);
+        self::render_flash();
+        echo '<div class="beratung-admin beratung-admin--' . self::esc(self::normalize_slug($activePage)) . '">';
+        $renderer();
+        echo '</div>';
+        self::enqueue_admin_scripts();
+        echo cms_plugin_workspace_close();
+    }
+
+    private static function flash(bool $ok, string $message): void
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE && !headers_sent()) {
+            session_start();
+        }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION[self::NOTICE_KEY] = ['type' => $ok ? 'success' : 'danger', 'message' => $message];
+        }
+    }
+
+    private static function render_flash(): void
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE || empty($_SESSION[self::NOTICE_KEY]) || !is_array($_SESSION[self::NOTICE_KEY])) {
+            return;
+        }
+        $notice = $_SESSION[self::NOTICE_KEY];
+        unset($_SESSION[self::NOTICE_KEY]);
+        $type = ($notice['type'] ?? '') === 'success' ? 'success' : 'danger';
+        echo '<div class="alert alert-' . $type . '" role="' . ($type === 'success' ? 'status' : 'alert') . '">' . self::esc((string) ($notice['message'] ?? '')) . '</div>';
+    }
+
+    private static function enqueue_admin_assets(): void
+    {
+        static $loaded = false;
+        if ($loaded) {
+            return;
+        }
+        $loaded = true;
+        $css = CMS_BERATUNG_PLUGIN_DIR . 'assets/css/admin.css';
+        if (is_file($css)) {
+            echo '<link rel="stylesheet" href="' . self::esc(CMS_BERATUNG_PLUGIN_URL . 'assets/css/admin.css') . '?v=' . filemtime($css) . '">' . "\n";
+        }
+        $faqCss = CMS_BERATUNG_PLUGIN_DIR . 'assets/css/admin-faq.css';
+        if (is_file($faqCss)) {
+            echo '<link rel="stylesheet" href="' . self::esc(CMS_BERATUNG_PLUGIN_URL . 'assets/css/admin-faq.css') . '?v=' . filemtime($faqCss) . '">' . "\n";
+        }
+        $mediaCss = CMS_BERATUNG_PLUGIN_DIR . 'assets/css/admin-media.css';
+        if (is_file($mediaCss)) {
+            echo '<link rel="stylesheet" href="' . self::esc(CMS_BERATUNG_PLUGIN_URL . 'assets/css/admin-media.css') . '?v=' . filemtime($mediaCss) . '">' . "\n";
+        }
+    }
+
+    private static function enqueue_admin_scripts(): void
+    {
+        if (self::normalize_slug((string) ($_GET['page'] ?? '')) !== 'cms-beratung-new' && (string) ($_GET['view'] ?? '') !== 'cms-beratung-new') {
+            return;
+        }
+        $js = CMS_BERATUNG_PLUGIN_DIR . 'assets/js/admin-builder.js';
+        if (is_file($js)) {
+            echo '<script src="' . self::esc(CMS_BERATUNG_PLUGIN_URL . 'assets/js/admin-builder.js') . '?v=' . filemtime($js) . '" defer></script>' . "\n";
+        }
+    }
+
+    private static function check_access(): void
+    {
+        $hasCapability = !function_exists('current_user_can') || current_user_can('manage_options');
+        $isAdmin = !class_exists('CMS\\Auth') || \CMS\Auth::instance()->isAdmin();
+        if (!$hasCapability || !$isAdmin) {
+            header('Location: ' . \CMS\Security::safeLocalPath('/admin', '/'), true, 303);
+            exit;
+        }
+    }
+
+    private static function nonce(string $action): string
+    {
+        return class_exists('CMS\\Security') ? (string) \CMS\Security::instance()->generateToken($action) : '';
+    }
+
+    private static function verify_nonce(string $action): bool
+    {
+        return class_exists('CMS\\Security') && \CMS\Security::instance()->verifyToken((string) ($_POST['csrf_token'] ?? ''), $action);
+    }
+
+    private static function render_media_config(): void
     {
         $config = [
             'uploadUrl' => '/api/cms-beratung/media-upload',
@@ -929,19 +1720,26 @@ final class CMS_Beratung_Admin_Pages
             'uploadFolder' => '/uploads/beratung/',
             'maxSizeMb' => 10,
         ];
-        echo '<script type="application/json" id="beratung-media-config">' . self::json_attr($config) . '</script>';
+        $json = (string) json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+        echo '<script type="application/json" id="beratung-media-config">' . $json . '</script>';
     }
 
-    public static function render_expert_options_config(): void
+    private static function render_expert_options_config(): void
     {
         $items = [];
         if (class_exists('CMS_365NET_Experts_And_Companie_Database')) {
             try {
                 foreach (CMS_365NET_Experts_And_Companie_Database::instance()->getExpertsPublic('', '', 500, 0) as $expert) {
-                    if (!is_object($expert) || (int) ($expert->id ?? 0) <= 0) {
+                    if (!is_object($expert)) {
                         continue;
                     }
-                    $name = trim(trim((string) ($expert->first_name ?? '')) . ' ' . trim((string) ($expert->last_name ?? '')));
+                    $id = (int) ($expert->id ?? 0);
+                    if ($id <= 0) {
+                        continue;
+                    }
+                    $first = trim((string) ($expert->first_name ?? ''));
+                    $last = trim((string) ($expert->last_name ?? ''));
+                    $name = trim($first . ' ' . $last);
                     if ($name === '') {
                         continue;
                     }
@@ -949,7 +1747,7 @@ final class CMS_Beratung_Admin_Pages
                     $company = trim((string) ($expert->company ?? ''));
                     $awards = trim((string) ($expert->awards ?? ''));
                     $items[] = [
-                        'id' => (int) $expert->id,
+                        'id' => $id,
                         'name' => $name,
                         'label' => trim('Expert: ' . $name . ($position !== '' ? ' · ' . $position : '') . ($company !== '' ? ' · ' . $company : '')),
                         'source' => 'experts',
@@ -960,22 +1758,99 @@ final class CMS_Beratung_Admin_Pages
                         'is_mvp' => $awards !== '' && stripos($awards, 'mvp') !== false,
                     ];
                 }
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 $items = [];
             }
         }
-        echo '<script type="application/json" id="beratung-expert-options">' . self::json_attr(['experts' => $items]) . '</script>';
+        $json = (string) json_encode(['experts' => $items], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+        echo '<script type="application/json" id="beratung-expert-options">' . $json . '</script>';
     }
 
-    /** JSON für Script-Datenblöcke und Attribute (HTML-Sonderzeichen escaped). */
-    public static function json_attr(mixed $value): string
+    /** @param array<string,mixed> $payload */
+    private static function json_response(array $payload, int $status = 200): never
     {
-        return (string) json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        if (!headers_sent()) {
+            http_response_code($status);
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{"success":0}';
+        exit;
     }
 
-    // ─── Formular-Helfer (auch für Views) ─────────────────────────────────
+    private static function uploaded_file_is_image(string $tmpName): bool
+    {
+        if ($tmpName === '' || !is_file($tmpName)) {
+            return false;
+        }
 
-    public static function field(string $label, string $name, string $value, string $type = 'text', string $hint = ''): void
+        if (function_exists('exif_imagetype') && @exif_imagetype($tmpName) !== false) {
+            return true;
+        }
+
+        if (@getimagesize($tmpName) !== false) {
+            return true;
+        }
+
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $mime = finfo_file($finfo, $tmpName);
+                unset($finfo); // finfo_close() ist seit PHP 8.5 veraltet; die Ausgabe würde die JSON-Antwort des Uploads zerstören.
+                return is_string($mime) && str_starts_with(strtolower($mime), 'image/');
+            }
+        }
+
+        return false;
+    }
+
+    private static function svg_upload_is_safe(string $tmpName): bool
+    {
+        $content = (string) @file_get_contents($tmpName, false, null, 0, 1024 * 1024);
+        if ($content === '' || stripos($content, '<svg') === false) {
+            return false;
+        }
+
+        if (preg_match('#<(script|foreignObject|iframe|object|embed|form|input|button|textarea|select|link)\b#i', $content) === 1) {
+            return false;
+        }
+
+        if (preg_match('/\s+on[a-z]+\s*=/i', $content) === 1) {
+            return false;
+        }
+
+        if (preg_match('/(?:href|xlink:href|src)\s*=\s*(["\'])\s*(?:javascript:|data:text\/html)/i', $content) === 1) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static function sanitize_upload_basename(string $baseName): string
+    {
+        $baseName = strtolower(trim($baseName));
+        $baseName = preg_replace('/[^a-z0-9_-]+/i', '-', $baseName) ?? '';
+        $baseName = trim($baseName, '-_');
+        if ($baseName === '') {
+            $baseName = 'beratung-bild';
+        }
+
+        return function_exists('mb_substr') ? mb_substr($baseName, 0, 80) : substr($baseName, 0, 80);
+    }
+
+    private static function unique_upload_filename(string $targetDir, string $baseName, string $extension): string
+    {
+        $extension = strtolower(trim($extension, '.'));
+        $candidate = $baseName . '.' . $extension;
+        $counter = 1;
+        while (is_file($targetDir . DIRECTORY_SEPARATOR . $candidate)) {
+            $candidate = $baseName . '-' . $counter . '.' . $extension;
+            $counter++;
+        }
+
+        return $candidate;
+    }
+
+    private static function field(string $label, string $name, string $value, string $type = 'text', string $hint = ''): void
     {
         echo '<label class="beratung-field"><span>' . self::esc($label) . '</span><input type="' . self::esc($type) . '" name="' . self::esc($name) . '" value="' . self::esc($value) . '">';
         if ($hint !== '') {
@@ -984,173 +1859,105 @@ final class CMS_Beratung_Admin_Pages
         echo '</label>';
     }
 
-    public static function textarea(string $label, string $name, string $value, int $rows): void
+    private static function textarea(string $label, string $name, string $value, int $rows): void
     {
         echo '<label class="beratung-field"><span>' . self::esc($label) . '</span><textarea name="' . self::esc($name) . '" rows="' . $rows . '">' . self::esc($value) . '</textarea></label>';
     }
 
     /** @param array<string,string> $options */
-    public static function select(string $label, string $name, string $value, array $options): void
+    private static function select(string $label, string $name, string $value, array $options): void
     {
         echo '<label class="beratung-field"><span>' . self::esc($label) . '</span><select name="' . self::esc($name) . '">';
         foreach ($options as $key => $optionLabel) {
-            echo '<option value="' . self::esc((string) $key) . '"' . ((string) $key === $value ? ' selected' : '') . '>' . self::esc($optionLabel) . '</option>';
+            echo '<option value="' . self::esc($key) . '"' . ($key === $value ? ' selected' : '') . '>' . self::esc($optionLabel) . '</option>';
         }
         echo '</select></label>';
     }
 
-    public static function checkbox(string $label, string $name, bool $checked, string $hint = ''): void
+    private static function checkbox(string $label, string $name, bool $checked): void
     {
         echo '<input type="hidden" name="' . self::esc($name) . '" value="0"><label class="beratung-check"><input type="checkbox" name="' . self::esc($name) . '" value="1"' . ($checked ? ' checked' : '') . '> <span>' . self::esc($label) . '</span></label>';
-        if ($hint !== '') {
-            echo '<small class="beratung-field__hint">' . self::esc($hint) . '</small>';
+    }
+
+    private static function render_notice(string $notice, string $error): void
+    {
+        if ($notice !== '') {
+            echo '<div class="beratung-notice is-success">' . self::esc($notice) . '</div>';
+        }
+        if ($error !== '') {
+            echo '<div class="beratung-notice is-error">' . self::esc($error) . '</div>';
         }
     }
 
-    public static function hidden_token(string $action): string
+    private static function import_json_from_request(): string
     {
-        return '<input type="hidden" name="csrf_token" value="' . self::esc(self::nonce($action)) . '">';
-    }
-
-    /** Pagination unter Listen. */
-    public static function pagination(string $slug, array $params, int $total, int $page, int $perPage): string
-    {
-        $pages = (int) max(1, ceil($total / max(1, $perPage)));
-        if ($pages <= 1) {
-            return '';
+        $file = $_FILES['import_file'] ?? null;
+        if (is_array($file) && (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK && is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
+            $content = file_get_contents((string) $file['tmp_name']);
+            return is_string($content) ? $content : '';
         }
-        $html = '<nav class="beratung-pagination" aria-label="Seiten"><span>Seite ' . $page . ' von ' . $pages . ' (' . $total . ' Einträge)</span>';
-        if ($page > 1) {
-            $html .= self::button_link('Zurück', self::admin_url($slug, $params + ['p' => $page - 1]), 'ti ti-chevron-left', 'btn btn-sm btn-outline-secondary');
-        }
-        if ($page < $pages) {
-            $html .= self::button_link('Weiter', self::admin_url($slug, $params + ['p' => $page + 1]), 'ti ti-chevron-right', 'btn btn-sm btn-outline-secondary');
-        }
-        return $html . '</nav>';
-    }
-
-    public static function status_badge(string $status, string $label): string
-    {
-        $tone = match ($status) {
-            'published', 'done', 'answered' => 'success',
-            'new', 'draft' => 'warning',
-            'in_progress', 'read', 'private' => 'info',
-            default => 'muted',
-        };
-        return '<span class="beratung-badge beratung-badge--' . $tone . '">' . self::esc($label) . '</span>';
-    }
-
-    // ─── Allgemeine Helfer ─────────────────────────────────────────────────
-
-    private static function settings_tab(): string
-    {
-        $tab = (string) ($_GET['tab'] ?? 'design');
-        return array_key_exists($tab, CMS_Beratung_Settings::tabs()) ? $tab : 'design';
-    }
-
-    /** @param list<string> $keys @return array<string,string> */
-    private static function list_query_params(array $keys = ['status', 'q', 'sort', 'p']): array
-    {
-        $params = [];
-        foreach ($keys as $key) {
-            $value = $_GET[$key] ?? null;
-            if (is_scalar($value) && (string) $value !== '') {
-                $params[$key] = mb_substr((string) $value, 0, 120);
-            }
-        }
-        return $params;
-    }
-
-    private static function is_post(): bool
-    {
-        return ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
-    }
-
-    private static function has_access(): bool
-    {
-        $isAdmin = class_exists('CMS\\Auth') && \CMS\Auth::instance()->isAdmin();
-        $hasCapability = !function_exists('current_user_can') || current_user_can('manage_options');
-        return $isAdmin && $hasCapability;
-    }
-
-    private static function check_access(): void
-    {
-        if (!self::has_access()) {
-            header('Location: ' . self::site_url() . '/', true, 303);
-            exit;
-        }
-    }
-
-    public static function nonce(string $action): string
-    {
-        return class_exists('CMS\\Security') ? (string) \CMS\Security::instance()->generateToken($action) : '';
-    }
-
-    /** CSRF (Einmal-Token) und Admin-Recht serverseitig prüfen. */
-    private static function verify_nonce(string $action): bool
-    {
-        return self::has_access()
-            && class_exists('CMS\\Security')
-            && \CMS\Security::instance()->verifyToken((string) ($_POST['csrf_token'] ?? ''), $action);
+        return (string) ($_POST['import_json'] ?? '');
     }
 
     /** @param array<string,mixed> $payload @return array<string,mixed> */
     private static function strip_import_images(array $payload): array
     {
-        foreach (['image_url', 'logo_url', 'background_image_url', 'trust_image_url', 'og_image', 'twitter_image', 'divider_image_url', 'standalone_header_blog_logo_url', 'standalone_header_partner_logo_url'] as $key) {
-            if (array_key_exists($key, $payload)) {
-                $payload[$key] = '';
-            }
+        foreach (['image_url', 'logo_url', 'background_image_url', 'trust_image_url', 'og_image', 'twitter_image'] as $key) {
+            if (array_key_exists($key, $payload)) { $payload[$key] = ''; }
         }
         foreach ($payload as $key => $value) {
-            if (is_array($value)) {
-                $payload[$key] = self::strip_import_images($value);
-            }
+            if (is_array($value)) { $payload[$key] = self::strip_import_images($value); }
         }
         return $payload;
     }
 
-    /**
-     * Admin-Pfad einer Seite. Editor und Vorschau sind Ansichten der Landingpage-Liste (?view=).
-     *
-     * @param array<string,scalar> $params
-     */
-    public static function admin_url(string $pageSlug, array $params = []): string
+    private static function notice_from_query(): void
+    {
+        if (!empty($_GET['updated'])) {
+            self::render_notice('Aktion erfolgreich ausgeführt.', '');
+        }
+        if (!empty($_GET['error'])) {
+            self::render_notice('', 'Die Aktion konnte nicht ausgeführt werden.');
+        }
+    }
+
+    /** @return array<string,callable|null> */
+    private static function resolve_callbacks(): array
+    {
+        $callbacks = [];
+        foreach (self::PAGE_RENDERERS as $slug => $method) {
+            $callbacks[$slug] = is_callable([self::class, $method]) ? [self::class, $method] : null;
+        }
+        return $callbacks;
+    }
+
+    private static function admin_url(string $pageSlug, array $params = []): string
     {
         $pageSlug = self::normalize_slug($pageSlug);
-        if (in_array($pageSlug, ['cms-beratung-new', 'cms-beratung-preview'], true)) {
-            $params = ['view' => $pageSlug] + $params;
-            $pageSlug = self::DEFAULT_PAGE_SLUG;
+        if ($pageSlug === self::MENU_SLUG || in_array($pageSlug, self::UNLISTED_PAGE_SLUGS, true)) {
+            if ($pageSlug !== self::MENU_SLUG && $pageSlug !== self::DEFAULT_PAGE_SLUG) {
+                $params = ['view' => $pageSlug] + $params;
+            }
+            $pageSlug = self::MENU_SLUG;
         }
-        $url = $pageSlug === self::MENU_SLUG || !isset(self::PAGES[$pageSlug])
-            ? '/admin/plugins/' . self::MENU_SLUG
-            : '/admin/plugins/' . self::MENU_SLUG . '/' . rawurlencode($pageSlug);
+
+        $url = '/admin/plugins/' . self::MENU_SLUG . '/' . rawurlencode($pageSlug);
         return $params !== [] ? $url . '?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986) : $url;
     }
 
-    public static function preview_url(int $id): string
-    {
-        return '/api/cms-beratung/preview?id=' . max(0, $id);
-    }
-
-    public static function public_landingpage_url(string $slug): string
+    private static function public_landingpage_url(string $slug): string
     {
         $slug = trim($slug, '/');
-        return $slug === '' ? '' : self::site_url() . '/beratung/' . rawurlencode($slug);
+        if ($slug === '') {
+            return '';
+        }
+        $base = defined('SITE_URL') ? rtrim((string) SITE_URL, '/') : '';
+        return $base . '/beratung/' . rawurlencode($slug);
     }
 
-    private static function site_url(): string
-    {
-        return defined('SITE_URL') ? rtrim((string) SITE_URL, '/') : '';
-    }
-
-    /** @param array<string,scalar> $params */
     private static function redirect(string $pageSlug, array $params = []): never
     {
-        $target = class_exists('CMS\\Security')
-            ? \CMS\Security::safeLocalPath(self::admin_url($pageSlug, $params), '/admin/plugins/' . self::MENU_SLUG)
-            : self::admin_url($pageSlug, $params);
-        header('Location: ' . self::site_url() . $target, true, 303);
+        header('Location: ' . \CMS\Security::safeLocalPath(self::admin_url($pageSlug, $params), '/admin'), true, 303);
         exit;
     }
 
@@ -1159,7 +1966,7 @@ final class CMS_Beratung_Admin_Pages
         return trim((string) preg_replace('/[^a-z0-9_-]+/i', '-', strtolower($slug)), '-');
     }
 
-    public static function esc(string $value): string
+    private static function esc(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
     }

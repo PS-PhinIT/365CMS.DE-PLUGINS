@@ -95,14 +95,14 @@ $freeLabel = is_array($i18n ?? null) ? (string) ($i18n['freeLabel'] ?? 'Kostenlo
                     <?php endif; ?>
                     <div class="booking-service-card__footer">
                         <span class="booking-service-card__duration">
-                            <?php echo $e(CMS_Booking_Services::format_duration((int) $service['duration_min'])); ?>
+                            <?php echo CMS_Booking_Services::format_duration((int) $service['duration_min']); ?>
                         </span>
                         <span class="booking-service-card__price">
                             <?php
                             $priceCents = (int) $service['price_cents'];
-                            echo $e($priceCents > 0
-                                ? CMS_Booking_Services::format_price($priceCents, (string) ($provider['currency'] ?? ''))
-                                : $freeLabel);
+                            echo $priceCents > 0
+                                ? CMS_Booking_Services::format_price($priceCents)
+                                : $freeLabel;
                             ?>
                         </span>
                     </div>

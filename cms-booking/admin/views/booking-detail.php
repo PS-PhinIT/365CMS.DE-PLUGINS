@@ -1,119 +1,108 @@
 <?php
 /**
- * Buchung – Detailansicht mit Statusaktionen und interner Notiz
+ * Buchungsdetail mit Statusaktionen und interner Notiz.
  *
- * @var array<string, mixed>  $booking
- * @var array<string, string> $meta
- * @var array<string, string> $statusLabels
- * @var string $csrfToken, $error
+ * @var array<string,mixed> $detail
+ * @var array<string,string> $meta
+ * @var string $csrfToken
+ *
+ * @package CMS_Booking
  */
+
 declare(strict_types=1);
-if (!defined('ABSPATH')) exit;
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 $e = static fn (mixed $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
-$id = (int) $booking['id'];
-$status = (string) $booking['status'];
-$locations = ['online' => 'Online', 'onsite' => 'Vor Ort', 'hybrid' => 'Online / Vor Ort'];
-$meetingUrl = (string) ($booking['meeting_url'] ?? '');
-$meetingOk = $meetingUrl !== '' && filter_var($meetingUrl, FILTER_VALIDATE_URL) !== false
-    && in_array(strtolower((string) parse_url($meetingUrl, PHP_URL_SCHEME)), ['http', 'https'], true);
-$publicUrl = '/booking/confirm/' . $id . '?token=' . rawurlencode(CMS_Booking_Bookings::access_token($id, (string) ($booking['ical_uid'] ?? '')));
+$id = (int) $detail['id'];
+$status = (string) $detail['status'];
+$labels = CMS_Booking_Bookings::status_labels();
+$locations = ['online' => 'Online', 'onsite' => 'Vor Ort', 'hybrid' => 'Hybrid'];
+$transitions = match ($status) {
+    'pending' => ['confirm' => 'Bestätigen', 'cancel' => 'Ablehnen'],
+    'confirmed' => ['complete' => 'Abschließen', 'no_show' => 'Nicht erschienen', 'cancel' => 'Stornieren'],
+    default => [],
+};
 $rows = [
-    'Status'      => $statusLabels[$status] ?? $status,
-    'Datum'       => date('d.m.Y', (int) strtotime((string) $booking['booking_date'])) . ', ' . substr((string) $booking['start_time'], 0, 5) . ' – ' . substr((string) $booking['end_time'], 0, 5) . ' Uhr',
-    'Dauer'       => CMS_Booking_Services::format_duration((int) $booking['duration_min']),
-    'Anbieter'    => (string) ($booking['provider_name'] ?? '—'),
-    'Leistung'    => (string) ($booking['service_title'] ?? '—'),
-    'Ort'         => $locations[(string) $booking['location_type']] ?? (string) $booking['location_type'],
-    'Preis'       => CMS_Booking_Services::format_price((int) $booking['price_cents'], (string) ($booking['currency'] ?? '')),
-    'Kunde'       => (string) $booking['customer_name'],
-    'E-Mail'      => (string) $booking['customer_email'],
-    'Telefon'     => (string) ($booking['customer_phone'] ?? ''),
-    'Kundenkonto' => !empty($booking['user_id']) ? 'Benutzer #' . (int) $booking['user_id'] : 'Gast',
-    'Erinnerung'  => !empty($booking['reminder_sent']) ? 'versendet' : 'nicht versendet',
-    'Angelegt'    => (string) ($booking['created_at'] ?? ''),
-    'Bestätigt'   => (string) ($booking['confirmed_at'] ?? ''),
-    'Storniert'   => (string) ($booking['cancelled_at'] ?? ''),
-    'Abgeschlossen' => (string) ($booking['completed_at'] ?? ''),
+    'Termin' => CMS_Booking_Admin_Pages::format_date((string) $detail['booking_date']) . ', ' . substr((string) $detail['start_time'], 0, 5) . '–' . substr((string) $detail['end_time'], 0, 5) . ' (' . (int) $detail['duration_min'] . ' Min.)',
+    'Leistung' => (string) ($detail['service_title'] ?? '–'),
+    'Anbieter' => (string) ($detail['provider_name'] ?? '–'),
+    'Ort' => $locations[(string) $detail['location_type']] ?? (string) $detail['location_type'],
+    'Preis' => CMS_Booking_Services::format_price((int) $detail['price_cents'], (string) $detail['currency']),
+    'Kunde' => (string) $detail['customer_name'],
+    'E-Mail' => (string) $detail['customer_email'],
+    'Telefon' => (string) ($detail['customer_phone'] ?? '') !== '' ? (string) $detail['customer_phone'] : '–',
+    'Erstellt' => (string) $detail['created_at'],
+    'Erinnerung' => !empty($detail['reminder_sent']) ? 'versendet' : 'ausstehend',
 ];
 ?>
 <div class="admin-page-header">
     <div>
-        <h2>Buchung #<?php echo $id; ?></h2>
-        <p><?php echo $e($booking['customer_name']); ?> · <?php echo $e($booking['service_title'] ?? 'Termin'); ?></p>
+        <h2>Buchung #<?php echo $id; ?> <span class="bk-badge bk-badge--<?php echo $e(CMS_Booking_Admin_Pages::status_tone($status)); ?>"><?php echo $e($labels[$status] ?? $status); ?></span></h2>
+        <p><?php echo $e($detail['customer_name']); ?> · <?php echo $e($rows['Termin']); ?></p>
     </div>
     <div class="header-actions">
-        <a class="btn btn-secondary" href="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('bookings')); ?>"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zur Liste</a>
-        <a class="btn btn-secondary" href="<?php echo $e($publicUrl); ?>" target="_blank" rel="noopener noreferrer"><i class="ti ti-external-link" aria-hidden="true"></i> Kundenansicht</a>
+        <a class="btn btn-outline-secondary" href="<?php echo $e(CMS_Booking_Admin_Pages::url('bookings')); ?>"><i class="ti ti-arrow-left" aria-hidden="true"></i> Alle Buchungen</a>
     </div>
 </div>
 
-<?php self::render_alerts($error); ?>
-
-<div class="booking-admin-grid">
-    <section class="admin-card" aria-labelledby="booking-detail-data">
-        <h3 id="booking-detail-data">Daten</h3>
-        <dl class="booking-admin-dl">
+<div class="bk-split">
+    <section class="admin-card">
+        <div class="bk-panel-header"><h3>Details</h3></div>
+        <dl class="bk-dl">
             <?php foreach ($rows as $label => $value): ?>
-            <?php if (trim((string) $value) === '') continue; ?>
-            <dt><?php echo $e($label); ?></dt>
-            <dd><?php echo $e($value); ?></dd>
+                <dt><?php echo $e($label); ?></dt><dd><?php echo $e($value); ?></dd>
             <?php endforeach; ?>
-            <?php if ($meetingOk): ?>
-            <dt>Meeting-Link</dt>
-            <dd><a href="<?php echo $e($meetingUrl); ?>" target="_blank" rel="noopener noreferrer"><?php echo $e($meetingUrl); ?></a></dd>
+            <?php if (!empty($detail['meeting_url'])): ?>
+                <dt>Meeting</dt><dd><a href="<?php echo $e($detail['meeting_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo $e($detail['meeting_url']); ?></a></dd>
             <?php endif; ?>
-        </dl>
-        <?php if (!empty($booking['notes'])): ?>
-        <h4>Nachricht des Kunden</h4>
-        <p class="booking-admin-pre"><?php echo $e($booking['notes']); ?></p>
-        <?php endif; ?>
-        <?php if (!empty($meta)): ?>
-        <h4>Zusatzdaten</h4>
-        <dl class="booking-admin-dl">
             <?php foreach ($meta as $key => $value): ?>
-            <dt><?php echo $e($key); ?></dt>
-            <dd><?php echo $e($value); ?></dd>
+                <dt><?php echo $e($key); ?></dt><dd><?php echo $e($value); ?></dd>
             <?php endforeach; ?>
         </dl>
+        <?php if (!empty($detail['notes'])): ?>
+            <h4 class="bk-subheading">Nachricht des Kunden</h4>
+            <p class="bk-prewrap"><?php echo $e($detail['notes']); ?></p>
         <?php endif; ?>
     </section>
 
-    <div class="booking-admin-stack">
-        <section class="admin-card" aria-labelledby="booking-detail-actions">
-            <h3 id="booking-detail-actions">Status ändern</h3>
-            <form method="post" action="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('bookings', ['view' => 'detail', 'id' => $id])); ?>" class="booking-admin-actions">
-                <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
-                <input type="hidden" name="return_detail" value="1">
-                <?php if ($status !== 'confirmed'): ?>
-                <button type="submit" name="row_action" value="confirm:<?php echo $id; ?>" class="btn btn-primary"><i class="ti ti-check" aria-hidden="true"></i> Bestätigen</button>
-                <?php endif; ?>
-                <?php if ($status !== 'completed'): ?>
-                <button type="submit" name="row_action" value="complete:<?php echo $id; ?>" class="btn btn-secondary">Abgeschlossen</button>
-                <?php endif; ?>
-                <?php if ($status !== 'no_show'): ?>
-                <button type="submit" name="row_action" value="no_show:<?php echo $id; ?>" class="btn btn-secondary">Nicht erschienen</button>
-                <?php endif; ?>
-                <?php if ($status !== 'cancelled'): ?>
-                <button type="submit" name="row_action" value="cancel:<?php echo $id; ?>" class="btn btn-secondary"
-                        data-cms-confirm="Buchung stornieren? Der Kunde wird benachrichtigt.">Stornieren</button>
-                <?php endif; ?>
-                <button type="submit" name="row_action" value="delete:<?php echo $id; ?>" class="btn btn-danger"
-                        data-cms-confirm="Buchung #<?php echo $id; ?> endgültig löschen?"><i class="ti ti-trash" aria-hidden="true"></i> Löschen</button>
-            </form>
-        </section>
+    <section class="admin-card">
+        <div class="bk-panel-header"><h3>Aktionen</h3></div>
+        <?php if ($transitions === []): ?>
+            <p class="bk-muted">Für den Status „<?php echo $e($labels[$status] ?? $status); ?>“ sind keine weiteren Statuswechsel vorgesehen.</p>
+        <?php else: ?>
+            <div class="bk-actions bk-actions--start">
+                <?php foreach ($transitions as $action => $label): ?>
+                    <form method="post"<?php echo $action === 'cancel' ? ' data-cms-confirm="Buchung wirklich ' . $e(strtolower($label)) . '? Der Kunde wird benachrichtigt."' : ''; ?>>
+                        <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+                        <input type="hidden" name="booking_admin_action" value="booking_status">
+                        <input type="hidden" name="booking_id" value="<?php echo $id; ?>">
+                        <input type="hidden" name="status" value="<?php echo $e($action); ?>">
+                        <input type="hidden" name="return_view" value="1">
+                        <button type="submit" class="btn <?php echo $action === 'cancel' ? 'btn-outline-danger' : ($action === 'confirm' || $action === 'complete' ? 'btn-primary' : 'btn-outline-secondary'); ?>"><?php echo $e($label); ?></button>
+                    </form>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
 
-        <section class="admin-card" aria-labelledby="booking-detail-notes">
-            <h3 id="booking-detail-notes">Interne Notiz</h3>
-            <form method="post" action="<?php echo $e(CMS_Booking_Admin_Pages::admin_url('bookings', ['view' => 'detail', 'id' => $id])); ?>">
-                <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
-                <input type="hidden" name="booking_id" value="<?php echo $id; ?>">
-                <div class="form-group">
-                    <label class="form-label visually-hidden" for="booking-internal-notes">Interne Notiz</label>
-                    <textarea id="booking-internal-notes" name="internal_notes" class="form-control" rows="5" maxlength="5000"><?php echo $e($booking['internal_notes'] ?? ''); ?></textarea>
-                    <small class="form-text">Nur im Admin sichtbar, nicht für Kunden oder Anbieter.</small>
-                </div>
-                <button type="submit" name="save_notes" value="1" class="btn btn-primary">Notiz speichern</button>
-            </form>
-        </section>
-    </div>
+        <form method="post" class="admin-form bk-notes">
+            <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+            <input type="hidden" name="booking_admin_action" value="booking_notes">
+            <input type="hidden" name="booking_id" value="<?php echo $id; ?>">
+            <label class="form-label" for="bk-internal-notes">Interne Notiz</label>
+            <textarea id="bk-internal-notes" name="internal_notes" class="form-control" rows="5" maxlength="5000"><?php echo $e($detail['internal_notes'] ?? ''); ?></textarea>
+            <div class="form-hint">Nur im Admin sichtbar; wird nicht an Kunden gesendet.</div>
+            <button type="submit" class="btn btn-secondary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Notiz speichern</button>
+        </form>
+
+        <form method="post" class="bk-delete" data-cms-confirm="Buchung #<?php echo $id; ?> endgültig löschen? Es wird keine E-Mail versendet.">
+            <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+            <input type="hidden" name="booking_admin_action" value="booking_status">
+            <input type="hidden" name="booking_id" value="<?php echo $id; ?>">
+            <input type="hidden" name="status" value="delete">
+            <button type="submit" class="btn btn-outline-danger"><i class="ti ti-trash" aria-hidden="true"></i> Buchung löschen</button>
+        </form>
+    </section>
 </div>

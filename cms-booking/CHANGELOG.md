@@ -1,58 +1,42 @@
 # Changelog – CMS Booking
 
+## 4.0.0 – 2026-11-15
+
+### Behoben
+
+- **Buchungsformular (öffentlich):** Der Core-Router verlangt für öffentliche POSTs ein `form_guard`-Einmaltoken; das Formular sendet ein eigenes Token und wurde mit 403 abgewiesen. Das Plugin meldet die Route `/booking/<anbieter>/<leistung>` über den Filter `cms_public_form_persistent_token` mit seinem Token an.
+- **Buchung angemeldeter Mitglieder:** `CMS\Auth::getUser()` existiert in 4.0.0 nicht – das Speichern schlug für eingeloggte Nutzer fehl. Benutzer-ID jetzt über `Auth::isLoggedIn()`/`Auth::instance()->currentUser()`; Fehler beim Speichern werden mit Datei/Zeile protokolliert.
+- **`plugins.xml`:** Nach Änderungen an Anbietern und Leistungen wird das gespeicherte Sitemap-Bundle verworfen (`SEOService::invalidateSavedSitemaps()`).
+- Validierungsfehler im Admin (`InvalidArgumentException`) landen nicht mehr im PHP-Fehlerprotokoll.
+- **E-Mail-Benachrichtigungen:** `CMS_Booking_Notifications` wurde nie instanziiert – Kunden-, Anbieter- und Admin-Mails wurden nicht versendet. Die Klasse wird jetzt bei `cms_init` registriert.
+- **Buchungsabschluss:** Nach dem Speichern rief das Frontend die nicht existierende Methode `send_booking_created()` auf; Kunden sahen „Speichern fehlgeschlagen“, obwohl die Buchung angelegt war.
+- **Member-Bereich:** Die Spalte „Service“ zeigte immer „—“ (falscher Schlüssel `service_name`); Status jetzt mit deutschen Bezeichnungen.
+- **Suche:** `%`/`_` in Suchbegriffen werden maskiert; Zählung und Liste nutzen dieselben Suchfelder.
+- **Primärfarbe:** Die Einstellung wird auf den Buchungsseiten angewendet (nonce-geschützter Style-Block).
+
+### Neu
+
+- Einheitliches 365CMS-Plugin-Layout: Kopfzeile mit Version, Status und KPIs (offene Anfragen, heute, 7 Tage, aktive Anbieter), linkes Menü **Übersicht · Buchungen · Anbieter · Verfügbarkeit · Leistungen · Einstellungen**, Übersicht mit Schnellaktionen, System-Check und anstehenden Terminen.
+- Anbieter manuell anlegen und bearbeiten (bisher nur über Quell-Plugins); synchronisierte Anbieter: Kontaktdaten, Zeitzone, Währung und Status bearbeitbar.
+- Seite **Verfügbarkeit**: Wochenplan mit bis zu zwei Zeitfenstern je Tag, Abwesenheiten für Zeiträume (bisher ohne Admin-Oberfläche).
+- Buchungsdetail mit allen Angaben, Meta-Daten und interner Notiz; Statusaktionen kontextabhängig.
+- CSV-Export der (gefilterten) Buchungen; Einstellungen zurücksetzen; Erinnerungen und Anonymisierung manuell auslösen.
+- Terminerinnerungen über `cms_cron_hourly` (Einstellung „Erinnerungen versenden“ existierte bereits, wurde aber nie ausgeführt).
+- Datenaufbewahrung: Regel `cms_booking_customers` anonymisiert Kundendaten alter, abgeschlossener Termine (Standard 730 Tage).
+- Systemhinweis `cms_booking_pending` für Anfragen, deren Termin unbearbeitet verstrichen ist; Sitemap-Einträge `/booking/<anbieter>`.
+- Lebenszyklus-Callbacks `cms_booking_activate()`, `cms_booking_deactivate()`, `cms_booking_uninstall()`.
+
+### Geändert
+
+- Voraussetzung 365CMS 4.0.0 und PHP 8.4.1; Schema-Version 3 (Indizes `idx_reminder`, `idx_provider_date`).
+- Versand über den Core-`MailService` statt `mail()`; die Absenderadresse der Einstellungen wird als Reply-To verwendet.
+- Zugangs-Token für Bestätigungsseite und iCal nutzen `SECURE_AUTH_KEY`/`AUTH_KEY`; bereits versendete Links bleiben gültig.
+- Alle Admin-Formulare nach dem PRG-Muster mit Flash-Meldungen; Capability `manage_options`; Redirects über `Security::safeLocalPath()`.
+- Keine `SELECT *` mehr (auch nicht beim Lesen aus Quell-Plugin-Tabellen); Einstellungen einmal je Request gelesen.
+- Admin-Views ohne `style`-Attribute, Admin-CSS nur mit Core-Tokens; `booking-admin.js` und die Admin-Traits entfernt (nicht mehr benötigt); Member-Icon Tabler statt Emoji, Capability `member`.
+
+
 Alle nennenswerten Änderungen an diesem Plugin werden hier dokumentiert.
-
-## 4.0.0 – 2026-11-14
-
-### Layout
-
-- Alle Admin-Seiten folgen dem Plugin-Layout-Vertrag 4.0.0: `cms_plugin_workspace_open()` mit Kopfzeile „365CMS | Buchungen“, Versions-/Statusbadge und vier Live-KPIs (offene Anfragen, Termine heute, nächste 7 Tage, aktive Anbieter), linkes Plugin-Menü (Übersicht, Buchungen mit Zähler offener Anfragen, Anbieter, Leistungen, Einstellungen).
-- Übersicht über `cms_plugin_dashboard()`: Schnellaktionen, System-Check (Tabellen, Schema-Version, Admin-/Absenderadresse, buchbare Anbieter, Erinnerungen, Löschfrist, Integrationen), zuletzt eingegangene Buchungen, darunter Tabelle „Nächste Termine“.
-- Unterseiten einheitlich Header → Meldungen → Toolbar/Filter → Tabelle; das Leistungs-Modal wurde durch eine eigene Bearbeitungsansicht ersetzt.
-- Eigene Layout-Shell (`renderAdminLayoutStart`, Header/Sidebar-Fallback, `booking-admin-shell`) und das Laden von `shared/admin/plugin-admin-contract.php` entfernt; Rückfall-Partial `includes/plugin-workspace.php` und `assets/css/cms-plugin-workspace.css` nur für Cores ohne Layout-Helfer.
-- `booking-admin.css` neu: nur noch Toolbar, Sammelaktionen, Formular-Raster und Verfügbarkeit, ausschließlich Tokens, Rundung ≤ 2px, keine Inline-Styles und Emojis mehr in den Views.
-
-### Kompatibilität 4.0.0
-
-- Lifecycle über `cms_booking_activate()`, `cms_booking_deactivate()` und `cms_booking_uninstall()`; die Registrierung auf den nicht existierenden Hook `plugin_uninstalled` entfällt (Deinstallation entfernte bisher keine Tabellen).
-- Plugin-Header um `Requires CMS`, `Requires at least` und `Requires PHP` ergänzt; `plugin.json` neu.
-- Menü-Slugs `booking`, `bookings`, `providers`, `services`, `settings` und die statischen Methoden `render_dashboard|render_bookings|render_providers|render_services|render_settings` (Core-Fallback im AdminRouter) bleiben erhalten; Menü-Icon `ti ti-calendar-event`.
-- Mitgliederbereich mit Capability `member`, CSRF über `PluginDashboardRegistry::csrfField('booking')` (`member_plugin_booking`), Kachel mit Zähler anstehender Termine.
-- Neu angebunden: `cms_sitemap_entries`, `search_results`, `cms_member_export_data`, `dsgvo_export_data`/`dsgvo_delete_data` mit Konto **und** E-Mail, `DataRetentionService::registerRule()` (`cms-booking.bookings`), `AdminNoticeService::registerCheck()` (offene Anfragen, unvollständige Mail-Konfiguration), Filter `cms_public_form_persistent_token`.
-- Mails über `cms_mail()` (Core-MailService/MailQueue) statt `mail()`.
-- SEO-Metadaten über `SEOService::setRequestMeta()` mit Canonical; Bestätigungsseite `noindex`.
-
-### Fertiggestellt
-
-- Behoben: Das öffentliche Buchungsformular scheiterte in 4.0.0 an der `form_guard`-Prüfung des Core-Routers (403) – das Formular sendet jetzt beide Tokens, das Plugin meldet sein Token über den Router-Filter.
-- Behoben: Benachrichtigungen wurden nie versendet (Klasse nicht initialisiert, Aufruf der fehlenden Methode `send_booking_created()` endete in „Fehler beim Speichern“, obwohl die Buchung angelegt war).
-- Behoben: Buchungen angemeldeter Nutzer schlugen wegen `Auth::getUser()` (existiert nicht) fehl.
-- Anbieter manuell anlegen und bearbeiten (Kontakt, Zeitzone, Währung, Tageslimit, Beschreibung); Sync aus Quell-Plugins überschreibt diese Felder nicht mehr mit NULL.
-- Verfügbarkeit im Admin: Wochenplan mit bis zu zwei Zeitfenstern je Tag, Ausnahmen (Abwesenheit/zusätzliche Zeiten) anlegen und löschen – bisher gab es dafür keine Oberfläche.
-- Buchungen: Filter nach Status, Anbieter, Zeitraum und Suche (Name, E-Mail, Telefon, Nr.), Sammelaktionen (bestätigen, abschließen, nicht erschienen, stornieren, zurücksetzen, löschen), Detailansicht mit interner Notiz, CSV-Export der gefilterten Liste.
-- Anbieter und Leistungen: Sammelaktionen (aktivieren, deaktivieren, löschen), Filter, Paginierung; Löschen-Button für Anbieter ergänzt.
-- Erinnerungs-Mails über `cms_cron_hourly` (Einstellungen „Erinnerungen versenden“/„Stunden vorher“ wurden bisher nie gelesen).
-- Selbst-Stornierung auf der Bestätigungsseite und im Mitgliederbereich unter Beachtung der „Stornierungsfrist“ (bisher ungenutzte Einstellung).
-- Einstellungen „Standard-Dauer/-Puffer“ befüllen neue Leistungen, „Währung“ gilt für neue Anbieter und Preise, „Primärfarbe“ wirkt (optional) auf den Buchungsseiten; neu: Löschfrist, Rate-Limit, Selbst-Stornierung.
-- Sofortbuchungen werden direkt bestätigt angelegt (eine Mail statt zweier).
-- Vergangene Zeitfenster und die Mindest-Vorlaufzeit werden im Kalender und in der Slot-API berücksichtigt; Vorlauf-Fenster (min./max. Tage) bestimmt den Kalenderzeitraum.
-
-### Sicherheit
-
-- Alle Admin-POSTs: Capability + CSRF vor jeder Ausgabe, danach PRG (303) mit Meldung; Löschen/Status nur per POST, Bestätigungen über `data-cms-confirm` statt eigenem JS-Dialog.
-- Öffentliches Formular: Rate-Limit je IP (`Security::checkDbRateLimit`), Honeypot, Längenbegrenzung, Arrays in POST-Feldern werden verworfen.
-- Zugangs-Token für Bestätigung, iCal und Stornierung mit `AUTH_KEY` (3.x-Links bleiben gültig), Bestätigungs- und ICS-Antworten mit `Cache-Control: private, no-store`.
-- ICS nach RFC 5545: TEXT-Escaping, quoted CN-Parameter, Zeilenfaltung bei 75 Oktetten, UTC-Zeiten aus der Anbieter-Zeitzone, `METHOD:PUBLISH`, Status je Buchungsstatus, Meeting-URL nur http/https.
-- Mails: Betreff/Absendername ohne Steuerzeichen, Absender als quoted-string, alle Platzhalter escaped.
-- CSV-Export mit Formel-Injection-Schutz (`= + - @ Tab CR` → `'`), UTF-8 mit BOM, Semikolon.
-- Quell-Tabellen der Integrationen werden nur mit validierten, gequoteten Spalten gelesen.
-
-### Performance
-
-- Kalender: Ausnahmen und Buchungen des gesamten Zeitraums werden je mit einer Abfrage geladen (vorher 2 Abfragen je Tag bei 90 Tagen), Tageslimits über gruppierte Zählung statt bis zu drei Abfragen je Tag.
-- Schema-Version 3: Indizes `idx_provider_date_status`, `idx_status_date`, `idx_user_date`, `idx_reminder`, `idx_provider_date`, `idx_provider_dow`, `idx_provider_status_sort`, `idx_status_name` (idempotent per `SHOW INDEX`).
-- Schema-Prüfung liest die Version über den OptionStore (keine zusätzliche Abfrage je Request); Einstellungen einmal pro Request über `CMS_Booking_Settings`.
-- Alle `SELECT *` durch Spaltenlisten ersetzt; Assets mit Versions-Cache-Buster nur auf eigenen Seiten.
 
 ## [3.0.8] – 2026-09-30
 

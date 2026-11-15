@@ -14,6 +14,9 @@
       event.preventDefault();
       target.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
 
+      if (window.cmsTracking && link.classList.contains('cms-beratung-card__link')) {
+        window.cmsTracking.track?.('cms_beratung_button_click', { href });
+      }
     } catch (_) {
       // Frontend-Enhancement darf die Seite nie blockieren.
     }
@@ -111,66 +114,6 @@
       }
     } catch (_) {
       // TOC ist reine Verbesserung; die Seite bleibt ohne JS vollständig nutzbar.
-    }
-  });
-
-  /*
-   * Tracking (Einstellungen → Tracking). Konfiguration im data-Attribut von <main>. Ereignisse gehen nur an
-   * Analyse-Anbieter, die der Core-Loader (cms-analytics.js) nach Einwilligung geladen hat (Matomo _paq,
-   * gtag, dataLayer). Ohne „nur aktive Anbieter“ zusätzlich als DOM-Ereignis „cms-beratung:track“.
-   */
-  roots.forEach((root) => {
-    let config = null;
-    try {
-      config = JSON.parse(root.dataset.beratungTracking || 'null');
-    } catch (_) {
-      config = null;
-    }
-    if (!config || typeof config !== 'object') return;
-    const send = (action, label) => {
-      try {
-        const detail = { category: 'CMS Beratung', action, label: String(label || '').slice(0, 200), page: String(config.page || '') };
-        let delivered = false;
-        if (Array.isArray(window._paq)) {
-          window._paq.push(['trackEvent', detail.category, action, detail.label]);
-          delivered = true;
-        }
-        if (typeof window.gtag === 'function') {
-          window.gtag('event', action, { event_category: detail.category, event_label: detail.label, page_slug: detail.page });
-          delivered = true;
-        } else if (Array.isArray(window.dataLayer) && delivered === false && window.dataLayer.length > 0) {
-          window.dataLayer.push({ event: action, ...detail });
-          delivered = true;
-        }
-        if (!config.providersOnly || delivered) {
-          root.dispatchEvent(new CustomEvent('cms-beratung:track', { bubbles: true, detail }));
-        }
-      } catch (_) {
-        // Tracking darf nie die Bedienung stören.
-      }
-    };
-    root.addEventListener('click', (event) => {
-      const element = event.target instanceof Element ? event.target : null;
-      if (!element) return;
-      const link = element.closest('a[href]');
-      const href = link ? (link.getAttribute('href') || '') : '';
-      if (config.faq) {
-        const faqButton = element.closest('.cms-beratung-faq button[aria-controls]');
-        if (faqButton && faqButton.getAttribute('aria-expanded') === 'true') send('faq_open', faqButton.textContent.trim());
-      }
-      if (!link) return;
-      if (config.bookings && /bookings|outlook\.office|termin/i.test(href)) {
-        send('booking_click', href);
-      } else if (config.downloads && (link.hasAttribute('download') || /\.(pdf|docx?|xlsx?|pptx?|zip)(\?|#|$)/i.test(href))) {
-        send('download', href);
-      } else if (config.anchors && href.startsWith('#') && link.closest('.cms-beratung__anchor-nav, .cms-beratung__toc-rail, .cms-beratung-standalone-header__menu')) {
-        send('anchor_click', href);
-      } else if (config.buttons && link.classList.contains('cms-beratung__btn')) {
-        send('button_click', link.textContent.trim() || href);
-      }
-    });
-    if (config.form) {
-      root.querySelectorAll('form.cms-beratung-form').forEach((form) => form.addEventListener('submit', () => send('form_submit', config.page)));
     }
   });
 

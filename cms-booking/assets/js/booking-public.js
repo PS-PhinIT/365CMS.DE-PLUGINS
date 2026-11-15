@@ -11,25 +11,6 @@
 
     function init() {
         initCalendar();
-        initConfirmForms();
-    }
-
-    /* =================================================================== */
-    /*  Bestätigung (data-cms-confirm) – im Frontend lädt der Core          */
-    /*  cms-inline-actions.js nicht; ohne Core-Helfer übernimmt das Plugin. */
-    /* =================================================================== */
-
-    function initConfirmForms() {
-        if (window.__cmsDeclarativeActions) {
-            return;
-        }
-        document.querySelectorAll('form.booking-confirmation-cancel[data-cms-confirm]').forEach(function (form) {
-            form.addEventListener('submit', function (event) {
-                if (!window.confirm(form.getAttribute('data-cms-confirm') || '')) {
-                    event.preventDefault();
-                }
-            });
-        });
     }
 
     /* =================================================================== */

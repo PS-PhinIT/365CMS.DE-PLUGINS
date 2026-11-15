@@ -1,12 +1,13 @@
 <?php
 /**
- * Audit-Log mit Filter, Pagination und CSV-Export.
+ * Audit-Log der Projektverwaltung.
  *
- * @var callable $e
- * @var array $filters
- * @var array $pageData
- * @var list<string> $entityTypes
- * @var CMS_Projects_Service $service
+ * @var list<array<string,mixed>> $logs
+ * @var list<array<string,mixed>> $projects
+ * @var array{project:int,result:string,entity:string} $filters
+ * @var int $retentionDays
+ *
+ * @package CMS_Projects
  */
 
 declare(strict_types=1);
@@ -15,78 +16,77 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-echo $this->pageHeader('Audit-Log', 'Protokoll aller Änderungen an Projekten, Boards, Widgets, Tickets und Einstellungen.');
-$entityLabels = ['project' => 'Projekt', 'board' => 'Board', 'widget' => 'Widget', 'task' => 'Ticket', 'settings' => 'Einstellungen'];
-$query = array_filter([
-    'q' => $filters['q'],
-    'result' => $filters['result'],
-    'entity_type' => $filters['entity_type'],
-], static fn (string $value): bool => $value !== '');
+$e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+$auditUrl = CMS_Projects_Admin::pageUrl('cms-projects-audit');
+$projectNames = array_column($projects, 'name', 'id');
+$entities = ['project' => 'Projekt', 'board' => 'Board', 'widget' => 'Widget', 'task' => 'Ticket'];
+$filtered = $filters['project'] > 0 || $filters['result'] !== '' || $filters['entity'] !== '';
 ?>
-<form method="get" action="<?php echo $e($this->url(self::PAGE_AUDIT)); ?>" class="cp-toolbar toolbar">
-    <label class="cp-toolbar__field cp-toolbar__field--grow">
-        <span class="form-label">Suche</span>
-        <input type="search" class="form-control" name="q" maxlength="80" value="<?php echo $e($filters['q']); ?>" placeholder="Aktion oder Benutzer">
-    </label>
-    <label class="cp-toolbar__field">
-        <span class="form-label">Bereich</span>
-        <select class="form-select" name="entity_type">
-            <option value="">Alle</option>
-            <?php foreach ($entityTypes as $type): ?>
-                <option value="<?php echo $e($type); ?>"<?php echo $filters['entity_type'] === $type ? ' selected' : ''; ?>><?php echo $e($entityLabels[$type] ?? $type); ?></option>
+<div class="admin-page-header">
+    <div>
+        <h2>Audit-Log</h2>
+        <p>Alle Änderungen an Projekten, Boards, Widgets und Tickets (neueste 200). <?php echo $retentionDays > 0 ? $e(sprintf('Einträge werden nach %d Tagen automatisch gelöscht.', $retentionDays)) : 'Keine automatische Löschung eingestellt.'; ?></p>
+    </div>
+    <div class="header-actions">
+        <a class="btn btn-outline-secondary" href="<?php echo $e(CMS_Projects_Admin::exportUrl('audit_csv', ['project' => $filters['project'], 'result' => $filters['result'], 'entity' => $filters['entity']])); ?>"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> CSV-Export</a>
+        <a class="btn btn-outline-secondary" href="<?php echo $e(CMS_Projects_Admin::pageUrl('cms-projects-settings')); ?>"><i class="ti ti-clock-cog" aria-hidden="true"></i> Löschfrist</a>
+    </div>
+</div>
+
+<form method="get" action="<?php echo $e($auditUrl); ?>" class="cp-toolbar" aria-label="Audit-Log filtern">
+    <div class="cp-toolbar__field">
+        <label class="form-label" for="cp-audit-project">Projekt</label>
+        <select id="cp-audit-project" name="project" class="form-select">
+            <option value="0">Alle</option>
+            <?php foreach ($projects as $item): ?>
+                <option value="<?php echo (int) $item['id']; ?>" <?php echo $filters['project'] === (int) $item['id'] ? 'selected' : ''; ?>><?php echo $e($item['name']); ?></option>
             <?php endforeach; ?>
         </select>
-    </label>
-    <label class="cp-toolbar__field">
-        <span class="form-label">Ergebnis</span>
-        <select class="form-select" name="result">
+    </div>
+    <div class="cp-toolbar__field">
+        <label class="form-label" for="cp-audit-entity">Bereich</label>
+        <select id="cp-audit-entity" name="entity" class="form-select">
             <option value="">Alle</option>
-            <option value="success"<?php echo $filters['result'] === 'success' ? ' selected' : ''; ?>>Erfolgreich</option>
-            <option value="failure"<?php echo $filters['result'] === 'failure' ? ' selected' : ''; ?>>Fehlgeschlagen</option>
+            <?php foreach ($entities as $key => $label): ?>
+                <option value="<?php echo $e($key); ?>" <?php echo $filters['entity'] === $key ? 'selected' : ''; ?>><?php echo $e($label); ?></option>
+            <?php endforeach; ?>
         </select>
-    </label>
+    </div>
+    <div class="cp-toolbar__field">
+        <label class="form-label" for="cp-audit-result">Ergebnis</label>
+        <select id="cp-audit-result" name="result" class="form-select">
+            <option value="">Alle</option>
+            <option value="success" <?php echo $filters['result'] === 'success' ? 'selected' : ''; ?>>Erfolgreich</option>
+            <option value="failure" <?php echo $filters['result'] === 'failure' ? 'selected' : ''; ?>>Fehlgeschlagen</option>
+        </select>
+    </div>
     <div class="cp-toolbar__actions">
-        <button type="submit" class="btn btn-outline-secondary"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>
+        <button type="submit" class="btn btn-secondary"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>
+        <?php if ($filtered): ?><a class="btn btn-link" href="<?php echo $e($auditUrl); ?>">Zurücksetzen</a><?php endif; ?>
     </div>
 </form>
 
-<section class="admin-card cp-admin-section">
-    <div class="cp-panel-header cp-panel-header--split">
-        <h3><?php echo (int) $pageData['total']; ?> Einträge</h3>
-        <form method="post" action="<?php echo $e($this->url(self::PAGE_AUDIT, $query)); ?>">
-            <?php echo $this->hiddenFields('export_audit'); ?>
-            <?php foreach (['q', 'result', 'entity_type'] as $key): ?>
-                <input type="hidden" name="<?php echo $e($key); ?>" value="<?php echo $e($filters[$key]); ?>">
-            <?php endforeach; ?>
-            <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> CSV exportieren</button>
-        </form>
-    </div>
-    <?php if ($pageData['items'] === []): ?>
-        <p class="cms-plugin-empty">Keine Einträge für diese Auswahl.</p>
+<div class="admin-card">
+    <?php if ($logs === []): ?>
+        <div class="empty-state"><p><strong>Keine Audit-Einträge</strong></p></div>
     <?php else: ?>
         <div class="users-table-container">
             <table class="users-table">
-                <thead>
-                    <tr><th>Zeitpunkt</th><th>Benutzer</th><th>Aktion</th><th>Bereich</th><th>Projekt</th><th>Ergebnis</th></tr>
-                </thead>
+                <thead><tr><th scope="col">Zeitpunkt</th><th scope="col">Benutzer</th><th scope="col">Aktion</th><th scope="col">Bereich</th><th scope="col">Projekt</th><th scope="col">Ergebnis</th></tr></thead>
                 <tbody>
-                    <?php foreach ($pageData['items'] as $log): ?>
-                        <tr>
-                            <td><?php echo $e($this->formatDateTime((string) $log['created_at'])); ?></td>
-                            <td><?php echo $e($log['actor_name'] !== '' ? $log['actor_name'] : 'system'); ?></td>
-                            <td><?php echo $e($service->describeAuditAction((string) $log['action'])); ?> <code class="cp-muted"><?php echo $e($log['action']); ?></code></td>
-                            <td><?php echo $e($entityLabels[$log['entity_type']] ?? $log['entity_type']); ?><?php echo (int) $log['entity_id'] > 0 ? ' #' . (int) $log['entity_id'] : ''; ?></td>
-                            <td>
-                                <?php if ((int) $log['project_id'] > 0): ?>
-                                    <a href="<?php echo $e($this->url(self::PAGE_PROJECTS, ['project_id' => (int) $log['project_id']])); ?>">#<?php echo (int) $log['project_id']; ?></a>
-                                <?php else: ?>–<?php endif; ?>
-                            </td>
-                            <td><span class="cp-badge cp-badge--<?php echo $log['result'] === 'success' ? 'success' : 'danger'; ?>"><?php echo $log['result'] === 'success' ? 'Erfolgreich' : 'Fehlgeschlagen'; ?></span></td>
-                        </tr>
-                    <?php endforeach; ?>
+                <?php foreach ($logs as $log): ?>
+                    <?php $pid = (int) ($log['project_id'] ?? 0); ?>
+                    <tr>
+                        <td class="cp-nowrap"><?php echo $e(date('d.m.Y H:i', (int) strtotime((string) $log['created_at']))); ?></td>
+                        <td><?php echo $e(($log['actor_name'] ?? '') !== '' ? $log['actor_name'] : 'system'); ?></td>
+                        <td><code><?php echo $e($log['action']); ?></code></td>
+                        <td><?php echo $e($entities[$log['entity_type']] ?? $log['entity_type']); ?><?php echo (int) $log['entity_id'] > 0 ? ' #' . (int) $log['entity_id'] : ''; ?></td>
+                        <td><?php if ($pid > 0 && isset($projectNames[$pid])): ?><a href="<?php echo $e(CMS_Projects_Admin::projectUrl($pid)); ?>"><?php echo $e($projectNames[$pid]); ?></a><?php else: ?><?php echo $pid > 0 ? '#' . $pid . ' (gelöscht)' : '–'; ?><?php endif; ?></td>
+                        <td><span class="cp-badge cp-badge--<?php echo ($log['result'] ?? '') === 'success' ? 'active' : 'overdue'; ?>"><?php echo ($log['result'] ?? '') === 'success' ? 'OK' : 'Fehler'; ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
-        <?php echo $this->pagination($pageData, self::PAGE_AUDIT, $query); ?>
     <?php endif; ?>
-</section>
+</div>

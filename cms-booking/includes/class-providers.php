@@ -24,24 +24,12 @@ final class CMS_Booking_Providers
 
     private function __construct() {}
 
-    /** Alle Spalten der Anbieter-Tabelle (explizit statt SELECT *). */
-    private const COLUMNS = 'id, user_id, source_plugin, source_id, display_name, slug, email, phone, avatar_url, bio,
-        contact_form_id, timezone, currency, status, settings_json, created_at, updated_at';
-
-    /** Quell-Kennung manuell im Admin angelegter Anbieter. */
-    public const SOURCE_MANUAL = 'cms-booking';
-
-    public const STATUSES = ['active', 'inactive', 'pending'];
-
     /* ================================================================== */
     /*  CRUD                                                               */
     /* ================================================================== */
 
     /**
      * Anbieter anlegen oder aktualisieren (Upsert auf Basis von source_plugin + source_id).
-     *
-     * Beim Aktualisieren werden nur übergebene Felder geschrieben – ein Sync aus einem Quell-Plugin
-     * überschreibt damit keine im Admin gepflegten Werte (Bio, Telefon, Zeitzone, Tageslimit …) mit NULL.
      *
      * @param  array  $data  Anbieter-Daten
      * @return int    Provider-ID
@@ -64,16 +52,29 @@ final class CMS_Booking_Providers
             (int)    $data['source_id']
         );
 
-        $fields = $this->normalize_fields($data);
-        $fields['slug'] = $this->generate_slug((string) $data['display_name'], $existing ? (int) $existing['id'] : 0);
+        $slug = $this->generate_slug($data['display_name'], $existing ? (int) $existing['id'] : 0);
+
+        $fields = [
+            'user_id'         => isset($data['user_id'])         ? (int) $data['user_id']                      : null,
+            'source_plugin'   => (string) $data['source_plugin'],
+            'source_id'       => (int)    $data['source_id'],
+            'display_name'    => (string) $data['display_name'],
+            'slug'            => $slug,
+            'email'           => isset($data['email']) ? (string) $data['email'] : null,
+            'phone'           => isset($data['phone']) ? (string) $data['phone'] : null,
+            'avatar_url'      => isset($data['avatar_url']) ? (string) $data['avatar_url'] : null,
+            'bio'             => isset($data['bio']) ? (string) $data['bio'] : null,
+            'contact_form_id' => isset($data['contact_form_id']) ? (int) $data['contact_form_id'] : null,
+            'timezone'        => (string) ($data['timezone'] ?? 'Europe/Berlin'),
+            'currency'        => (string) ($data['currency'] ?? 'EUR'),
+            'status'          => (string) ($data['status']   ?? 'active'),
+            'settings_json'   => isset($data['settings_json']) ? (string) $data['settings_json'] : null,
+        ];
 
         if ($existing) {
             $sets   = [];
             $params = [];
             foreach ($fields as $col => $val) {
-                if ($col !== 'slug' && !array_key_exists($col, $data)) {
-                    continue;
-                }
                 $sets[]   = "{$col} = ?";
                 $params[] = $val;
             }
@@ -82,13 +83,6 @@ final class CMS_Booking_Providers
                 "UPDATE {$p}booking_providers SET " . implode(', ', $sets) . " WHERE id = ?"
             )->execute($params);
             return (int) $existing['id'];
-        }
-
-        if (!array_key_exists('timezone', $data) && class_exists('CMS_Booking_Settings')) {
-            $fields['timezone'] = CMS_Booking_Settings::timezone();
-        }
-        if (!array_key_exists('currency', $data) && class_exists('CMS_Booking_Settings')) {
-            $fields['currency'] = CMS_Booking_Settings::currency();
         }
 
         $cols   = implode(', ', array_keys($fields));
@@ -100,89 +94,13 @@ final class CMS_Booking_Providers
     }
 
     /**
-     * Manuellen Anbieter anlegen (ohne Quell-Plugin).
-     */
-    public function create_manual(array $data): int
-    {
-        $db   = \CMS\Database::instance();
-        $stmt = $db->prepare("SELECT COALESCE(MAX(source_id), 0) + 1 FROM {$db->getPrefix()}booking_providers WHERE source_plugin = ?");
-        $stmt->execute([self::SOURCE_MANUAL]);
-        $nextId = max(1, (int) $stmt->fetchColumn());
-
-        return $this->upsert(array_merge($data, [
-            'source_plugin' => self::SOURCE_MANUAL,
-            'source_id'     => $nextId,
-        ]));
-    }
-
-    /**
-     * Admin-Bearbeitung eines Anbieters (nur übergebene Felder).
-     */
-    public function update(int $id, array $data): bool
-    {
-        $existing = $this->get($id);
-        if (!$existing) {
-            return false;
-        }
-
-        $fields = $this->normalize_fields($data);
-        unset($fields['source_plugin'], $fields['source_id']);
-        $sets   = [];
-        $params = [];
-        foreach ($fields as $col => $val) {
-            if (!array_key_exists($col, $data)) {
-                continue;
-            }
-            $sets[]   = "{$col} = ?";
-            $params[] = $val;
-        }
-        if (isset($data['display_name']) && (string) $data['display_name'] !== (string) $existing['display_name']) {
-            $sets[]   = 'slug = ?';
-            $params[] = $this->generate_slug((string) $data['display_name'], $id);
-        }
-        if ($sets === []) {
-            return true;
-        }
-
-        $params[] = $id;
-        $db = \CMS\Database::instance();
-        $db->prepare("UPDATE {$db->getPrefix()}booking_providers SET " . implode(', ', $sets) . ' WHERE id = ?')->execute($params);
-
-        return true;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function normalize_fields(array $data): array
-    {
-        $status = (string) ($data['status'] ?? 'active');
-
-        return [
-            'user_id'         => isset($data['user_id']) && (int) $data['user_id'] > 0 ? (int) $data['user_id'] : null,
-            'source_plugin'   => (string) ($data['source_plugin'] ?? ''),
-            'source_id'       => (int) ($data['source_id'] ?? 0),
-            'display_name'    => mb_substr((string) ($data['display_name'] ?? ''), 0, 255),
-            'email'           => isset($data['email']) && $data['email'] !== '' ? mb_substr((string) $data['email'], 0, 255) : null,
-            'phone'           => isset($data['phone']) && $data['phone'] !== '' ? mb_substr((string) $data['phone'], 0, 50) : null,
-            'avatar_url'      => isset($data['avatar_url']) && $data['avatar_url'] !== '' ? mb_substr((string) $data['avatar_url'], 0, 500) : null,
-            'bio'             => isset($data['bio']) && $data['bio'] !== '' ? (string) $data['bio'] : null,
-            'contact_form_id' => isset($data['contact_form_id']) && (int) $data['contact_form_id'] > 0 ? (int) $data['contact_form_id'] : null,
-            'timezone'        => (string) ($data['timezone'] ?? 'Europe/Berlin'),
-            'currency'        => (string) ($data['currency'] ?? 'EUR'),
-            'status'          => in_array($status, self::STATUSES, true) ? $status : 'active',
-            'settings_json'   => isset($data['settings_json']) ? (string) $data['settings_json'] : null,
-        ];
-    }
-
-    /**
      * Anbieter per ID laden.
      */
     public function get(int $id): ?array
     {
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
-            'SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_providers WHERE id = ?"
+            "SELECT id, user_id, source_plugin, source_id, display_name, slug, email, phone, avatar_url, bio, contact_form_id, timezone, currency, status, settings_json, created_at, updated_at FROM {$db->getPrefix()}booking_providers WHERE id = ?"
         );
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -196,7 +114,7 @@ final class CMS_Booking_Providers
     {
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
-            'SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_providers WHERE slug = ?"
+            "SELECT id, user_id, source_plugin, source_id, display_name, slug, email, phone, avatar_url, bio, contact_form_id, timezone, currency, status, settings_json, created_at, updated_at FROM {$db->getPrefix()}booking_providers WHERE slug = ?"
         );
         $stmt->execute([$slug]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -210,7 +128,7 @@ final class CMS_Booking_Providers
     {
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
-            'SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_providers
+            "SELECT id, user_id, source_plugin, source_id, display_name, slug, email, phone, avatar_url, bio, contact_form_id, timezone, currency, status, settings_json, created_at, updated_at FROM {$db->getPrefix()}booking_providers
              WHERE source_plugin = ? AND source_id = ?"
         );
         $stmt->execute([$sourcePlugin, $sourceId]);
@@ -224,7 +142,7 @@ final class CMS_Booking_Providers
     public function get_by_plugin(string $sourcePlugin, string $status = ''): array
     {
         $db  = \CMS\Database::instance();
-        $sql = 'SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_providers WHERE source_plugin = ?";
+        $sql = "SELECT id, user_id, source_plugin, source_id, display_name, slug, email, phone, avatar_url, bio, contact_form_id, timezone, currency, status, settings_json, created_at, updated_at FROM {$db->getPrefix()}booking_providers WHERE source_plugin = ?";
         $params = [$sourcePlugin];
 
         if ($status !== '') {
@@ -235,84 +153,62 @@ final class CMS_Booking_Providers
 
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-    }
-
-    /**
-     * @return array{0: string, 1: list<mixed>}
-     */
-    private function build_filter_sql(string $status, string $search, string $source = ''): array
-    {
-        $sql    = ' WHERE 1=1';
-        $params = [];
-
-        if ($status !== '' && in_array($status, self::STATUSES, true)) {
-            $sql     .= ' AND status = ?';
-            $params[] = $status;
-        }
-        if ($source !== '') {
-            $sql     .= ' AND source_plugin = ?';
-            $params[] = $source;
-        }
-        $search = trim($search);
-        if ($search !== '') {
-            $like = '%' . addcslashes($search, '%_\\') . '%';
-            $sql .= ' AND (display_name LIKE ? OR email LIKE ? OR slug LIKE ?)';
-            array_push($params, $like, $like, $like);
-        }
-
-        return [$sql, $params];
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /**
      * Alle Anbieter (paginiert).
      */
-    public function get_all(int $offset = 0, int $limit = 20, string $status = '', string $search = '', string $source = ''): array
-    {
-        $db = \CMS\Database::instance();
-        [$where, $params] = $this->build_filter_sql($status, $search, $source);
-
-        $stmt = $db->prepare(
-            'SELECT ' . self::COLUMNS . " FROM {$db->getPrefix()}booking_providers{$where}
-             ORDER BY display_name ASC LIMIT " . max(1, min(1000, $limit)) . ' OFFSET ' . max(0, $offset)
-        );
-        $stmt->execute($params);
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-    }
-
-    /**
-     * Kompakte Auswahlliste (id, display_name) für Filter und Formulare.
-     *
-     * @return list<array{id: int, display_name: string, status: string}>
-     */
-    public function get_options(string $status = ''): array
+    public function get_all(int $offset = 0, int $limit = 20, string $status = '', string $search = ''): array
     {
         $db  = \CMS\Database::instance();
-        $sql = "SELECT id, display_name, status FROM {$db->getPrefix()}booking_providers";
+        $p   = $db->getPrefix();
+        $sql = "SELECT id, user_id, source_plugin, source_id, display_name, slug, email, phone, avatar_url, bio, contact_form_id, timezone, currency, status, settings_json, created_at, updated_at FROM {$p}booking_providers WHERE 1=1";
         $params = [];
+
         if ($status !== '') {
-            $sql .= ' WHERE status = ?';
+            $sql    .= ' AND status = ?';
             $params[] = $status;
         }
-        $stmt = $db->prepare($sql . ' ORDER BY display_name ASC LIMIT 1000');
-        $stmt->execute($params);
+        if ($search !== '') {
+            $sql    .= ' AND (display_name LIKE ? OR email LIKE ? OR slug LIKE ?)';
+            $like     = '%' . addcslashes($search, '%_\\') . '%';
+            $params[] = $like;
+            $params[] = $like;
+            $params[] = $like;
+        }
 
-        return array_map(static fn (array $row): array => [
-            'id' => (int) $row['id'],
-            'display_name' => (string) $row['display_name'],
-            'status' => (string) $row['status'],
-        ], $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: []);
+        $sql .= ' ORDER BY display_name ASC LIMIT ? OFFSET ?';
+        $params[] = $limit;
+        $params[] = $offset;
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /**
      * Anzahl Anbieter.
      */
-    public function count(string $status = '', string $search = '', string $source = ''): int
+    public function count(string $status = '', string $search = ''): int
     {
-        $db = \CMS\Database::instance();
-        [$where, $params] = $this->build_filter_sql($status, $search, $source);
+        $db  = \CMS\Database::instance();
+        $sql = "SELECT COUNT(*) FROM {$db->getPrefix()}booking_providers WHERE 1=1";
+        $params = [];
 
-        $stmt = $db->prepare("SELECT COUNT(*) FROM {$db->getPrefix()}booking_providers{$where}");
+        if ($status !== '') {
+            $sql    .= ' AND status = ?';
+            $params[] = $status;
+        }
+        if ($search !== '') {
+            $sql    .= ' AND (display_name LIKE ? OR email LIKE ? OR slug LIKE ?)';
+            $like     = '%' . addcslashes($search, '%_\\') . '%';
+            $params[] = $like;
+            $params[] = $like;
+            $params[] = $like;
+        }
+
+        $stmt = $db->prepare($sql);
         $stmt->execute($params);
         return (int) $stmt->fetchColumn();
     }
@@ -322,25 +218,16 @@ final class CMS_Booking_Providers
      */
     public function set_status(int $id, string $status): bool
     {
-        return $this->set_status_many([$id], $status) > 0;
-    }
-
-    /**
-     * @param list<int> $ids
-     */
-    public function set_status_many(array $ids, string $status): int
-    {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $id): bool => $id > 0)));
-        if ($ids === [] || !in_array($status, self::STATUSES, true)) {
-            return 0;
+        $allowed = ['active', 'inactive', 'pending'];
+        if (!in_array($status, $allowed, true)) {
+            return false;
         }
         $db = \CMS\Database::instance();
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $stmt = $db->prepare(
-            "UPDATE {$db->getPrefix()}booking_providers SET status = ? WHERE id IN ({$placeholders})"
+            "UPDATE {$db->getPrefix()}booking_providers SET status = ? WHERE id = ?"
         );
-        $stmt->execute(array_merge([$status], $ids));
-        return $stmt->rowCount();
+        $stmt->execute([$status, $id]);
+        return $stmt->rowCount() > 0;
     }
 
     /**
@@ -348,59 +235,90 @@ final class CMS_Booking_Providers
      */
     public function delete(int $id): bool
     {
-        return $this->delete_many([$id]) > 0;
+        $db   = \CMS\Database::instance();
+        $stmt = $db->prepare(
+            "DELETE FROM {$db->getPrefix()}booking_providers WHERE id = ?"
+        );
+        $stmt->execute([$id]);
+        return $stmt->rowCount() > 0;
     }
 
+    /** Quelle manuell im Booking-Admin angelegter Anbieter. */
+    public const MANUAL_SOURCE = 'cms-booking';
+
     /**
-     * Anbieter samt Leistungen, Verfügbarkeiten, Buchungen und Buchungs-Meta löschen
-     * (explizit, damit es auch ohne Foreign Keys konsistent bleibt).
+     * Manuell gepflegten Anbieter anlegen oder aktualisieren (ohne Quell-Plugin).
+     * Für synchronisierte Anbieter werden nur Status, Zeitzone, Währung und Kontaktfelder überschrieben.
      *
-     * @param list<int> $ids
+     * @param array<string,mixed> $data
      */
-    public function delete_many(array $ids): int
+    public function save_manual(array $data, int $id = 0): int
     {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $id): bool => $id > 0)));
-        if ($ids === []) {
-            return 0;
+        $name = trim(strip_tags((string) ($data['display_name'] ?? '')));
+        if ($name === '') {
+            throw new \InvalidArgumentException('Bitte einen Namen angeben.');
         }
 
+        $email = filter_var(trim((string) ($data['email'] ?? '')), FILTER_VALIDATE_EMAIL) ?: null;
+        $avatar = trim((string) ($data['avatar_url'] ?? ''));
+        $isLocalPath = str_starts_with($avatar, '/') && !str_starts_with($avatar, '//') && !str_contains($avatar, '\\');
+        $isHttpUrl = preg_match('#^https?://#i', $avatar) === 1 && filter_var($avatar, FILTER_VALIDATE_URL) !== false;
+        $avatar = $isLocalPath || $isHttpUrl ? $avatar : null;
+        $timezone = in_array((string) ($data['timezone'] ?? ''), timezone_identifiers_list(), true) ? (string) $data['timezone'] : 'Europe/Berlin';
+        $currency = in_array((string) ($data['currency'] ?? ''), ['EUR', 'CHF', 'USD', 'GBP'], true) ? (string) $data['currency'] : 'EUR';
+        $status = in_array((string) ($data['status'] ?? ''), ['active', 'inactive', 'pending'], true) ? (string) $data['status'] : 'active';
+        $fields = [
+            'display_name' => mb_substr($name, 0, 255),
+            'email' => $email,
+            'phone' => mb_substr(preg_replace('/[^0-9+()\/\s.-]/', '', (string) ($data['phone'] ?? '')) ?? '', 0, 50) ?: null,
+            'avatar_url' => $avatar !== null ? mb_substr($avatar, 0, 500) : null,
+            'bio' => mb_substr(trim(strip_tags((string) ($data['bio'] ?? ''))), 0, 5000) ?: null,
+            'timezone' => $timezone,
+            'currency' => $currency,
+            'status' => $status,
+        ];
+
         $db = \CMS\Database::instance();
         $p  = $db->getPrefix();
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
 
-        $db->prepare(
-            "DELETE m FROM {$p}booking_meta m INNER JOIN {$p}bookings b ON b.id = m.booking_id WHERE b.provider_id IN ({$placeholders})"
-        )->execute($ids);
-        $db->prepare("DELETE FROM {$p}bookings WHERE provider_id IN ({$placeholders})")->execute($ids);
-        $db->prepare("DELETE FROM {$p}booking_availability WHERE provider_id IN ({$placeholders})")->execute($ids);
-        $db->prepare("DELETE FROM {$p}booking_services WHERE provider_id IN ({$placeholders})")->execute($ids);
-        $stmt = $db->prepare("DELETE FROM {$p}booking_providers WHERE id IN ({$placeholders})");
-        $stmt->execute($ids);
+        if ($id > 0) {
+            $existing = $this->get($id);
+            if ($existing === null) {
+                throw new \InvalidArgumentException('Anbieter nicht gefunden.');
+            }
+            if ((string) $existing['source_plugin'] === self::MANUAL_SOURCE) {
+                $fields['slug'] = $this->generate_slug($name, $id);
+            } else {
+                // Name/Biografie/Bild stammen aus dem Quell-Plugin und werden dort gepflegt.
+                unset($fields['display_name'], $fields['bio'], $fields['avatar_url']);
+            }
+            $sets = implode(', ', array_map(static fn (string $col): string => "{$col} = ?", array_keys($fields)));
+            $db->prepare("UPDATE {$p}booking_providers SET {$sets} WHERE id = ?")->execute([...array_values($fields), $id]);
 
-        return $stmt->rowCount();
+            return $id;
+        }
+
+        $nextSource = $db->prepare("SELECT COALESCE(MAX(source_id), 0) + 1 FROM {$p}booking_providers WHERE source_plugin = ?");
+        $nextSource->execute([self::MANUAL_SOURCE]);
+        $fields['source_plugin'] = self::MANUAL_SOURCE;
+        $fields['source_id'] = (int) $nextSource->fetchColumn();
+        $fields['slug'] = $this->generate_slug($name);
+
+        $cols = implode(', ', array_keys($fields));
+        $ph   = implode(', ', array_fill(0, count($fields), '?'));
+        $db->prepare("INSERT INTO {$p}booking_providers ({$cols}) VALUES ({$ph})")->execute(array_values($fields));
+
+        return (int) $db->getPdo()->lastInsertId();
     }
 
-    /**
-     * Öffentlich buchbare Anbieter mit mindestens einer aktiven Leistung (Sitemap).
-     *
-     * @return list<array{id: int, slug: string, display_name: string, updated_at: string}>
-     */
-    public function get_public_index(int $limit = 2000): array
+    /** Anzahl Anbieter je Status (Kennzahlen). */
+    public function count_by_status(): array
     {
         $db = \CMS\Database::instance();
-        $p  = $db->getPrefix();
-        $stmt = $db->prepare(
-            "SELECT bp.id, bp.slug, bp.display_name, GREATEST(bp.updated_at, COALESCE(MAX(s.updated_at), bp.updated_at)) AS updated_at
-             FROM {$p}booking_providers bp
-             INNER JOIN {$p}booking_services s ON s.provider_id = bp.id AND s.status = 'active'
-             WHERE bp.status = 'active'
-             GROUP BY bp.id, bp.slug, bp.display_name, bp.updated_at
-             ORDER BY bp.display_name ASC
-             LIMIT " . max(1, min(10000, $limit))
-        );
+        $stmt = $db->prepare("SELECT status, COUNT(*) FROM {$db->getPrefix()}booking_providers GROUP BY status");
         $stmt->execute();
 
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        return array_map('intval', $stmt->fetchAll(\PDO::FETCH_KEY_PAIR) ?: []);
     }
 
     /* ================================================================== */
@@ -445,11 +363,6 @@ final class CMS_Booking_Providers
             }
             $slug = "{$base}-{$i}";
             $i++;
-            if ($i > 500) {
-                // Schutz vor Endlosschleife: zufälliges Suffix ist praktisch kollisionsfrei.
-                $slug = $base . '-' . bin2hex(random_bytes(3));
-                break;
-            }
         }
 
         return $slug;

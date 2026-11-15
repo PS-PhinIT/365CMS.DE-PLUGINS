@@ -25,102 +25,20 @@ final class CMS_Beratung_Import_Export
         ];
     }
 
-    /** Höchstgröße einer Import-Datei bzw. eines eingefügten JSON-Texts. */
-    public const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
-
     public static function export_json(array $page): string
     {
-        $export = self::export_page($page);
-        // Interne Felder gehören nicht in die Austauschdatei.
-        unset($export['landingpage']['id'], $export['landingpage']['tenant_id'], $export['landingpage']['created_by'], $export['landingpage']['updated_by'], $export['landingpage']['hero_json'], $export['landingpage']['contact_json'], $export['landingpage']['seo_json'], $export['landingpage']['design_json'], $export['landingpage']['sections_json']);
-        return json_encode($export, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}';
+        return json_encode(self::export_page($page), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
     }
 
-    /**
-     * JSON validieren und in eine bereinigte Landingpage umwandeln.
-     *
-     * @throws \InvalidArgumentException mit verständlicher Meldung
-     * @return array<string,mixed>
-     */
-    public static function decode_import_json(string $json): array
+    /** @return array<string,mixed>|null */
+    public static function decode_import_json(string $json): ?array
     {
-        $json = trim($json);
-        if ($json === '') {
-            throw new \InvalidArgumentException('Bitte eine JSON-Datei hochladen oder JSON einfügen.');
-        }
-        if (strlen($json) > self::MAX_IMPORT_BYTES) {
-            throw new \InvalidArgumentException('Die JSON-Daten sind größer als 2 MB.');
-        }
-        if (str_starts_with($json, "\xEF\xBB\xBF")) {
-            $json = substr($json, 3);
-        }
-        try {
-            $decoded = json_decode($json, true, 64, JSON_THROW_ON_ERROR);
-        } catch (\JsonException $e) {
-            throw new \InvalidArgumentException('Ungültiges JSON: ' . $e->getMessage());
-        }
+        $decoded = json_decode($json, true);
         if (!is_array($decoded)) {
-            throw new \InvalidArgumentException('Die JSON-Daten enthalten kein Objekt.');
-        }
-        if (isset($decoded['schema']) && $decoded['schema'] !== 'cms-beratung-landingpage/v1') {
-            throw new \InvalidArgumentException('Unbekanntes Exportformat: ' . mb_substr(is_scalar($decoded['schema']) ? (string) $decoded['schema'] : '?', 0, 80));
+            return null;
         }
         $page = isset($decoded['landingpage']) && is_array($decoded['landingpage']) ? $decoded['landingpage'] : $decoded;
-        if (trim((string) ($page['internal_title'] ?? $page['public_title'] ?? '')) === '' && !isset($page['sections']) && !isset($page['hero'])) {
-            throw new \InvalidArgumentException('Die JSON-Daten enthalten keine Landingpage (Titel, Hero oder Bereiche fehlen).');
-        }
-        unset($page['id'], $page['tenant_id'], $page['created_by'], $page['updated_by']);
         return self::sanitize_landingpage_payload($page);
-    }
-
-    /**
-     * Inhalt einer hochgeladenen Import-Datei prüfen (Upload-Status, Größe, Endung, MIME-Typ).
-     *
-     * @param array<string,mixed> $file Eintrag aus $_FILES
-     * @throws \InvalidArgumentException
-     */
-    public static function read_import_file(array $file): string
-    {
-        $error = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
-        if ($error === UPLOAD_ERR_NO_FILE) {
-            return '';
-        }
-        if ($error !== UPLOAD_ERR_OK || !is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
-            throw new \InvalidArgumentException('Die Datei konnte nicht hochgeladen werden (Fehlercode ' . $error . ').');
-        }
-        $size = (int) ($file['size'] ?? 0);
-        if ($size <= 0 || $size > self::MAX_IMPORT_BYTES) {
-            throw new \InvalidArgumentException('Die Datei ist leer oder größer als 2 MB.');
-        }
-        if (strtolower((string) pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION)) !== 'json') {
-            throw new \InvalidArgumentException('Nur Dateien mit der Endung .json sind erlaubt.');
-        }
-        $tmp = (string) $file['tmp_name'];
-        if (function_exists('finfo_open')) {
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $mime = $finfo !== false ? (string) finfo_file($finfo, $tmp) : '';
-            if ($mime !== '' && !in_array($mime, ['application/json', 'text/plain', 'text/json', 'application/x-empty'], true)) {
-                throw new \InvalidArgumentException('Die Datei ist keine JSON-Datei (erkannt: ' . $mime . ').');
-            }
-        }
-        $content = file_get_contents($tmp, false, null, 0, self::MAX_IMPORT_BYTES + 1);
-        return is_string($content) ? $content : '';
-    }
-
-    /** HTML des freien HTML-Bereichs bereinigen: Core-Purifier (Profil „hub“), sonst strenger Fallback. */
-    public static function purify_html(string $value): string
-    {
-        if ($value === '') {
-            return '';
-        }
-        if (class_exists('CMS\\Services\\PurifierService')) {
-            try {
-                return \CMS\Services\PurifierService::getInstance()->purify($value, 'hub');
-            } catch (\Throwable) {
-                // Fallback unten.
-            }
-        }
-        return self::safe_html($value);
     }
 
     /** @param array<string,mixed> $data @return array<string,mixed> */
@@ -171,7 +89,7 @@ final class CMS_Beratung_Import_Export
             'tenant_id' => !empty($data['tenant_id']) ? (int) $data['tenant_id'] : null,
             'internal_title' => self::limit(CMS_Beratung_Settings::text((string) ($data['internal_title'] ?? 'Neue Beratungs Landingpage')), 255),
             'public_title' => self::limit(CMS_Beratung_Settings::text((string) ($data['public_title'] ?? $data['internal_title'] ?? 'Beratung')), 255),
-            'slug' => CMS_Beratung_Settings::slug((string) ($data['slug'] ?? ''), 'beratung'),
+            'slug' => CMS_Beratung_Settings::slug((string) ($data['slug'] ?? ''), ''),
             'meta_title' => self::limit(CMS_Beratung_Settings::text((string) ($data['meta_title'] ?? '')), 255),
             'meta_description' => self::limit(CMS_Beratung_Settings::text((string) ($data['meta_description'] ?? '')), 500),
             'focus_keyword' => self::limit(CMS_Beratung_Settings::text((string) ($data['focus_keyword'] ?? '')), 160),
@@ -469,7 +387,7 @@ final class CMS_Beratung_Import_Export
                 'booking_display' => self::choice((string) ($section['booking_display'] ?? 'embed'), ['embed', 'link', 'button'], 'embed'),
                 'booking_button_text' => self::limit(CMS_Beratung_Settings::text((string) ($section['booking_button_text'] ?? 'Termin buchen')), 90),
                 'cards' => in_array($type, ['partner_band', 'booking', 'collaboration', 'cta', 'divider', 'html'], true) ? [] : self::sanitize_cards($section['cards'] ?? []),
-                'html' => self::limit(self::purify_html((string) ($section['html'] ?? '')), 12000),
+                'html' => self::limit(self::safe_html((string) ($section['html'] ?? '')), 12000),
             ];
         }
         usort($sections, static fn(array $a, array $b): int => ((int) ($a['sort_order'] ?? 999)) <=> ((int) ($b['sort_order'] ?? 999)));
@@ -590,12 +508,10 @@ final class CMS_Beratung_Import_Export
             return '#' . $anchor;
         }
         if ($type === 'email') {
-            // Bereits gespeicherte Werte enthalten „mailto:“ – sonst ginge das Ziel beim erneuten Speichern verloren.
-            $address = preg_replace('/^mailto:/i', '', $value) ?? '';
-            return filter_var($address, FILTER_VALIDATE_EMAIL) ? 'mailto:' . $address : CMS_Beratung_Settings::public_url($value);
+            return filter_var($value, FILTER_VALIDATE_EMAIL) ? 'mailto:' . $value : CMS_Beratung_Settings::public_url($value);
         }
         if ($type === 'phone') {
-            $phone = preg_replace('/[^0-9+]/', '', preg_replace('/^tel:/i', '', $value) ?? '') ?? '';
+            $phone = preg_replace('/[^0-9+]/', '', $value) ?? '';
             return $phone !== '' ? 'tel:' . $phone : '';
         }
         return CMS_Beratung_Settings::public_url($value);
@@ -676,8 +592,8 @@ final class CMS_Beratung_Import_Export
     private static function safe_html(string $value): string
     {
         $value = preg_replace('#<(script|style|iframe|object|embed|form|input|button|textarea|select)\b[^>]*>.*?</\1>#is', '', $value) ?? '';
-        $value = preg_replace('/\s+(?:on[a-z]+|style|srcdoc|formaction)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $value) ?? '';
-        $value = preg_replace('/(href|src)\s*=\s*("|\')?\s*(?:javascript|vbscript|data)\s*:[^"\'\s>]*\2?/i', '$1="#"', $value) ?? '';
+        $value = preg_replace('/\s+on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $value) ?? '';
+        $value = preg_replace('/(href|src)\s*=\s*("|\')\s*javascript:[^"\']*\2/i', '$1="#"', $value) ?? '';
         $allowed = '<p><br><strong><b><em><i><u><span><small><mark><ul><ol><li><a><blockquote><code><pre><h2><h3><h4><h5><h6><div><section><article><figure><figcaption><img><table><thead><tbody><tr><th><td><hr>';
         return strip_tags($value, $allowed);
     }

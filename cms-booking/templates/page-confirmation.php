@@ -3,7 +3,7 @@
  * Template: Buchungsbestätigung
  * Zeigt Zusammenfassung + Kalender-Links nach erfolgreicher Buchung.
  *
- * Variablen: $booking, $googleUrl, $siteUrl, $accessToken, $canCancel, $cancelTokens, $cancelUrl, $notice
+ * Variablen: $booking, $googleUrl, $siteUrl
  *
  * @package CMS_Booking
  */
@@ -37,12 +37,6 @@ $confirmationSentPrefix = is_array($i18n ?? null) ? (string) ($i18n['confirmatio
 $confirmationSentSuffix = is_array($i18n ?? null) ? (string) ($i18n['confirmationSentSuffix'] ?? 'gesendet.') : 'gesendet.';
 $confirmationBackHome = is_array($i18n ?? null) ? (string) ($i18n['confirmationBackHome'] ?? '← Zur Startseite') : '← Zur Startseite';
 $confirmationOpenMeetingLink = is_array($i18n ?? null) ? (string) ($i18n['confirmationOpenMeetingLink'] ?? 'Meeting-Link öffnen ↗') : 'Meeting-Link öffnen ↗';
-
-$canCancel = !empty($canCancel);
-$cancelTokens = is_array($cancelTokens ?? null) ? $cancelTokens : ['csrf' => '', 'booking' => ''];
-$cancelUrl = (string) ($cancelUrl ?? '');
-$notice = (string) ($notice ?? '');
-$i18nText = static fn (string $key, string $fallback): string => is_array($i18n ?? null) ? (string) ($i18n[$key] ?? $fallback) : $fallback;
 
 $statusLabels = CMS_Booking_Bookings::status_labels();
 $statusLabelsEn = [
@@ -87,11 +81,6 @@ try {
         <div class="booking-container booking-container--narrow">
 
             <div class="booking-confirmation-card">
-                <?php if ($notice === 'cancelled'): ?>
-                <div class="booking-alert booking-alert-success" role="status"><?php echo $e($i18nText('cancelDone', 'Ihr Termin wurde storniert.')); ?></div>
-                <?php elseif ($notice === 'cancel_failed'): ?>
-                <div class="booking-alert booking-alert-error" role="alert"><?php echo $e($i18nText('cancelFailed', 'Die Stornierung war nicht möglich.')); ?></div>
-                <?php endif; ?>
                 <h1><?php echo $e($confirmationThankYou); ?></h1>
                 <p class="booking-confirmation-subtitle">
                     <?php if ($booking['status'] === 'confirmed'): ?>
@@ -166,7 +155,7 @@ try {
                         <?php if ((int) $booking['price_cents'] > 0): ?>
                         <tr>
                             <th><?php echo $e($confirmationPrice); ?></th>
-                            <td><?php echo $e(CMS_Booking_Services::format_price((int) $booking['price_cents'], (string) ($booking['currency'] ?? ''))); ?></td>
+                            <td><?php echo CMS_Booking_Services::format_price((int) $booking['price_cents']); ?></td>
                         </tr>
                         <?php endif; ?>
                     </table>
@@ -194,17 +183,6 @@ try {
                     <?php endif; ?>
                     <p><?php echo $e($confirmationSentPrefix); ?> <strong><?php echo $e($booking['customer_email']); ?></strong> <?php echo $e($confirmationSentSuffix); ?></p>
                 </div>
-
-                <?php if ($canCancel && $cancelUrl !== ''): ?>
-                <!-- Selbst-Stornierung -->
-                <form method="POST" action="<?php echo $e($siteUrl . $cancelUrl); ?>" class="booking-confirmation-cancel"
-                      data-cms-confirm="<?php echo $e($i18nText('cancelConfirm', 'Möchten Sie diesen Termin wirklich stornieren?')); ?>">
-                    <input type="hidden" name="csrf_token" value="<?php echo $e((string) ($cancelTokens['csrf'] ?? '')); ?>">
-                    <input type="hidden" name="booking_token" value="<?php echo $e((string) ($cancelTokens['booking'] ?? '')); ?>">
-                    <p class="booking-confirmation-cancel__hint"><?php echo $e($i18nText('cancelHint', '')); ?></p>
-                    <button type="submit" class="booking-btn booking-btn-outline"><?php echo $e($i18nText('cancelButton', 'Termin stornieren')); ?></button>
-                </form>
-                <?php endif; ?>
 
                 <!-- Zurück -->
                 <div class="booking-confirmation-back">

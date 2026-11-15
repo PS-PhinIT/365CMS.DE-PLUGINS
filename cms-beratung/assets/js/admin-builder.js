@@ -9,96 +9,22 @@
   };
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
   const text = (value) => String(value ?? '');
-
-  /*
-   * CSP/Trusted Types: keine HTML-Senken (kein Parsen über DOM-Eigenschaften). Die plugin-eigenen Markup-Vorlagen (Werte darin sind mit esc()
-   * escaped) werden von einem strikten Mini-Parser direkt in DOM-Knoten umgesetzt (createElement,
-   * setAttribute, createTextNode). Script-/Style-/Frame-Elemente, Event-Handler-Attribute, style-Attribute
-   * und Skript-/Daten-URL-Schemata werden verworfen – es entsteht nie ein ausführbarer Kontext.
+  /**
+   * Einzige HTML-Senke des Builders: Templates escapen alle Werte mit esc(); zusätzlich wird das Markup
+   * über DOMPurify als TrustedHTML erzeugt (CSP `require-trusted-types-for 'script'`). Ohne DOMPurify
+   * greift die Default-Policy aus cms-csp-runtime.js (ebenfalls DOMPurify, fail closed).
    */
-  const VOID_TAGS = new Set(['area', 'br', 'col', 'hr', 'img', 'input', 'source', 'wbr']);
-  const BLOCKED_TAGS = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'frame', 'frameset', 'template', 'svg', 'math']);
-  const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'xlink:href', 'poster']);
-  const ENTITY_MAP = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
-  const decodeEntities = (value) => value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, code) => {
-    const key = code.toLowerCase();
-    if (key.startsWith('#x')) return String.fromCodePoint(parseInt(key.slice(2), 16) || 0xfffd);
-    if (key.startsWith('#') && key !== '#39') return String.fromCodePoint(parseInt(key.slice(1), 10) || 0xfffd);
-    return Object.prototype.hasOwnProperty.call(ENTITY_MAP, key) ? ENTITY_MAP[key] : match;
-  });
-  const safeAttribute = (name, value) => {
-    if (!/^[a-z][a-z0-9:_-]*$/i.test(name) || /^on/i.test(name) || name.toLowerCase() === 'style' || name.toLowerCase() === 'srcdoc') return false;
-    if (URL_ATTRS.has(name.toLowerCase()) && /^\s*(javascript|vbscript|data):/i.test(value)) return false;
-    return true;
-  };
-  const fragmentFrom = (markup) => {
-    const source = text(markup);
-    const fragment = document.createDocumentFragment();
-    const stack = [{ tag: '#root', node: fragment }];
-    let skipDepth = 0;
-    let index = 0;
-    const current = () => stack[stack.length - 1].node;
-    while (index < source.length) {
-      const lt = source.indexOf('<', index);
-      if (lt === -1 || lt > index) {
-        const chunk = source.slice(index, lt === -1 ? source.length : lt);
-        if (!skipDepth && chunk !== '') current().append(document.createTextNode(decodeEntities(chunk)));
-        if (lt === -1) break;
-        index = lt;
-        continue;
-      }
-      if (source.startsWith('<!--', index)) {
-        const end = source.indexOf('-->', index + 4);
-        index = end === -1 ? source.length : end + 3;
-        continue;
-      }
-      const closing = /^<\/([a-z][a-z0-9-]*)\s*>/i.exec(source.slice(index));
-      if (closing) {
-        const tag = closing[1].toLowerCase();
-        index += closing[0].length;
-        if (skipDepth) {
-          if (BLOCKED_TAGS.has(tag)) skipDepth -= 1;
-          continue;
-        }
-        for (let i = stack.length - 1; i > 0; i -= 1) {
-          if (stack[i].tag === tag) {
-            stack.length = i;
-            break;
-          }
-        }
-        continue;
-      }
-      const opening = /^<([a-z][a-z0-9-]*)((?:\s+[^\s"'>\/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*(\/?)>/i.exec(source.slice(index));
-      if (!opening) {
-        if (!skipDepth) current().append(document.createTextNode('<'));
-        index += 1;
-        continue;
-      }
-      index += opening[0].length;
-      const tag = opening[1].toLowerCase();
-      if (skipDepth || BLOCKED_TAGS.has(tag)) {
-        if (BLOCKED_TAGS.has(tag) && !VOID_TAGS.has(tag) && opening[3] !== '/') skipDepth += 1;
-        continue;
-      }
-      const element = document.createElement(tag);
-      const attrPattern = /([^\s"'>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-      let attr;
-      while ((attr = attrPattern.exec(opening[2])) !== null) {
-        const name = attr[1].toLowerCase();
-        const value = decodeEntities(attr[2] ?? attr[3] ?? attr[4] ?? '');
-        if (safeAttribute(name, value)) element.setAttribute(name, value);
-      }
-      current().append(element);
-      if (!VOID_TAGS.has(tag) && opening[3] !== '/') stack.push({ tag, node: element });
+  const setHtml = (element, html) => {
+    if (!element) return;
+    const markup = String(html ?? '');
+    if (markup === '') {
+      element.replaceChildren();
+      return;
     }
-    return fragment;
-  };
-  const setMarkup = (element, markup) => { element.replaceChildren(fragmentFrom(markup)); };
-  const createEl = (tag, className = '', content = '') => {
-    const element = document.createElement(tag);
-    if (className) element.className = className;
-    if (content !== '') element.textContent = content;
-    return element;
+    const purifier = window.DOMPurify;
+    element.innerHTML = purifier && typeof purifier.sanitize === 'function'
+      ? purifier.sanitize(markup, { RETURN_TRUSTED_TYPE: true, ADD_ATTR: ['target'] })
+      : markup;
   };
   const builderOpenSectionIndexes = new Set();
   let builderSectionOpenStateReady = false;
@@ -256,7 +182,7 @@
   };
 
   const syncJson = (textarea, value) => { textarea.value = JSON.stringify(value, null, 2); };
-  const optionHtml = (options, selected) => Object.entries(options).map(([value, label]) => `<option value="${esc(value)}"${String(value) === String(selected) ? ' selected' : ''}>${esc(label)}</option>`).join('');
+  const optionHtml = (options, selected) => Object.entries(options).map(([value, label]) => `<option value="${value}"${String(value) === String(selected) ? ' selected' : ''}>${label}</option>`).join('');
 
   const sectionOrderRank = (section, fallbackIndex = 0) => {
     const stored = Number(section?.sort_order || 0);
@@ -338,7 +264,7 @@
     modal.className = 'beratung-media-modal';
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
-    setMarkup(modal, `
+    setHtml(modal, `
       <div class="beratung-media-modal__panel">
         <div class="beratung-media-modal__head">
           <div><h2>Bild aus der Mediathek auswählen</h2><p>Ein Klick übernimmt das Bild direkt in das aktive Feld.</p></div>
@@ -350,7 +276,7 @@
         </div>
         <div class="beratung-media-modal__body"><div class="beratung-media-grid" data-media-grid></div></div>
       </div>`);
-    ($('.cms-plugin-admin-content') || document.body).append(modal);
+    document.body.append(modal);
     $('[data-media-close]', modal)?.addEventListener('click', closeMediaPicker);
     modal.addEventListener('click', (event) => { if (event.target === modal) closeMediaPicker(); });
     $('[data-media-search]', modal)?.addEventListener('input', (event) => {
@@ -377,7 +303,7 @@
     grid.replaceChildren();
     if (status) status.textContent = query ? `${items.length} Treffer` : `${items.length} Medien verfügbar`;
     if (!items.length) {
-      grid.append(createEl('div', 'beratung-media-empty', 'Keine passenden Bilder gefunden.'));
+      setHtml(grid, '<div class="beratung-media-empty">Keine passenden Bilder gefunden.</div>');
       return;
     }
     items.forEach((item) => {
@@ -387,15 +313,7 @@
       button.type = 'button';
       button.className = 'beratung-media-item';
       button.dataset.mediaUrl = url;
-      const imageWrap = createEl('span', 'beratung-media-item__image');
-      const image = document.createElement('img');
-      image.src = url;
-      image.alt = text(item.name || 'Bild');
-      image.loading = 'lazy';
-      imageWrap.append(image);
-      const meta = createEl('span', 'beratung-media-item__meta');
-      meta.append(createEl('span', 'beratung-media-item__name', text(item.name || 'Bild')), createEl('span', 'beratung-media-item__path', text(item.path || url)));
-      button.replaceChildren(imageWrap, meta);
+      setHtml(button, `<span class="beratung-media-item__image"><img src="${esc(url)}" alt="${esc(item.name || 'Bild')}" loading="lazy"></span><span class="beratung-media-item__meta"><span class="beratung-media-item__name">${esc(item.name || 'Bild')}</span><span class="beratung-media-item__path">${esc(item.path || url)}</span></span>`);
       grid.append(button);
     });
   };
@@ -421,7 +339,7 @@
     }).catch((error) => {
       if (status) status.textContent = 'Laden fehlgeschlagen';
       const grid = $('[data-media-grid]', modal);
-      if (grid) grid.replaceChildren(createEl('div', 'beratung-media-empty', text(error.message || 'Medien konnten nicht geladen werden.')));
+      if (grid) setHtml(grid, `<div class="beratung-media-empty">${esc(error.message || 'Medien konnten nicht geladen werden.')}</div>`);
     });
   };
 
@@ -482,7 +400,7 @@
       if (label) label.classList.add('beratung-media-label');
       const tools = document.createElement('div');
       tools.className = 'beratung-media-tools';
-      setMarkup(tools, '<button type="button" class="beratung-media-btn" data-media-upload>Upload</button><button type="button" class="beratung-media-btn" data-media-library>Mediathek</button><button type="button" class="beratung-media-btn is-danger" data-media-clear>Leeren</button><input type="file" accept="image/*" hidden data-media-file><small class="beratung-media-note">Uploads werden im Ordner /uploads/beratung gespeichert.</small>');
+      setHtml(tools, '<button type="button" class="beratung-media-btn" data-media-upload>Upload</button><button type="button" class="beratung-media-btn" data-media-library>Mediathek</button><button type="button" class="beratung-media-btn is-danger" data-media-clear>Leeren</button><input type="file" accept="image/*" hidden data-media-file><small class="beratung-media-note">Uploads werden im Ordner /uploads/beratung gespeichert.</small>');
       const preview = document.createElement('div');
       preview.className = 'beratung-media-preview';
       preview.hidden = true;
@@ -537,12 +455,12 @@
     const editor = $('.beratung-editor');
     if (!editor || editor.dataset.collapsibleReady === '1') return;
     editor.dataset.collapsibleReady = '1';
-    const sections = $$('.beratung-card', editor).filter((section) => section.querySelector(':scope > h2'));
+    const sections = $$('.beratung-card', editor).filter((section) => section.querySelector(':scope > h1'));
     sections.forEach((section, index) => {
       if (section.dataset.collapsibleReady === '1') return;
       section.dataset.collapsibleReady = '1';
       section.classList.add('beratung-editor-section');
-      const title = section.querySelector(':scope > h2');
+      const title = section.querySelector(':scope > h1');
       if (!title) return;
       const content = document.createElement('div');
       content.className = 'beratung-editor-section__body';
@@ -636,7 +554,7 @@
       syncJson(target, hero);
     };
     mount.className = 'beratung-builder beratung-hero-builder';
-    setMarkup(mount, `
+    setHtml(mount, `
       <div class="beratung-builder__section is-hero">
         <div class="beratung-builder__section-head"><strong>Hero Bereich</strong><span>Content Header</span></div>
         <div class="beratung-builder__grid">
@@ -684,7 +602,7 @@
     hero.toc_right_layout ??= 'card';
     const sync = () => syncJson(target, hero);
     mount.className = 'beratung-builder beratung-anchor-nav-builder';
-    setMarkup(mount, `
+    setHtml(mount, `
       <div class="beratung-builder__section is-anchor-nav">
         <div class="beratung-builder__section-head"><strong>Anker Navigation / rechtes TOC</strong><span>Public Navigation</span></div>
         <div class="beratung-builder__grid">
@@ -728,7 +646,7 @@
     }, parseJson(target, {}));
     const sync = () => syncJson(target, contact);
     mount.className = 'beratung-builder beratung-contact-builder';
-    setMarkup(mount, `
+    setHtml(mount, `
       <div class="beratung-builder__section is-contact">
         <div class="beratung-builder__section-head"><strong>Kontakt direkt bearbeiten</strong><span>Keine JSON-Bearbeitung notwendig</span></div>
         <div class="beratung-builder__grid">
@@ -811,7 +729,7 @@
     const render = () => {
       design = Object.assign({}, defaults, parseJson(target, {}));
       mount.className = 'beratung-builder beratung-design-builder';
-      setMarkup(mount, `<div class="beratung-builder__section is-design"><div class="beratung-builder__section-head"><strong>Design direkt bearbeiten</strong><span>Farben, Schriftgrößen und Abstände ohne JSON anpassen</span></div><div class="beratung-builder__grid">${Object.entries(labels).map(([field, label]) => `<label>${label} <input data-field="${field}" type="color"></label>`).join('')}${Object.entries(spacingLabels).map(([field, label]) => `<label>${label} <input data-field="${field}" type="number" min="0" max="160" step="1"></label>`).join('')}<div class="beratung-builder__wide"><button type="button" class="beratung-btn beratung-btn--secondary" data-design-reset>Design-Felder leeren / globale Werte nutzen</button></div></div></div>`);
+      setHtml(mount, `<div class="beratung-builder__section is-design"><div class="beratung-builder__section-head"><strong>Design direkt bearbeiten</strong><span>Farben, Schriftgrößen und Abstände ohne JSON anpassen</span></div><div class="beratung-builder__grid">${Object.entries(labels).map(([field, label]) => `<label>${label} <input data-field="${field}" type="color"></label>`).join('')}${Object.entries(spacingLabels).map(([field, label]) => `<label>${label} <input data-field="${field}" type="number" min="0" max="160" step="1"></label>`).join('')}<div class="beratung-builder__wide"><button type="button" class="beratung-btn beratung-btn--secondary" data-design-reset>Design-Felder leeren / globale Werte nutzen</button></div></div></div>`);
       bindInputs(mount, design, () => syncJson(target, design));
       $('[data-design-reset]', mount)?.addEventListener('click', () => {
         design = {};
@@ -829,7 +747,7 @@
       const button = model[key];
       const box = document.createElement('div');
       box.className = 'beratung-builder__card is-button';
-      setMarkup(box, `
+      setHtml(box, `
         <strong>Button ${index + 1}</strong>
         <label>Text <input data-button-field="text"></label>
         <label>Zieltyp <select data-button-field="target_type">${optionHtml(TARGET_TYPES, button.target_type || 'internal')}</select></label>
@@ -1315,7 +1233,7 @@
     mount.replaceChildren();
     const toolbar = document.createElement('div');
     toolbar.className = 'beratung-builder__toolbar beratung-card beratung-root-builder__toolbar';
-    setMarkup(toolbar, `<div><button type="button" class="beratung-btn" data-add-basic>Bereich hinzufügen</button></div><label>Landingpage Vorschlag laden <select data-landingpage-proposal><option value="">Bitte wählen</option>${optionHtml(LANDINGPAGE_PROPOSALS, '')}</select></label><label>Root-Bereich hinzufügen <select data-add-module><option value="">Bitte wählen</option>${optionHtml(MODULE_PRESETS, '')}</select></label><span>Alles nach dem Content Header liegt flach in sections[] und kann per Hoch/Runter oder Drag and Drop sortiert werden.</span>`);
+    setHtml(toolbar, `<div><button type="button" class="beratung-btn" data-add-basic>Bereich hinzufügen</button></div><label>Landingpage Vorschlag laden <select data-landingpage-proposal><option value="">Bitte wählen</option>${optionHtml(LANDINGPAGE_PROPOSALS, '')}</select></label><label>Root-Bereich hinzufügen <select data-add-module><option value="">Bitte wählen</option>${optionHtml(MODULE_PRESETS, '')}</select></label><span>Alles nach dem Content Header liegt flach in sections[] und kann per Hoch/Runter oder Drag and Drop sortiert werden.</span>`);
     $('[data-add-basic]', toolbar).addEventListener('click', () => { sections.push(newSection(sections.length)); rerender(); });
     $('[data-landingpage-proposal]', toolbar).addEventListener('change', (event) => {
       const value = event.target.value;
@@ -1350,9 +1268,9 @@
       box.className = 'beratung-builder__section beratung-card beratung-root-builder__section';
       box.draggable = true;
       box.dataset.index = String(index);
-      setMarkup(box, sectionTemplate(section, index));
+      setHtml(box, sectionTemplate(section, index));
 
-      const updatePreview = () => { const preview = $('.beratung-live-preview', box); if (preview) setMarkup(preview, sectionPreview(section)); };
+      const updatePreview = () => { const preview = $('.beratung-live-preview', box); if (preview) setHtml(preview, sectionPreview(section)); };
       const updateVisibility = () => { updateSectionVisibility(box, section); updatePreview(); };
       bindInputs(box, section, sync, (field) => {
         if (field === 'type') {
@@ -1422,7 +1340,7 @@
     sync();
   };
 
-  const esc = (value) => text(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const esc = (value) => text(value).replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char]));
 
   const cardPreview = (card, index, sectionType) => {
     if (card.enabled === false) return '';
@@ -1549,7 +1467,7 @@
     const box = document.createElement('div');
     box.className = `beratung-builder__card type-${card.card_type}`;
     box.draggable = true;
-    setMarkup(box, `
+    setHtml(box, `
       <div class="beratung-builder__section-head">
         <strong>☰ ${section.type === 'faq' ? 'FAQ' : 'Card'} ${cardIndex + 1}: ${CARD_TYPES[card.card_type] || 'Card'}</strong>
         <div class="beratung-builder__actions"><button type="button" data-card-action="duplicate">Duplizieren</button><button type="button" data-card-action="delete">Löschen</button></div>
