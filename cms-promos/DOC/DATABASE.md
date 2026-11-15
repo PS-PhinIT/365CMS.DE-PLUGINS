@@ -57,7 +57,7 @@ Schlüssel/Wert-Tabelle (`setting_key` UNIQUE, `setting_value` LONGTEXT), geschr
 | `default_button_label`, `default_button_label_en` | „Mehr erfahren“ / „Learn more“ |
 | `default_target_behavior` | `same_tab` (`new_tab`) |
 | `click_export_enabled` | `0` |
-| `click_export_webhook_url` | leer |
+| `click_export_webhook_url` | leer – verschlüsselt über `CryptoService` (Kontext `settings`, Bindung `cms_promos.webhook_url`); Klartext-Altwerte bleiben lesbar |
 
 ## Optionen (Core-Tabelle `settings`)
 

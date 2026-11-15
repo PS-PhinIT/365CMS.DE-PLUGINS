@@ -512,7 +512,7 @@ final class CMS_Promos_Public_Controller
             return;
         }
 
-        $webhookUrl = $this->sanitize_redirect_url((string) ($settings['click_export_webhook_url'] ?? ''));
+        $webhookUrl = CMS_Promos_Repository::instance()->get_webhook_url();
         if ($webhookUrl === '') {
             return;
         }

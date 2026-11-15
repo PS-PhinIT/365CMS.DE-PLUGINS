@@ -11,6 +11,8 @@ if (!defined('ABSPATH')) {
 
 final class CMS_Promos_Repository
 {
+    private const WEBHOOK_SECRET_BINDING = 'cms_promos.webhook_url';
+
     private static ?self $instance = null;
 
     /** @var array<string,string> */
@@ -153,6 +155,20 @@ final class CMS_Promos_Repository
     public function save_settings(array $post): array
     {
         try {
+            // Webhook-URL (kann ein Token enthalten): leeres Feld behält den gespeicherten Wert,
+            // Checkbox entfernt ihn, neue Werte werden geprüft und per CryptoService verschlüsselt.
+            $webhook = (string) ($this->get_settings()['click_export_webhook_url'] ?? '');
+            $postedWebhook = trim((string) ($post['click_export_webhook_url'] ?? ''));
+            if (!empty($post['click_export_webhook_remove'])) {
+                $webhook = '';
+            } elseif ($postedWebhook !== '') {
+                $cleanWebhook = $this->clean_url($postedWebhook);
+                if ($cleanWebhook === '') {
+                    return ['success' => false, 'error' => 'Die Webhook-URL ist ungültig: erlaubt sind öffentliche http(s)-Adressen ohne Zugangsdaten in der URL.'];
+                }
+                $webhook = $this->encrypt_secret($cleanWebhook);
+            }
+
             $settings = [
                 'archive_title' => $this->clean_text($post['archive_title'] ?? ''),
                 'archive_title_en' => $this->clean_text($post['archive_title_en'] ?? ''),
@@ -162,7 +178,7 @@ final class CMS_Promos_Repository
                 'default_button_label_en' => $this->clean_text($post['default_button_label_en'] ?? ''),
                 'default_target_behavior' => in_array(($post['default_target_behavior'] ?? 'same_tab'), ['same_tab', 'new_tab'], true) ? (string) $post['default_target_behavior'] : 'same_tab',
                 'click_export_enabled' => !empty($post['click_export_enabled']) ? '1' : '0',
-                'click_export_webhook_url' => $this->clean_url($post['click_export_webhook_url'] ?? ''),
+                'click_export_webhook_url' => $webhook,
             ];
 
             if ($settings['default_button_label'] === '') {
@@ -178,6 +194,51 @@ final class CMS_Promos_Repository
             $this->log_error('Failed to save settings', $e);
             return ['success' => false, 'error' => 'Die Einstellungen konnten nicht gespeichert werden.'];
         }
+    }
+
+    /**
+     * Entschlüsselte, erneut geprüfte Webhook-URL für den Klick-Export. Klartext-Altwerte (vor 4.0.2)
+     * bleiben lesbar und werden beim nächsten Speichern mit neuer URL verschlüsselt; nicht
+     * entschlüsselbare Werte (z. B. nach Schlüsselwechsel) ergeben '' und werden protokolliert.
+     */
+    public function get_webhook_url(): string
+    {
+        $stored = trim((string) ($this->get_settings()['click_export_webhook_url'] ?? ''));
+        if ($stored === '') {
+            return '';
+        }
+
+        if (class_exists('CMS\\Services\\CryptoService')) {
+            try {
+                $crypto = \CMS\Services\CryptoService::getInstance();
+                if ($crypto->isEncrypted($stored)) {
+                    $stored = $crypto->decrypt($stored, \CMS\Services\CryptoService::CONTEXT_SETTINGS, self::WEBHOOK_SECRET_BINDING);
+                }
+            } catch (\Throwable $e) {
+                $this->log_error('Failed to decrypt webhook URL', $e);
+                return '';
+            }
+        }
+
+        return $this->clean_url($stored);
+    }
+
+    public function has_webhook_url(): bool
+    {
+        return trim((string) ($this->get_settings()['click_export_webhook_url'] ?? '')) !== '';
+    }
+
+    private function encrypt_secret(string $plain): string
+    {
+        if (!class_exists('CMS\\Services\\CryptoService')) {
+            return $plain;
+        }
+
+        $crypto = \CMS\Services\CryptoService::getInstance();
+
+        return $crypto->isAvailable()
+            ? $crypto->encrypt($plain, \CMS\Services\CryptoService::CONTEXT_SETTINGS, self::WEBHOOK_SECRET_BINDING)
+            : $plain;
     }
 
     /**

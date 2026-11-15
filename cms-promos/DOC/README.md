@@ -2,7 +2,7 @@
 
 > Weitere Dokumente: [DATABASE.md](DATABASE.md) · [HOOKS.md](HOOKS.md) · [API.md](API.md) · [Changelog](../CHANGELOG.md)
 
-> **Plugin:** `cms-promos` · **Version:** 4.0.1 · **Stand:** 2026-11-15
+> **Plugin:** `cms-promos` · **Version:** 4.0.2 · **Stand:** 2026-11-15
 > **Voraussetzungen:** 365CMS 4.0.0 (Plugin-Layout-Vertrag), PHP 8.4.1
 
 ## 1. Admin-Oberfläche
@@ -69,6 +69,7 @@ Indizes: `uniq_slug`, `idx_placement_status (placement_id, status)`, `idx_status
 
 - `current_user_can('manage_options')` für alle Admin-Seiten; CSRF-Token `promos_admin` für jeden POST, `promos_export` (persistent) für Exporte.
 - Webhook ausschließlich über `CMS\Http\Client` (SSRF-Schutz, 2 s Timeout, 4 KB Antwortlimit).
+- Webhook-URL (kann ein Token enthalten) wird mit `CryptoService` verschlüsselt gespeichert und im Formular nie angezeigt: leeres Feld behält den Wert, „Gespeicherte Webhook-URL entfernen“ löscht ihn; entschlüsselt wird nur beim Versand.
 - Ziel-, Bild- und Webhook-URLs nur `http(s)` ohne Zugangsdaten, private oder lokale Hosts; Zusatztext über Tag-Whitelist ohne Event-/Style-Attribute.
 - Keine Inline-Skripte, Event-Handler oder `style`-Attribute; Bestätigungen über `data-cms-confirm`; JS-Ausgabe nur per `textContent`.
 

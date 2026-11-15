@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.0.2 - 2026-11-15
+
+### Sicherheit
+
+- Die Webhook-URL für den Klick-Export (kann ein Token enthalten) wird mit `CryptoService` verschlüsselt gespeichert (Kontext `settings`, Bindung `cms_promos.webhook_url`) und erst beim Versand entschlüsselt. Übernommen aus PR #11.
+- Das Einstellungsformular zeigt die gespeicherte URL nicht mehr an. Ein leeres Feld behält den Wert, die Checkbox „Gespeicherte Webhook-URL entfernen“ löscht ihn. Eine ungültige neue URL wird mit einer Fehlermeldung abgelehnt, statt still verworfen zu werden.
+- Klartext-Werte aus älteren Versionen bleiben lesbar und werden beim nächsten Speichern mit neuer URL verschlüsselt.
+
 ## 4.0.1 - 2026-11-15
 
 Fixes aus dem Integrationstest gegen eine echte 365CMS-4.0.0-Installation (MariaDB, Router, CSP).
