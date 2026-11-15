@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.0.3 - 2026-11-15
+
+Funktions-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft auf der 365CMS-Testinstallation (Core-`main`).
+
+### Neu
+
+- **FUN-PLG-03 – Sammelaktion in der Promo-Liste:** markierte Promos aktivieren, pausieren, archivieren oder löschen (höchstens 500 je Aufruf, Bestätigung über `data-cms-confirm`); Checkbox „Alle auswählen“ in `promos-admin.js` (CSP-konform). Danach wird das Sitemap-Bundle verworfen.
+
 ## 4.0.2 - 2026-11-15
 
 ### Sicherheit

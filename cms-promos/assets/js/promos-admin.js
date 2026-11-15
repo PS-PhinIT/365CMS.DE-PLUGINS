@@ -5,6 +5,31 @@
 (function () {
     'use strict';
 
+    // Promo-Liste: „Alle auswählen“ für die Sammelaktion (Checkboxen gehören per form-Attribut zu #promos-bulk).
+    var selectAll = document.querySelector('[data-pr-select-all]');
+    if (selectAll) {
+        var items = function () { return Array.prototype.slice.call(document.querySelectorAll('[data-pr-select-item]')); };
+        var sync = function () {
+            var all = items();
+            var checked = all.filter(function (item) { return item.checked; }).length;
+            selectAll.checked = all.length > 0 && checked === all.length;
+            selectAll.indeterminate = checked > 0 && checked < all.length;
+        };
+        selectAll.addEventListener('change', function () {
+            items().forEach(function (item) { item.checked = selectAll.checked; });
+            sync();
+        });
+        document.addEventListener('change', function (event) {
+            if (event.target && event.target.matches && event.target.matches('[data-pr-select-item]')) {
+                sync();
+            }
+        });
+    }
+})();
+
+(function () {
+    'use strict';
+
     var targetInput = document.getElementById('promo-target-url');
     var buildButton = document.getElementById('promo-build-utm');
     var copyButton = document.getElementById('promo-copy-utm');

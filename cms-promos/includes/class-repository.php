@@ -587,6 +587,44 @@ final class CMS_Promos_Repository
         }
     }
 
+    /**
+     * Sammelaktion für markierte Promos: aktivieren, pausieren, archivieren oder löschen.
+     *
+     * @param array<int|string,mixed> $ids
+     * @return array{success:bool,message?:string,error?:string}
+     */
+    public function bulk_promos(array $ids, string $operation): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $id): bool => $id > 0)));
+        $ids = array_slice($ids, 0, 500);
+        $statusMap = ['activate' => 'active', 'pause' => 'paused', 'archive' => 'archived'];
+        if ($ids === []) {
+            return ['success' => false, 'error' => 'Bitte mindestens eine Promo markieren.'];
+        }
+        if ($operation !== 'delete' && !isset($statusMap[$operation])) {
+            return ['success' => false, 'error' => 'Bitte eine Sammelaktion wählen.'];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+        try {
+            if ($operation === 'delete') {
+                $stmt = $this->db->prepare("DELETE FROM {$this->prefix}promos WHERE id IN ({$placeholders})");
+                $stmt->execute($ids);
+                $message = sprintf('%d Promo(s) gelöscht.', $stmt->rowCount());
+            } else {
+                $stmt = $this->db->prepare("UPDATE {$this->prefix}promos SET status = ?, updated_at = NOW() WHERE id IN ({$placeholders})");
+                $stmt->execute(array_merge([$statusMap[$operation]], $ids));
+                $message = sprintf('%d Promo(s) auf „%s“ gesetzt.', $stmt->rowCount(), $this->status_label($statusMap[$operation]));
+            }
+            $this->invalidate_read_caches();
+
+            return ['success' => true, 'message' => $message];
+        } catch (\Throwable $e) {
+            $this->log_error('Failed to run bulk action', $e);
+            return ['success' => false, 'error' => 'Die Sammelaktion konnte nicht ausgeführt werden.'];
+        }
+    }
+
     public function increment_click(int $id): void
     {
         try {

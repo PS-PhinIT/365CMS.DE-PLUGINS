@@ -482,6 +482,26 @@ final class CMS_Beratung_Storage
         return $stmt->rowCount();
     }
 
+    /**
+     * Status mehrerer Anfragen setzen (Sammelaktion); interne Notizen bleiben unverändert.
+     *
+     * @param array<int,int|string> $ids
+     */
+    public function set_submissions_status(array $ids, string $status): int
+    {
+        if ($this->pdo === null || !array_key_exists($status, self::submission_statuses())) {
+            return 0;
+        }
+        $ids = array_slice(array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0))), 0, 500);
+        if ($ids === []) {
+            return 0;
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_form_submissions SET status = ? WHERE id IN ({$placeholders})");
+        $stmt->execute(array_merge([$status], $ids));
+        return $stmt->rowCount();
+    }
+
     public function purge_old_submissions(int $days): int
     {
         if ($this->pdo === null) {

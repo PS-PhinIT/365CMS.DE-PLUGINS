@@ -178,3 +178,22 @@
     margin-top: 1.5rem;
     border-color: var(--tblr-danger-lt);
 }
+
+/* Sammelaktion in der Promo-Liste */
+.cms-plugin-admin-content .pr-bulk {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: .75rem;
+}
+
+.cms-plugin-admin-content .pr-bulk .form-select {
+    width: auto;
+    min-width: 12rem;
+}
+
+.cms-plugin-admin-content .pr-check {
+    width: 2.25rem;
+    text-align: center;
+}

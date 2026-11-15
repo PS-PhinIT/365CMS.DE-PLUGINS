@@ -10,6 +10,7 @@
  * @var array<string,string> $statusLabels
  * @var list<array<string,mixed>> $providers
  * @var string $csrfToken
+ * @var list<array{name:string,size:int,created_at:string}> $privacyExports
  *
  * @package CMS_Booking
  */
@@ -72,13 +73,31 @@ $actionsFor = static fn (string $status): array => match ($status) {
     <?php if ($items === []): ?>
         <div class="empty-state"><p><strong>Keine Buchungen gefunden</strong></p><p class="bk-muted"><?php echo $filtered ? 'Passen Sie die Filter an.' : 'Neue Buchungen erscheinen hier automatisch.'; ?></p></div>
     <?php else: ?>
+        <form method="post" id="bk-bulk" class="bk-bulk" data-cms-confirm="Ausgewählte Aktion auf die markierten Buchungen anwenden? Kunden werden wie bei der Einzelaktion benachrichtigt.">
+            <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+            <input type="hidden" name="booking_admin_action" value="booking_bulk">
+            <?php foreach (['status' => $filters['status'], 'q' => $filters['q'], 'provider_id' => $filters['provider_id'], 'paged' => $paged] as $k => $v): ?>
+                <input type="hidden" name="return_<?php echo $e($k); ?>" value="<?php echo $e((string) $v); ?>">
+            <?php endforeach; ?>
+            <label class="visually-hidden" for="bk-bulk-status">Sammelaktion</label>
+            <select id="bk-bulk-status" name="bulk_status" class="form-select" required>
+                <option value="">Sammelaktion wählen</option>
+                <option value="confirm">Bestätigen</option>
+                <option value="cancel">Stornieren / Ablehnen</option>
+                <option value="complete">Abschließen</option>
+                <option value="no_show">Nicht erschienen</option>
+                <option value="delete">Löschen</option>
+            </select>
+            <button type="submit" class="btn btn-outline-secondary">Anwenden</button>
+        </form>
         <div class="users-table-container">
             <table class="users-table">
-                <thead><tr><th scope="col">#</th><th scope="col">Termin</th><th scope="col">Kunde</th><th scope="col">Anbieter / Leistung</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead>
+                <thead><tr><th scope="col" class="bk-check"><input class="form-check-input" type="checkbox" data-bk-select-all aria-label="Alle Buchungen auswählen"></th><th scope="col">#</th><th scope="col">Termin</th><th scope="col">Kunde</th><th scope="col">Anbieter / Leistung</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead>
                 <tbody>
                 <?php foreach ($items as $item): ?>
                     <?php $id = (int) $item['id']; $status = (string) $item['status']; ?>
                     <tr>
+                        <td class="bk-check"><input class="form-check-input" type="checkbox" name="ids[]" value="<?php echo $id; ?>" form="bk-bulk" data-bk-select-item aria-label="<?php echo $e('Buchung #' . $id . ' auswählen'); ?>"></td>
                         <td><a class="bk-link" href="<?php echo $e(CMS_Booking_Admin_Pages::url('bookings', ['view' => $id])); ?>"><?php echo $id; ?></a></td>
                         <td class="bk-nowrap"><?php echo $e(CMS_Booking_Admin_Pages::format_date((string) $item['booking_date'])); ?><div class="bk-muted"><?php echo $e(substr((string) $item['start_time'], 0, 5) . '–' . substr((string) $item['end_time'], 0, 5)); ?></div></td>
                         <td><?php echo $e($item['customer_name']); ?><div class="bk-muted"><?php echo $e($item['customer_email']); ?></div></td>
@@ -116,3 +135,42 @@ $actionsFor = static fn (string $status): array => match ($status) {
         <?php endif; ?>
     <?php endif; ?>
 </div>
+
+<section class="admin-card">
+    <div class="bk-panel-header"><h3>DSGVO-Auskunftsdateien</h3></div>
+    <p class="bk-muted">Entstehen beim Abschließen einer Datenschutzauskunft (Auskunft &amp; Löschen) für Personen mit Buchungen – Zuordnung über das Konto oder die bestätigte E-Mail-Adresse – und werden nach <?php echo (int) CMS_Booking_Privacy::EXPORT_KEEP_DAYS; ?> Tagen automatisch entfernt.</p>
+    <?php if ($privacyExports === []): ?>
+        <p class="bk-muted">Keine Auskunftsdateien vorhanden.</p>
+    <?php else: ?>
+        <div class="users-table-container">
+            <table class="users-table">
+                <thead><tr><th scope="col">Datei</th><th scope="col">Erstellt</th><th scope="col">Größe</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead>
+                <tbody>
+                <?php foreach ($privacyExports as $file): ?>
+                    <tr>
+                        <td><code><?php echo $e($file['name']); ?></code></td>
+                        <td><?php echo $e($file['created_at']); ?></td>
+                        <td><?php echo $e(number_format($file['size'] / 1024, 1, ',', '.')); ?> KB</td>
+                        <td>
+                            <div class="bk-actions">
+                                <form method="post">
+                                    <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+                                    <input type="hidden" name="booking_admin_action" value="privacy_download">
+                                    <input type="hidden" name="file" value="<?php echo $e($file['name']); ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary" title="Herunterladen"><i class="ti ti-download" aria-hidden="true"></i><span class="visually-hidden">Herunterladen</span></button>
+                                </form>
+                                <form method="post" data-cms-confirm="Auskunftsdatei löschen?">
+                                    <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+                                    <input type="hidden" name="booking_admin_action" value="privacy_delete">
+                                    <input type="hidden" name="file" value="<?php echo $e($file['name']); ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Löschen"><i class="ti ti-trash" aria-hidden="true"></i><span class="visually-hidden">Löschen</span></button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</section>

@@ -13,7 +13,9 @@
 | `cms_cron_hourly` | Action | Terminerinnerungen |
 | `cms_sitemap_entries` | Filter | `/booking/<anbieter>`; nach Änderungen an Anbietern/Leistungen wird das gespeicherte Sitemap-Bundle verworfen (`SEOService::invalidateSavedSitemaps()`) |
 | `cms_public_form_persistent_token` | Filter | meldet für `POST /booking/<anbieter>/<leistung>` das eigene Token (`booking_submit`) an, statt des Core-Einmaltokens `form_guard` |
-| `dsgvo_export_data`, `dsgvo_delete_data` | Action | DSGVO-Auskunft und -Löschung |
+| `dsgvo_export_data`, `dsgvo_delete_data` | Action | DSGVO-Auskunft (Datei in der privaten Ablage) und -Löschung (Anonymisierung) – je über Konto und E-Mail |
+| `cms_member_export_data` (20) | Filter | Buchungen in der Selbstauskunft (`buchungen`) |
+| `cms_cron_daily` (50) | Action | Auskunftsdateien älter als 30 Tage entfernen |
 
 Registrierungen: `DataRetentionService::registerRule('cms_booking_customers')`, `AdminNoticeService::registerCheck('cms_booking_pending')`.
 
@@ -26,7 +28,7 @@ Registrierungen: `DataRetentionService::registerRule('cms_booking_customers')`, 
 | `booking_status_confirmed` | Action | `int $bookingId` | nach Bestätigung (Kunden-Mail) |
 | `booking_status_cancelled` | Action | `int $bookingId` | nach Stornierung (Kunden- und Anbieter-Mail) |
 | `booking_status_completed`, `booking_status_no_show` | Action | `int $bookingId` | nach Abschluss bzw. „nicht erschienen“ |
-| `dsgvo_export_data_booking` | Action | `int $userId, array $export` | beim DSGVO-Export |
+| `dsgvo_export_data_booking` | Action | `int $userId, array $export` | beim DSGVO-Export (nach dem Schreiben der Auskunftsdatei) |
 
 ```php
 \CMS\Hooks::addAction('booking_status_confirmed', static function (int $bookingId): void {

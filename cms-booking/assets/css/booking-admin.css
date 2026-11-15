@@ -220,3 +220,22 @@
     margin-top: 1.5rem;
     border-color: var(--tblr-danger-lt);
 }
+
+/* Sammelaktion in der Buchungsliste */
+.cms-plugin-admin-content .bk-bulk {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: .75rem;
+}
+
+.cms-plugin-admin-content .bk-bulk .form-select {
+    width: auto;
+    min-width: 12rem;
+}
+
+.cms-plugin-admin-content .bk-check {
+    width: 2.25rem;
+    text-align: center;
+}
