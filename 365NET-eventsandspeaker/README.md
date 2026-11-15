@@ -1,7 +1,14 @@
-# 365NET | Events & Speaker
+# 365CMS | Events & Speaker
 
-Version: 3.2.0
+Version: 4.0.0
 Modulares 365CMS-Plugin für Events, Messen und verknüpfte Speaker.
+
+## Anforderungen
+
+- 365CMS 4.0.0 oder neuer
+- PHP 8.4.1 oder neuer
+- Optional: „365NET Experts & Companies“ (Verknüpfung von Events/Speakern mit Firmen und Experten)
+- Optional: Google Programmable Search (API-Key + Suchmaschinen-ID) für den Speaker-Backfill
 
 ## Features
 
@@ -11,11 +18,13 @@ Modulares 365CMS-Plugin für Events, Messen und verknüpfte Speaker.
 - MySQL-Tabellen mit `unique_id`, `slug`, `status`, `created_at` und `updated_at`.
 - Prepared Statements über `CMS\Database`/PDO.
 - MariaDB-kompatible Tabellenchecks über den zentralen `Database::tableExists()`-Helper statt `SHOW TABLES LIKE ?`.
-- Admin im einheitlichen Plugin-Layout von 365CMS 4.0.0: Kopfzeile mit Pluginname, Version, Einzeiler und vier KPI-Karten (kommende Events, Events gesamt, Speaker, Entwürfe), links das Plugin-Menü (Übersicht, Events mit Entwürfe-Zähler, Speaker, Kategorien & Tags, Einstellungen), rechts der Inhalt.
-- Übersicht unter `/admin/365netevents/dashboard` (Ziel des Seitenleisten-Links): Schnellaktionen (Neues Event, Neuer Speaker, Vergangene Events, öffentliche Eventseite), Status-/System-Check (Tabellen, kommende Events, Entwürfe, Speaker-Verzeichnis, Experts & Companies, Google-Suche), zuletzt bearbeitete Events und die nächsten fünf Events. Admin-CRUD für Events und Speaker unter `/admin/365netevents`.
+- Admin „365CMS | Events & Speaker“ unter `/admin/plugins/365netevents` im Layout-Vertrag von 365CMS 4.0.0: Kopfzeile mit Status und vier KPI-Karten, links das Plugin-Menü (Übersicht, Events mit Entwürfe-Zähler, Speaker, Kategorien & Tags, Einstellungen), rechts der Inhalt. Alte Adressen `/admin/365netevents/…` leiten um.
+- Übersicht: Schnellaktionen, System-Check, zuletzt bearbeitete Events und die nächsten fünf Events.
+- Listen mit Filtern, Sammelaktionen (Veröffentlichen, Entwurf, Löschen), Pagination und CSV-Export.
 - Erweiterter Adminbereich mit vertikal gestapelten UX-Sektionen für Basisdaten, EditorJS-Beschreibung/Bio, Medien, Ort/Online, Kontakt, Kategorien, Tags, Preisklassen, Speaker-Zuordnung und SEO.
-- Einstellungsseite unter `/admin/365netevents/settings` für alle Public-Texte, Farben, Rundungen, Containerbreite sowie Header-/Footer-Abstände.
-- Settings-Backfill für bestehende Event-Beschreibungen sowie Speaker-Enrichment auf Basis von Google-Custom-Search-Treffern.
+- Einstellungen für alle Public-Texte, Farben, Rundungen, Containerbreite sowie Header-/Footer-Abstände.
+- Backfill für bestehende Event-Beschreibungen sowie Speaker-Enrichment auf Basis von Google-Custom-Search-Treffern (je Lauf bis zu 25 Speaker). API-Key und Suchmaschinen-ID über Umgebungsvariablen (`CMS_365NETEVENTS_GOOGLE_API_KEY`, `CMS_365NETEVENTS_GOOGLE_CSE_ID`, Vorrang) oder in den Einstellungen (Key verschlüsselt über den CryptoService).
+- Sitemap-Einträge, Treffer in der Seitensuche (`events`, `speakers`), SEO-Meta je Seite, Systemhinweise im Admin.
 - Eventübersicht zeigt standardmäßig nur den aktuellen Monat; vergangene Events werden erst über den Public-Button `Vergangene Events anzeigen` geladen.
 - Public-Content setzt keinen eigenen Seitenhintergrund mehr, damit der Theme-Hintergrund erhalten bleibt.
 - EditorJS-JSON für Event-Beschreibungen (`description_json`) und Speaker-Bios (`bio_json`) mit Core-Renderer-Fallback im Frontend.
@@ -27,7 +36,8 @@ Modulares 365CMS-Plugin für Events, Messen und verknüpfte Speaker.
   - `/event-speakers`
   - `/event-speakers/{slug}`
 - Public-Layout mit `max-width: 1160px; margin: 0 auto;`.
-- Logs nach `logs/cms-365netevents.log` plus PHP error log.
+- Fehler werden über den Core-Logger (Kanal `plugins`) protokolliert.
+- Beim Löschen des Plugins (`cms_365neteventsandspeaker_uninstall()`) werden die vier Tabellen entfernt.
 
 ## Tabellen
 

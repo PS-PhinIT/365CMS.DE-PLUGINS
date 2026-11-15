@@ -337,7 +337,7 @@ foreach ($lines as $line) {
 }
 
 $eventDescriptionsByNr = [];
-$descriptionMapFile = __DIR__ . '/_generated_event_descriptions_map.php.txt';
+$descriptionMapFile = __DIR__ . '/event-descriptions.php';
 if (is_file($descriptionMapFile)) {
     $loadedDescriptions = require $descriptionMapFile;
     if (is_array($loadedDescriptions)) {

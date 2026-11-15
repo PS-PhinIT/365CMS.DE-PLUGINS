@@ -1,6 +1,9 @@
 <?php
 /**
- * CMS Beratung – public routing and asset loading.
+ * CMS Beratung – öffentliche Routen, Vorschau und Asset-Ausgabe.
+ *
+ * Assets werden nur auf Landingpage-Routen ausgegeben; die Routenliste stammt aus einer schlanken
+ * Abfrage (veröffentlichte Slugs) und wird pro Request einmal ermittelt.
  *
  * @package CMS_Beratung
  */
@@ -13,9 +16,13 @@ if (!defined('ABSPATH')) {
 
 final class CMS_Beratung_Frontend
 {
+    /** Frontend-Stylesheets in Ladereihenfolge. */
+    public const STYLESHEETS = ['frontend.css', 'frontend-extra.css', 'frontend-theme-safe.css', 'frontend-premium.css', 'frontend-global-design.css'];
+
     private static ?self $instance = null;
     private bool $routesRegistered = false;
     private ?array $currentPage = null;
+    private bool $currentResolved = false;
     private bool $publicScriptsPrinted = false;
 
     public static function instance(?\CMS\Router $router = null): self
@@ -39,16 +46,37 @@ final class CMS_Beratung_Frontend
 
     public function filter_body_class(mixed $bodyClass): string
     {
-        $classes = trim((string) $bodyClass);
+        $classes = trim(is_scalar($bodyClass) ? (string) $bodyClass : '');
         if ($this->resolve_current_page() === null) {
             return $classes;
         }
         $list = preg_split('/\s+/', $classes, -1, PREG_SPLIT_NO_EMPTY);
-        if (!is_array($list)) {
-            $list = [];
-        }
+        $list = is_array($list) ? $list : [];
         $list[] = 'cms-beratung-page';
         return implode(' ', array_values(array_unique($list)));
+    }
+
+    /** `<link>`-Tags der Frontend-Stylesheets mit Cache-Buster. */
+    public static function stylesheet_tags(): string
+    {
+        $html = '';
+        foreach (self::STYLESHEETS as $file) {
+            $path = CMS_BERATUNG_PLUGIN_DIR . 'assets/css/' . $file;
+            if (is_file($path)) {
+                $html .= '<link rel="stylesheet" href="' . htmlspecialchars(CMS_BERATUNG_PLUGIN_URL . 'assets/css/' . $file . '?v=' . CMS_BERATUNG_VERSION . '-' . filemtime($path), ENT_QUOTES, 'UTF-8') . '">' . "\n";
+            }
+        }
+        return $html;
+    }
+
+    public static function script_tag(): string
+    {
+        $js = CMS_BERATUNG_PLUGIN_DIR . 'assets/js/frontend.js';
+        if (!is_file($js)) {
+            return '';
+        }
+        $nonce = class_exists('CMS\\Security') ? ' ' . \CMS\Security::instance()->nonceAttr() : '';
+        return '<script src="' . htmlspecialchars(CMS_BERATUNG_PLUGIN_URL . 'assets/js/frontend.js?v=' . CMS_BERATUNG_VERSION . '-' . filemtime($js), ENT_QUOTES, 'UTF-8') . '" defer' . $nonce . '></script>' . "\n";
     }
 
     public function enqueue_public_assets(): void
@@ -56,26 +84,7 @@ final class CMS_Beratung_Frontend
         if ($this->resolve_current_page() === null) {
             return;
         }
-        $css = CMS_BERATUNG_PLUGIN_DIR . 'assets/css/frontend.css';
-        if (is_file($css)) {
-            echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_BERATUNG_PLUGIN_URL . 'assets/css/frontend.css', ENT_QUOTES, 'UTF-8') . '?v=' . filemtime($css) . '">' . "\n";
-        }
-        $extraCss = CMS_BERATUNG_PLUGIN_DIR . 'assets/css/frontend-extra.css';
-        if (is_file($extraCss)) {
-            echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_BERATUNG_PLUGIN_URL . 'assets/css/frontend-extra.css', ENT_QUOTES, 'UTF-8') . '?v=' . filemtime($extraCss) . '">' . "\n";
-        }
-        $themeSafeCss = CMS_BERATUNG_PLUGIN_DIR . 'assets/css/frontend-theme-safe.css';
-        if (is_file($themeSafeCss)) {
-            echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_BERATUNG_PLUGIN_URL . 'assets/css/frontend-theme-safe.css', ENT_QUOTES, 'UTF-8') . '?v=' . filemtime($themeSafeCss) . '">' . "\n";
-        }
-        $premiumCss = CMS_BERATUNG_PLUGIN_DIR . 'assets/css/frontend-premium.css';
-        if (is_file($premiumCss)) {
-            echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_BERATUNG_PLUGIN_URL . 'assets/css/frontend-premium.css', ENT_QUOTES, 'UTF-8') . '?v=' . filemtime($premiumCss) . '">' . "\n";
-        }
-        $globalDesignCss = CMS_BERATUNG_PLUGIN_DIR . 'assets/css/frontend-global-design.css';
-        if (is_file($globalDesignCss)) {
-            echo '<link rel="stylesheet" href="' . htmlspecialchars(CMS_BERATUNG_PLUGIN_URL . 'assets/css/frontend-global-design.css', ENT_QUOTES, 'UTF-8') . '?v=' . filemtime($globalDesignCss) . '">' . "\n";
-        }
+        echo self::stylesheet_tags();
     }
 
     public function output_seo_head(): void
@@ -89,17 +98,11 @@ final class CMS_Beratung_Frontend
 
     public function enqueue_public_scripts(): void
     {
-        if ($this->resolve_current_page() === null) {
-            return;
-        }
-        if ($this->publicScriptsPrinted) {
+        if ($this->publicScriptsPrinted || $this->resolve_current_page() === null) {
             return;
         }
         $this->publicScriptsPrinted = true;
-        $js = CMS_BERATUNG_PLUGIN_DIR . 'assets/js/frontend.js';
-        if (is_file($js)) {
-            echo '<script src="' . htmlspecialchars(CMS_BERATUNG_PLUGIN_URL . 'assets/js/frontend.js', ENT_QUOTES, 'UTF-8') . '?v=' . filemtime($js) . '" defer></script>' . "\n";
-        }
+        echo self::script_tag();
     }
 
     private function register_routes(?\CMS\Router $router = null): void
@@ -109,38 +112,57 @@ final class CMS_Beratung_Frontend
         }
         $this->routesRegistered = true;
         $router = $router instanceof \CMS\Router ? $router : \CMS\Router::instance();
-        foreach (CMS_Beratung_Storage::instance()->all_landingpages() as $row) {
-            if (($row['status'] ?? '') !== 'published') {
-                continue;
-            }
-            $slug = trim((string) ($row['slug'] ?? ''), '/');
-            if ($slug === '') {
-                continue;
-            }
-            foreach (['/beratung/' . $slug, '/de/beratung/' . $slug, '/en/beratung/' . $slug] as $route) {
-                $router->addRoute('GET', $route, function () use ($slug): void {
-                    $this->render_page($slug);
-                });
-                $router->addRoute('POST', $route, function () use ($slug): void {
-                    $this->render_page($slug);
-                });
-            }
 
-            $hero = json_decode((string) ($row['hero_json'] ?? '{}'), true);
-            $hero = is_array($hero) ? $hero : [];
-            $standaloneSlug = trim((string) ($hero['standalone_header_slug'] ?? ''), '/');
-            if (empty($hero['standalone_header_enabled']) || $standaloneSlug === '' || $standaloneSlug === $slug) {
+        $router->addRoute('GET', '/api/cms-beratung/preview', [$this, 'render_preview']);
+
+        foreach (CMS_Beratung_Storage::instance()->published_routes() as $route) {
+            $slug = $route['slug'];
+            foreach (['/beratung/' . $slug, '/de/beratung/' . $slug, '/en/beratung/' . $slug] as $path) {
+                $handler = function () use ($slug): void {
+                    $this->render_page($slug);
+                };
+                $router->addRoute('GET', $path, $handler);
+                $router->addRoute('POST', $path, $handler);
+            }
+            $standaloneSlug = $route['standalone_slug'];
+            if ($standaloneSlug === '') {
                 continue;
             }
-            foreach (['/beratung/' . $standaloneSlug, '/de/beratung/' . $standaloneSlug, '/en/beratung/' . $standaloneSlug] as $route) {
-                $router->addRoute('GET', $route, function () use ($slug): void {
+            foreach (['/beratung/' . $standaloneSlug, '/de/beratung/' . $standaloneSlug, '/en/beratung/' . $standaloneSlug] as $path) {
+                $handler = function () use ($slug): void {
                     $this->render_page($slug, true);
-                });
-                $router->addRoute('POST', $route, function () use ($slug): void {
-                    $this->render_page($slug, true);
-                });
+                };
+                $router->addRoute('GET', $path, $handler);
+                $router->addRoute('POST', $path, $handler);
             }
         }
+    }
+
+    /** Entwurfs-Vorschau (nur Admins, noindex, eigenes Dokument ohne Theme). */
+    public function render_preview(): void
+    {
+        $isAdmin = class_exists('CMS\\Auth') && \CMS\Auth::instance()->isAdmin();
+        if (!$isAdmin) {
+            header('Location: ' . (defined('SITE_URL') ? rtrim((string) SITE_URL, '/') : '') . '/', true, 303);
+            exit;
+        }
+        $page = CMS_Beratung_Storage::instance()->get_landingpage(max(0, (int) ($_GET['id'] ?? 0)));
+        if ($page === null) {
+            http_response_code(404);
+            echo 'Landingpage-Vorschau nicht gefunden.';
+            exit;
+        }
+        header('X-Robots-Tag: noindex, nofollow');
+        $this->currentPage = $page;
+        $this->currentResolved = true;
+        echo '<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Vorschau: '
+            . htmlspecialchars((string) ($page['public_title'] ?? 'CMS Beratung'), ENT_QUOTES, 'UTF-8') . '</title>';
+        echo self::stylesheet_tags();
+        echo '</head><body class="cms-beratung-page cms-beratung-preview-page"><div class="cms-beratung-previewbar">Entwurfs-Vorschau · nur für berechtigte Benutzer</div>';
+        CMS_Beratung_Renderer::render($page, ['success' => false, 'message' => '', 'errors' => [], 'values' => []]);
+        echo self::script_tag();
+        echo '</body></html>';
+        exit;
     }
 
     private function render_page(string $slug, bool $standaloneVariant = false): void
@@ -168,21 +190,23 @@ final class CMS_Beratung_Frontend
         }
 
         $this->currentPage = $page;
+        $this->currentResolved = true;
         $formResult = CMS_Beratung_Forms::handle_submission($page);
+        CMS_Beratung_SEO::apply_request_meta($page);
 
         if ($standaloneVariant) {
             $this->render_standalone_document($page, $formResult);
             exit;
         }
 
-        if (!empty($page['show_header']) && class_exists('CMS\\ThemeManager')) {
+        if (class_exists('CMS\\ThemeManager')) {
             \CMS\ThemeManager::instance()->getHeader(['title' => (string) ($page['public_title'] ?? 'CMS Beratung')]);
         }
 
         CMS_Beratung_Renderer::render($page, $formResult);
         $this->enqueue_public_scripts();
 
-        if (!empty($page['show_footer']) && class_exists('CMS\\ThemeManager')) {
+        if (class_exists('CMS\\ThemeManager')) {
             \CMS\ThemeManager::instance()->getFooter();
         }
         exit;
@@ -194,7 +218,7 @@ final class CMS_Beratung_Frontend
         if (class_exists('CMS\\ThemeManager')) {
             \CMS\ThemeManager::instance()->loadTheme();
         }
-        $title = htmlspecialchars((string) ($page['meta_title'] ?? $page['public_title'] ?? 'CMS Beratung'), ENT_QUOTES, 'UTF-8');
+        $title = htmlspecialchars((string) (trim((string) ($page['meta_title'] ?? '')) ?: ($page['public_title'] ?? 'CMS Beratung')), ENT_QUOTES, 'UTF-8');
         $bodyClass = 'cms-beratung-page cms-beratung-standalone-page';
         if (class_exists('CMS\\Hooks')) {
             $bodyClass = (string) \CMS\Hooks::applyFilters('body_class', $bodyClass);
@@ -208,7 +232,6 @@ final class CMS_Beratung_Frontend
         }
         echo '</head><body class="' . htmlspecialchars($bodyClass, ENT_QUOTES, 'UTF-8') . '">';
         CMS_Beratung_Renderer::render_standalone_header($page);
-        $page['standalone_header_rendered_above_content'] = 1;
         if (class_exists('CMS\\Hooks')) {
             \CMS\Hooks::doAction('body_start');
         }
@@ -222,35 +245,29 @@ final class CMS_Beratung_Frontend
         echo '</body></html>';
     }
 
+    /** Aktuelle Landingpage aus dem Pfad – ohne Treffer keine Abfrage (Regex-Vorprüfung). */
     private function resolve_current_page(): ?array
     {
-        if ($this->currentPage !== null) {
+        if ($this->currentResolved) {
             return $this->currentPage;
         }
+        $this->currentResolved = true;
         $path = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) ?: '');
         $path = strtolower(trim((string) preg_replace('#/+#', '/', $path), '/'));
         if (preg_match('#^(?:[a-z]{2}/)?beratung/([a-z0-9_-]+)$#', $path, $matches) !== 1) {
             return null;
         }
         $requestSlug = (string) $matches[1];
-        $this->currentPage = CMS_Beratung_Storage::instance()->get_landingpage_by_slug($requestSlug, true);
+        $storage = CMS_Beratung_Storage::instance();
+        $this->currentPage = $storage->get_landingpage_by_slug($requestSlug, true);
         if ($this->currentPage === null) {
-            foreach (CMS_Beratung_Storage::instance()->all_landingpages() as $row) {
-                if (($row['status'] ?? '') !== 'published') {
-                    continue;
-                }
-                $hero = json_decode((string) ($row['hero_json'] ?? '{}'), true);
-                if (!is_array($hero) || empty($hero['standalone_header_enabled']) || (string) ($hero['standalone_header_slug'] ?? '') !== $requestSlug) {
-                    continue;
-                }
-                $page = CMS_Beratung_Storage::instance()->get_landingpage_by_slug((string) ($row['slug'] ?? ''), true);
-                if ($page !== null) {
-                    $page['show_header'] = 0;
-                    $page['show_footer'] = 0;
-                    $page['is_standalone_variant'] = 1;
-                    $this->currentPage = $page;
-                }
-                break;
+            $mainSlug = $storage->slug_for_standalone($requestSlug);
+            $page = $mainSlug !== null ? $storage->get_landingpage_by_slug($mainSlug, true) : null;
+            if ($page !== null) {
+                $page['show_header'] = 0;
+                $page['show_footer'] = 0;
+                $page['is_standalone_variant'] = 1;
+                $this->currentPage = $page;
             }
         }
         return $this->currentPage;

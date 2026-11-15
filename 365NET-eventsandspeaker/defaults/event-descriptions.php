@@ -1,5 +1,15 @@
 <?php
+/**
+ * Ausführliche Seed-Beschreibungen je Event-Nummer (NR) – geladen von defaults/seed-data.php.
+ *
+ * @package CMS_365NETEvents
+ */
+
 declare(strict_types=1);
+
+if (!defined('ABSPATH')) {
+    exit;
+}
 
 $eventDescriptionsByNr = [
     1 => 'Net-Zero Data Centre Summit ist als Fachveranstaltung vom 14.01.2026 bis 15.01.2026 in Berlin verortet und richtet sich an Fach- und Führungskräfte, die Themen rund um Datacenter-Nachhaltigkeit nicht nur diskutieren, sondern in umsetzbare Maßnahmen überführen möchten. Die inhaltliche Ausrichtung durch Net Zero Compare verbindet typischerweise strategische Einordnung mit praxisnahen Erfahrungen aus realen Projekten und setzt einen Schwerpunkt auf Austausch zwischen Strategie, Architektur und operativer Delivery in realen Projekten. Dadurch entsteht ein belastbarer Rahmen, um Chancen, Risiken und Abhängigkeiten zwischen Fachbereich, IT, Sicherheit, Betrieb und Governance gemeinsam zu betrachten. Besonders wertvoll ist das Networking, weil Erfahrungen aus unterschiedlichen Unternehmensgrößen zusammenkommen. Damit eignet sich das Event hervorragend, um Prioritäten im eigenen Portfolio zu schärfen und Verantwortlichkeiten sauber zu ordnen. Für die eigene Planung ist das Event insbesondere dann relevant, wenn neue Technologien bewertet, bestehende Plattformen weiterentwickelt oder organisatorische Veränderungen begleitet werden sollen. Die offizielle Referenz für Agenda, Tickets und Updates ist netzerocompare.com. In Summe bietet Net-Zero Data Centre Summit damit eine gute Grundlage, um Wissen zu vertiefen, Entscheidungen zu strukturieren und konkrete nächste Schritte im eigenen Umfeld abzuleiten.',

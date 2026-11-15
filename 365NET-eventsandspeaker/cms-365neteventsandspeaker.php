@@ -1,11 +1,14 @@
 <?php
 /**
- * Plugin Name: 365 | Events & Speaker
+ * Plugin Name: 365CMS | Events & Speaker
  * Plugin URI: https://365network.de/cms-365neteventsandspeaker
  * Description: Modulares Event- und Speaker-Verzeichnis für 365CMS mit Seed-Daten, Admin-CRUD und Public-Views.
- * Version: 3.2.0
+ * Version: 4.0.0
  * Author: 365 Network
  * Author URI: https://365network.de
+ * Requires CMS: 4.0.0
+ * Requires at least: 4.0.0
+ * Requires PHP: 8.4.1
  *
  * @package CMS_365NETEvents
  */
@@ -19,7 +22,7 @@ if (!defined('ABSPATH')) {
 $pluginDirPath = str_replace('\\', '/', dirname(__FILE__));
 $pluginFolderName = basename($pluginDirPath);
 
-defined('CMS_365NET_EVENTS_VERSION') || define('CMS_365NET_EVENTS_VERSION', '3.2.0');
+defined('CMS_365NET_EVENTS_VERSION') || define('CMS_365NET_EVENTS_VERSION', '4.0.0');
 defined('CMS_365NET_EVENTS_PLUGIN_DIR') || define('CMS_365NET_EVENTS_PLUGIN_DIR', rtrim($pluginDirPath, '/') . '/');
 defined('CMS_365NET_EVENTS_PLUGIN_URL') || define('CMS_365NET_EVENTS_PLUGIN_URL', '/plugins/' . $pluginFolderName . '/');
 defined('CMS_365NET_EVENTS_TEXT_DOMAIN') || define('CMS_365NET_EVENTS_TEXT_DOMAIN', 'cms-365neteventsandspeaker');
@@ -78,6 +81,7 @@ if (!class_exists('CMS_365NET_Events', false)) {
                 'class-template-loader.php',
                 'class-admin.php',
                 'class-post-type.php',
+                'class-integrations.php',
             ] as $file) {
                 $candidate = $includesReal . DIRECTORY_SEPARATOR . $file;
                 $realPath = realpath($candidate);
@@ -94,10 +98,8 @@ if (!class_exists('CMS_365NET_Events', false)) {
             }
 
             CMS\Hooks::addAction('cms_init', [$this, 'initPlugin'], 10);
-            CMS\Hooks::addAction('plugin_activated', [$this, 'onActivation'], 10);
-            CMS\Hooks::addAction('plugin_deactivated', [$this, 'onDeactivation'], 10);
+            // Nur öffentliche Assets auf den eigenen Routen; Admin-CSS/-JS geben die Admin-Callbacks aus.
             CMS\Hooks::addAction('head', [$this, 'enqueueStyles'], 10);
-            CMS\Hooks::addAction('body_end', [$this, 'enqueueScripts'], 10);
         }
 
         /**
@@ -109,7 +111,7 @@ if (!class_exists('CMS_365NET_Events', false)) {
                 return;
             }
 
-            foreach (['CMS_365NET_Events_Post_Type', 'CMS_365NET_Events_Admin', 'CMS_365NET_Events_Template_Loader'] as $class) {
+            foreach (['CMS_365NET_Events_Post_Type', 'CMS_365NET_Events_Admin', 'CMS_365NET_Events_Template_Loader', 'CMS_365NET_Events_Integrations'] as $class) {
                 if (class_exists($class, false)) {
                     $class::instance();
                 }
@@ -154,12 +156,9 @@ if (!class_exists('CMS_365NET_Events', false)) {
             $this->bootstrapComponents();
         }
 
-        public function onActivation(string $plugin): void
+        /** Lebenszyklus „Aktivieren“: Tabellen, Indizes und Seeds idempotent anlegen. */
+        public function activate(): void
         {
-            if (!$this->isCurrentPluginSlug($plugin)) {
-                return;
-            }
-
             if (class_exists('CMS\\Database') && class_exists('CMS_365NET_Events_Database')) {
                 try {
                     CMS_365NET_Events_Database::instance()->ensureSchema();
@@ -173,38 +172,29 @@ if (!class_exists('CMS_365NET_Events', false)) {
             }
         }
 
-        public function onDeactivation(string $plugin): void
+        /** Lebenszyklus „Deaktivieren“: Daten bleiben erhalten. */
+        public function deactivate(): void
         {
-            if (!$this->isCurrentPluginSlug($plugin)) {
-                return;
-            }
-
             if (class_exists('CMS\\Hooks')) {
                 CMS\Hooks::doAction('cms_365net_events_deactivated');
             }
         }
 
-        private function isCurrentPluginSlug(string $plugin): bool
+        /** Lebenszyklus „Löschen“: eigene Tabellen und die alte Protokolldatei entfernen. */
+        public function uninstall(): void
         {
-            $slug = $this->normalizePluginSlug($plugin);
-
-            return in_array($slug, ['cms-365netevents', 'cms-365neteventsandspeaker'], true);
-        }
-
-        private function normalizePluginSlug(string $plugin): string
-        {
-            $plugin = str_replace('\\\\', '/', trim((string) $plugin));
-            if ($plugin === '') {
-                return '';
+            if (class_exists('CMS\\Database') && class_exists('CMS_365NET_Events_Database')) {
+                try {
+                    CMS_365NET_Events_Database::instance()->dropTables();
+                } catch (Throwable $e) {
+                    $this->log('uninstall', $e);
+                }
             }
 
-            $parts = explode('/', trim($plugin, '/'));
-            $last = (string) end($parts);
-            if ($last !== '' && str_ends_with(strtolower($last), '.php')) {
-                $last = substr($last, 0, -4);
+            $legacyLog = $this->pluginDir . 'logs/cms-365neteventsandspeaker.log';
+            if (is_file($legacyLog)) {
+                @unlink($legacyLog);
             }
-
-            return strtolower(trim($last));
         }
 
         public function enqueueStyles(): void
@@ -212,23 +202,6 @@ if (!class_exists('CMS_365NET_Events', false)) {
             if ($this->isFrontendRoute()) {
                 $this->enqueueStyleFile('public.css');
                 $this->enqueuePublicSettingsStyle();
-            }
-
-            if ($this->isAdminRoute()) {
-                $this->enqueueStyleFile('admin.css');
-                $this->enqueueStyleFile('admin-enhancements.css');
-                $this->enqueueStyleFile('admin-excomp-forms.css');
-            }
-        }
-
-        public function enqueueScripts(): void
-        {
-            if ($this->isFrontendRoute()) {
-                $this->enqueueScriptFile('public.js');
-            }
-
-            if ($this->isAdminRoute()) {
-                $this->enqueueScriptFile('admin.js');
             }
         }
 
@@ -239,7 +212,7 @@ if (!class_exists('CMS_365NET_Events', false)) {
                 return;
             }
 
-            $href = $this->pluginUrl . 'assets/css/' . $file . '?v=' . (string) filemtime($path);
+            $href = $this->pluginUrl . 'assets/css/' . $file . '?v=' . $this->version . '-' . (string) filemtime($path);
             echo '<link rel="stylesheet" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">' . "\n";
         }
 
@@ -303,17 +276,6 @@ if (!class_exists('CMS_365NET_Events', false)) {
             echo '<style id="cms-365neteventsandspeaker-settings" ' . \CMS\Security::instance()->nonceAttr() . '>' . $css . '</style>' . "\n";
         }
 
-        private function enqueueScriptFile(string $file): void
-        {
-            $path = $this->pluginDir . 'assets/js/' . $file;
-            if (!is_file($path)) {
-                return;
-            }
-
-            $src = $this->pluginUrl . 'assets/js/' . $file . '?v=' . (string) filemtime($path);
-            echo '<script src="' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . '" defer></script>' . "\n";
-        }
-
         private function isFrontendRoute(): bool
         {
             $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
@@ -330,21 +292,6 @@ if (!class_exists('CMS_365NET_Events', false)) {
                 || str_starts_with($path, '/event-speakers/');
         }
 
-        private function isAdminRoute(): bool
-        {
-            $path = $this->requestPath();
-            if (str_starts_with($path, '/admin/365netevents') || str_starts_with($path, '/admin/365neteventsandspeaker')) {
-                return true;
-            }
-
-            $page = strtolower(trim((string) ($_GET['page'] ?? '')));
-            if ($page !== '' && str_starts_with($page, '365netevents')) {
-                return true;
-            }
-
-            return false;
-        }
-
         private function requestPath(): string
         {
             if ($this->requestPathCache !== null) {
@@ -356,19 +303,19 @@ if (!class_exists('CMS_365NET_Events', false)) {
             return $this->requestPathCache === '/' ? '/' : $this->requestPathCache;
         }
 
+        /** Fehler in den Core-Log (Kanal „plugins“) statt in eine Datei im Web-Root des Plugins. */
         public function log(string $context, Throwable $error): void
         {
-            $message = '[' . date('c') . '] ' . $context . ': ' . $error->getMessage() . PHP_EOL;
-            $logDir = $this->pluginDir . 'logs/';
-            if (!is_dir($logDir)) {
-                @mkdir($logDir, 0755, true);
+            $message = 'CMS 365NET Events [' . $context . ']: ' . $error->getMessage();
+            if (class_exists('CMS\\Logger')) {
+                try {
+                    CMS\Logger::instance()->withChannel('plugins')->warning($message, ['plugin' => 'cms-365neteventsandspeaker', 'context' => $context]);
+                    return;
+                } catch (Throwable) {
+                }
             }
 
-            if (is_dir($logDir) && is_writable($logDir)) {
-                @file_put_contents($logDir . 'cms-365neteventsandspeaker.log', $message, FILE_APPEND | LOCK_EX);
-            }
-
-            error_log('CMS 365NET Events [' . $context . ']: ' . $error->getMessage());
+            error_log($message);
         }
 
         public function getVersion(): string
@@ -389,3 +336,25 @@ if (!class_exists('CMS_365NET_Events', false)) {
 }
 
 CMS_365NET_Events::instance();
+
+// Lebenszyklus-Callbacks (PluginManager: <slug>_activate|deactivate|uninstall, Slug = Installationsordner).
+if (!function_exists('cms_365neteventsandspeaker_activate')) {
+    function cms_365neteventsandspeaker_activate(): void
+    {
+        CMS_365NET_Events::instance()->activate();
+    }
+}
+
+if (!function_exists('cms_365neteventsandspeaker_deactivate')) {
+    function cms_365neteventsandspeaker_deactivate(): void
+    {
+        CMS_365NET_Events::instance()->deactivate();
+    }
+}
+
+if (!function_exists('cms_365neteventsandspeaker_uninstall')) {
+    function cms_365neteventsandspeaker_uninstall(): void
+    {
+        CMS_365NET_Events::instance()->uninstall();
+    }
+}

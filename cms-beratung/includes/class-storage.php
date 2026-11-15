@@ -31,6 +31,22 @@ final class CMS_Beratung_Storage
         }
     }
 
+    /** Spalten der Listenansichten (ohne die großen JSON-Felder außer hero_json für die Standalone-Variante). */
+    private const LIST_COLUMNS = 'id, internal_title, public_title, slug, status, template, noindex, hero_json, created_by, created_at, updated_at';
+
+    /** Alle Spalten einer Landingpage (Editor, Export, Rendering). */
+    private const PAGE_COLUMNS = 'id, tenant_id, internal_title, public_title, slug, meta_title, meta_description, focus_keyword, status, template, max_content_width, custom_design_enabled, use_global_settings, use_global_design, show_header, show_footer, show_breadcrumb, show_toc, show_anchor_nav, noindex, nofollow, canonical_url, custom_css_class, hero_json, contact_json, seo_json, design_json, sections_json, tracking_enabled, created_by, updated_by, created_at, updated_at';
+
+    private const SUBMISSION_COLUMNS = 's.id, s.landingpage_id, s.sender_name, s.sender_email, s.phone, s.company, s.topic, s.desired_service, s.message, s.internal_note, s.consent, s.copy_to_sender, s.ip_address, s.user_agent, s.status, s.is_spam, s.created_at, l.public_title AS landingpage_title, l.slug AS landingpage_slug';
+
+    /** @var array<int,array{slug:string,standalone_slug:string}>|null */
+    private ?array $routeCache = null;
+
+    public function is_available(): bool
+    {
+        return $this->pdo !== null;
+    }
+
     /** @return array<int,array<string,mixed>> */
     public function all_landingpages(): array
     {
@@ -38,9 +54,160 @@ final class CMS_Beratung_Storage
             return [];
         }
 
-        $stmt = $this->pdo->prepare("SELECT * FROM {$this->prefix}beratung_landingpages ORDER BY updated_at DESC, id DESC");
-        $stmt->execute();
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        try {
+            $stmt = $this->pdo->prepare('SELECT ' . self::LIST_COLUMNS . " FROM {$this->prefix}beratung_landingpages ORDER BY updated_at DESC, id DESC");
+            $stmt->execute();
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) {
+            error_log('CMS Beratung landingpages: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Gefilterte, paginierte Liste.
+     *
+     * @param array{status?:string,search?:string,sort?:string} $filters
+     * @return array{rows:array<int,array<string,mixed>>,total:int}
+     */
+    public function list_landingpages(array $filters, int $page = 1, int $perPage = 20): array
+    {
+        if ($this->pdo === null) {
+            return ['rows' => [], 'total' => 0];
+        }
+        $where = [];
+        $params = [];
+        $status = (string) ($filters['status'] ?? '');
+        if ($status !== '' && array_key_exists($status, CMS_Beratung_Settings::statuses())) {
+            $where[] = 'status = ?';
+            $params[] = $status;
+        }
+        foreach (self::search_words((string) ($filters['search'] ?? '')) as $word) {
+            $where[] = '(internal_title LIKE ? OR public_title LIKE ? OR slug LIKE ?)';
+            $like = '%' . self::escape_like($word) . '%';
+            array_push($params, $like, $like, $like);
+        }
+        $orderMap = ['updated' => 'updated_at DESC, id DESC', 'title' => 'internal_title ASC, id ASC', 'status' => 'status ASC, updated_at DESC'];
+        $order = $orderMap[(string) ($filters['sort'] ?? 'updated')] ?? $orderMap['updated'];
+        $whereSql = $where !== [] ? ' WHERE ' . implode(' AND ', $where) : '';
+        $perPage = max(1, min(100, $perPage));
+        $offset = max(0, ($page - 1) * $perPage);
+        try {
+            $count = $this->pdo->prepare("SELECT COUNT(*) FROM {$this->prefix}beratung_landingpages{$whereSql}");
+            $count->execute($params);
+            $stmt = $this->pdo->prepare('SELECT ' . self::LIST_COLUMNS . " FROM {$this->prefix}beratung_landingpages{$whereSql} ORDER BY {$order} LIMIT " . (int) $perPage . ' OFFSET ' . (int) $offset);
+            $stmt->execute($params);
+            return ['rows' => $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [], 'total' => (int) $count->fetchColumn()];
+        } catch (\Throwable $e) {
+            error_log('CMS Beratung landingpage list: ' . $e->getMessage());
+            return ['rows' => [], 'total' => 0];
+        }
+    }
+
+    /** @return array<string,int> Anzahl je Status plus 'total' */
+    public function landingpage_counts(): array
+    {
+        $counts = ['total' => 0];
+        foreach (array_keys(CMS_Beratung_Settings::statuses()) as $status) {
+            $counts[$status] = 0;
+        }
+        if ($this->pdo === null) {
+            return $counts;
+        }
+        try {
+            $stmt = $this->pdo->prepare("SELECT status, COUNT(*) AS cnt FROM {$this->prefix}beratung_landingpages GROUP BY status");
+            $stmt->execute();
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [] as $row) {
+                $counts[(string) $row['status']] = (int) $row['cnt'];
+                $counts['total'] += (int) $row['cnt'];
+            }
+        } catch (\Throwable) {
+            // Tabelle fehlt: Zähler bleiben 0, der System-Check meldet es.
+        }
+        return $counts;
+    }
+
+    /** @return array<int,array<string,mixed>> zuletzt geänderte Landingpages */
+    public function recent_landingpages(int $limit = 6): array
+    {
+        if ($this->pdo === null) {
+            return [];
+        }
+        try {
+            $stmt = $this->pdo->prepare("SELECT id, internal_title, public_title, slug, status, updated_at FROM {$this->prefix}beratung_landingpages ORDER BY updated_at DESC, id DESC LIMIT " . max(1, min(50, $limit)));
+            $stmt->execute();
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Veröffentlichte Slugs samt optionalem Standalone-Slug (für Routen, Sitemap und Seitenauflösung).
+     * Einmal pro Request; liest hero_json nur für die Standalone-Angaben.
+     *
+     * @return array<int,array{id:int,slug:string,standalone_slug:string,noindex:bool,updated_at:string,title:string}>
+     */
+    public function published_routes(): array
+    {
+        if ($this->routeCache !== null) {
+            return $this->routeCache;
+        }
+        $this->routeCache = [];
+        if ($this->pdo === null) {
+            return $this->routeCache;
+        }
+        try {
+            $stmt = $this->pdo->prepare("SELECT id, slug, noindex, updated_at, public_title, hero_json FROM {$this->prefix}beratung_landingpages WHERE status = 'published' ORDER BY id ASC");
+            $stmt->execute();
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [] as $row) {
+                $hero = json_decode((string) ($row['hero_json'] ?? '{}'), true);
+                $hero = is_array($hero) ? $hero : [];
+                $standalone = !empty($hero['standalone_header_enabled']) ? trim((string) ($hero['standalone_header_slug'] ?? ''), '/') : '';
+                $slug = trim((string) ($row['slug'] ?? ''), '/');
+                if ($slug === '') {
+                    continue;
+                }
+                $this->routeCache[] = [
+                    'id' => (int) $row['id'],
+                    'slug' => $slug,
+                    'standalone_slug' => $standalone !== $slug ? $standalone : '',
+                    'noindex' => !empty($row['noindex']),
+                    'updated_at' => (string) ($row['updated_at'] ?? ''),
+                    'title' => (string) ($row['public_title'] ?? ''),
+                ];
+            }
+        } catch (\Throwable $e) {
+            error_log('CMS Beratung routes: ' . $e->getMessage());
+        }
+        return $this->routeCache;
+    }
+
+    /** Slug der veröffentlichten Landingpage, deren Standalone-Variante unter $standaloneSlug liegt. */
+    public function slug_for_standalone(string $standaloneSlug): ?string
+    {
+        foreach ($this->published_routes() as $route) {
+            if ($route['standalone_slug'] !== '' && $route['standalone_slug'] === $standaloneSlug) {
+                return $route['slug'];
+            }
+        }
+        return null;
+    }
+
+    /** @return list<string> */
+    public static function search_words(string $query): array
+    {
+        $query = trim((string) preg_replace('/\s+/u', ' ', strip_tags($query)));
+        if ($query === '') {
+            return [];
+        }
+        $words = array_values(array_filter(array_unique(explode(' ', function_exists('mb_strtolower') ? mb_strtolower($query) : strtolower($query))), static fn(string $word): bool => $word !== ''));
+        return array_slice($words, 0, 8);
+    }
+
+    public static function escape_like(string $value): string
+    {
+        return addcslashes($value, '\\%_');
     }
 
     public function get_landingpage(int $id): ?array
@@ -49,7 +216,7 @@ final class CMS_Beratung_Storage
             return null;
         }
 
-        $stmt = $this->pdo->prepare("SELECT * FROM {$this->prefix}beratung_landingpages WHERE id = ? LIMIT 1");
+        $stmt = $this->pdo->prepare('SELECT ' . self::PAGE_COLUMNS . " FROM {$this->prefix}beratung_landingpages WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return is_array($row) ? $this->decode_landingpage($row) : null;
@@ -61,7 +228,7 @@ final class CMS_Beratung_Storage
             return null;
         }
 
-        $sql = "SELECT * FROM {$this->prefix}beratung_landingpages WHERE slug = ?";
+        $sql = 'SELECT ' . self::PAGE_COLUMNS . " FROM {$this->prefix}beratung_landingpages WHERE slug = ?";
         $params = [$slug];
         if ($publicOnly) {
             $sql .= " AND status = 'published'";
@@ -80,7 +247,6 @@ final class CMS_Beratung_Storage
             return 0;
         }
 
-        CMS_Beratung_Installer::ensure_for_admin_save();
         $id = (int) ($data['id'] ?? 0);
         $payload = CMS_Beratung_Import_Export::sanitize_landingpage_payload($data);
         if ($payload['slug'] === '') {
@@ -101,16 +267,22 @@ final class CMS_Beratung_Storage
             if ($slugStmt->fetch()) {
                 throw new \InvalidArgumentException('Der Standalone-Slug wird bereits als normaler Publicsite-Slug verwendet.');
             }
-            foreach ($this->all_landingpages() as $existingPage) {
-                if ((int) ($existingPage['id'] ?? 0) === $id) {
-                    continue;
-                }
+            $heroStmt = $this->pdo->prepare("SELECT id, hero_json FROM {$this->prefix}beratung_landingpages WHERE id <> ? AND hero_json LIKE ?");
+            $heroStmt->execute([$id, '%' . self::escape_like($standaloneSlug) . '%']);
+            foreach ($heroStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [] as $existingPage) {
                 $existingHero = json_decode((string) ($existingPage['hero_json'] ?? '{}'), true);
                 if (is_array($existingHero) && !empty($existingHero['standalone_header_enabled']) && (string) ($existingHero['standalone_header_slug'] ?? '') === $standaloneSlug) {
                     throw new \InvalidArgumentException('Der Standalone-Slug wird bereits von einer anderen Standalone-Publicsite verwendet.');
                 }
             }
         }
+
+        $currentUser = isset($_SESSION['user_id']) && is_numeric($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+        $payload['updated_by'] = $currentUser;
+        if ($id <= 0) {
+            $payload['created_by'] = $currentUser;
+        }
+        $this->routeCache = null;
 
         $columns = [
             'tenant_id', 'internal_title', 'public_title', 'slug', 'meta_title', 'meta_description', 'focus_keyword', 'status', 'template',
@@ -146,7 +318,42 @@ final class CMS_Beratung_Storage
             return false;
         }
         $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_landingpages SET status = ? WHERE id = ?");
+        $this->routeCache = null;
         return $stmt->execute([$status, $id]);
+    }
+
+    /** @param array<int,int> $ids */
+    public function update_status_bulk(array $ids, string $status): int
+    {
+        $ids = self::clean_ids($ids);
+        if ($this->pdo === null || $ids === [] || !array_key_exists($status, CMS_Beratung_Settings::statuses())) {
+            return 0;
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_landingpages SET status = ? WHERE id IN ({$placeholders})");
+        $stmt->execute(array_merge([$status], $ids));
+        $this->routeCache = null;
+        return $stmt->rowCount();
+    }
+
+    /** @param array<int,int> $ids */
+    public function delete_landingpages(array $ids): int
+    {
+        $ids = self::clean_ids($ids);
+        if ($this->pdo === null || $ids === []) {
+            return 0;
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_landingpages WHERE id IN ({$placeholders})");
+        $stmt->execute($ids);
+        $this->routeCache = null;
+        return $stmt->rowCount();
+    }
+
+    /** @param array<int,mixed> $ids @return list<int> */
+    public static function clean_ids(array $ids): array
+    {
+        return array_values(array_unique(array_filter(array_map(static fn(mixed $id): int => is_numeric($id) ? (int) $id : 0, $ids), static fn(int $id): bool => $id > 0)));
     }
 
     public function duplicate_landingpage(int $id): int
@@ -174,6 +381,7 @@ final class CMS_Beratung_Storage
             return false;
         }
         $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_landingpages WHERE id = ?");
+        $this->routeCache = null;
         return $stmt->execute([$id]);
     }
 
@@ -183,9 +391,63 @@ final class CMS_Beratung_Storage
         if ($this->pdo === null) {
             return [];
         }
-        $stmt = $this->pdo->prepare("SELECT * FROM {$this->prefix}beratung_design_presets ORDER BY is_system DESC, name ASC");
-        $stmt->execute();
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        try {
+            $stmt = $this->pdo->prepare("SELECT id, name, slug, description, design_json, is_system, updated_at FROM {$this->prefix}beratung_design_presets ORDER BY is_system DESC, name ASC");
+            $stmt->execute();
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Eigenes Design-Preset anlegen.
+     *
+     * @param array<string,string> $colors
+     */
+    public function create_custom_preset(string $name, string $description, array $colors): int
+    {
+        if ($this->pdo === null) {
+            return 0;
+        }
+        $name = mb_substr(CMS_Beratung_Settings::text($name), 0, 160);
+        if ($name === '') {
+            throw new \InvalidArgumentException('Bitte einen Namen für das Preset angeben.');
+        }
+        $design = [];
+        foreach (self::preset_color_keys() as $key) {
+            $design[$key] = CMS_Beratung_Settings::color((string) ($colors[$key] ?? ''), CMS_Beratung_Settings::defaults()[$key] ?? '#ffffff');
+        }
+        $base = CMS_Beratung_Settings::slug($name, 'preset');
+        $slug = $base;
+        $exists = $this->pdo->prepare("SELECT id FROM {$this->prefix}beratung_design_presets WHERE tenant_id IS NULL AND slug = ? LIMIT 1");
+        for ($i = 2; $i < 200; $i++) {
+            $exists->execute([$slug]);
+            if (!$exists->fetch()) {
+                break;
+            }
+            $slug = $base . '-' . $i;
+        }
+        $stmt = $this->pdo->prepare("INSERT INTO {$this->prefix}beratung_design_presets (tenant_id, name, slug, description, design_json, is_system) VALUES (NULL, ?, ?, ?, ?, 0)");
+        $stmt->execute([$name, $slug, mb_substr(CMS_Beratung_Settings::text($description), 0, 500), json_encode($design, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Nur eigene (nicht System-)Presets lassen sich löschen. */
+    public function delete_custom_preset(int $id): bool
+    {
+        if ($this->pdo === null || $id <= 0) {
+            return false;
+        }
+        $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_design_presets WHERE id = ? AND is_system = 0");
+        $stmt->execute([$id]);
+        return $stmt->rowCount() > 0;
+    }
+
+    /** @return list<string> */
+    public static function preset_color_keys(): array
+    {
+        return ['primary_color', 'secondary_color', 'accent_color', 'background_color', 'text_color', 'heading_color', 'button_color', 'button_text_color', 'card_background_color', 'card_border_color'];
     }
 
     /** @param array<string,mixed> $preset */
@@ -237,7 +499,6 @@ final class CMS_Beratung_Storage
         if ($this->pdo === null) {
             return;
         }
-        CMS_Beratung_Installer::ensure_for_admin_save();
         $config = [
             'enabled' => !empty($data['enabled']),
             'eyebrow' => CMS_Beratung_Settings::text((string) ($data['eyebrow'] ?? 'FAQ')),
@@ -350,17 +611,7 @@ final class CMS_Beratung_Storage
 
     private function setting_value(string $key): ?string
     {
-        if ($this->pdo === null) {
-            return null;
-        }
-        try {
-            $stmt = $this->pdo->prepare("SELECT setting_value FROM {$this->prefix}beratung_settings WHERE tenant_id IS NULL AND setting_key = ? LIMIT 1");
-            $stmt->execute([$key]);
-            $value = $stmt->fetchColumn();
-            return is_scalar($value) ? (string) $value : null;
-        } catch (\Throwable $e) {
-            return null;
-        }
+        return $this->pdo === null ? null : CMS_Beratung_Settings::raw($key);
     }
 
     private function save_setting(string $key, string $value): void
@@ -374,10 +625,11 @@ final class CMS_Beratung_Storage
             if ($exists->fetch()) {
                 $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_settings SET setting_value = ? WHERE tenant_id IS NULL AND setting_key = ?");
                 $stmt->execute([$value, $key]);
-                return;
+            } else {
+                $stmt = $this->pdo->prepare("INSERT INTO {$this->prefix}beratung_settings (tenant_id, setting_key, setting_value) VALUES (NULL, ?, ?)");
+                $stmt->execute([$key, $value]);
             }
-            $stmt = $this->pdo->prepare("INSERT INTO {$this->prefix}beratung_settings (tenant_id, setting_key, setting_value) VALUES (NULL, ?, ?)");
-            $stmt->execute([$key, $value]);
+            CMS_Beratung_Settings::flush();
         } catch (\Throwable $e) {
             error_log('CMS Beratung FAQ setting save failed: ' . $e->getMessage());
         }
@@ -386,13 +638,111 @@ final class CMS_Beratung_Storage
     /** @return array<int,array<string,mixed>> */
     public function submissions(int $limit = 100): array
     {
+        return $this->list_submissions([], 1, max(1, min(500, $limit)))['rows'];
+    }
+
+    /**
+     * Gefilterte, paginierte Anfragen.
+     *
+     * @param array{status?:string,landingpage_id?:int,search?:string} $filters
+     * @return array{rows:array<int,array<string,mixed>>,total:int}
+     */
+    public function list_submissions(array $filters, int $page = 1, int $perPage = 25): array
+    {
         if ($this->pdo === null) {
-            return [];
+            return ['rows' => [], 'total' => 0];
         }
-        $limit = max(1, min(500, $limit));
-        $stmt = $this->pdo->prepare("SELECT s.*, l.public_title AS landingpage_title, l.slug AS landingpage_slug FROM {$this->prefix}beratung_form_submissions s LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id ORDER BY s.created_at DESC LIMIT {$limit}");
-        $stmt->execute();
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        [$whereSql, $params] = $this->submission_where($filters);
+        $perPage = max(1, min(500, $perPage));
+        $offset = max(0, ($page - 1) * $perPage);
+        try {
+            $count = $this->pdo->prepare("SELECT COUNT(*) FROM {$this->prefix}beratung_form_submissions s{$whereSql}");
+            $count->execute($params);
+            $stmt = $this->pdo->prepare('SELECT ' . self::SUBMISSION_COLUMNS . " FROM {$this->prefix}beratung_form_submissions s LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id{$whereSql} ORDER BY s.created_at DESC, s.id DESC LIMIT " . (int) $perPage . ' OFFSET ' . (int) $offset);
+            $stmt->execute($params);
+            return ['rows' => $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [], 'total' => (int) $count->fetchColumn()];
+        } catch (\Throwable $e) {
+            error_log('CMS Beratung submissions: ' . $e->getMessage());
+            return ['rows' => [], 'total' => 0];
+        }
+    }
+
+    /**
+     * Alle Anfragen eines Filters für den CSV-Export (blockweise, höchstens 20.000).
+     *
+     * @param array{status?:string,landingpage_id?:int,search?:string} $filters
+     * @return \Generator<int,array<string,mixed>>
+     */
+    public function iterate_submissions(array $filters): \Generator
+    {
+        $page = 1;
+        do {
+            $rows = $this->list_submissions($filters, $page, 500)['rows'];
+            foreach ($rows as $row) {
+                yield $row;
+            }
+            $page++;
+        } while (count($rows) === 500 && $page <= 40);
+    }
+
+    /** @param array{status?:string,landingpage_id?:int,search?:string} $filters @return array{0:string,1:list<mixed>} */
+    private function submission_where(array $filters): array
+    {
+        $where = [];
+        $params = [];
+        $status = (string) ($filters['status'] ?? '');
+        if ($status !== '' && array_key_exists($status, self::submission_statuses())) {
+            $where[] = 's.status = ?';
+            $params[] = $status;
+        }
+        $landingpageId = (int) ($filters['landingpage_id'] ?? 0);
+        if ($landingpageId > 0) {
+            $where[] = 's.landingpage_id = ?';
+            $params[] = $landingpageId;
+        }
+        foreach (self::search_words((string) ($filters['search'] ?? '')) as $word) {
+            $like = '%' . self::escape_like($word) . '%';
+            $where[] = '(s.sender_name LIKE ? OR s.sender_email LIKE ? OR s.company LIKE ? OR s.topic LIKE ? OR s.message LIKE ?)';
+            array_push($params, $like, $like, $like, $like, $like);
+        }
+        return [$where !== [] ? ' WHERE ' . implode(' AND ', $where) : '', $params];
+    }
+
+    /** @return array<string,int> Anzahl je Status plus 'total' */
+    public function submission_counts(): array
+    {
+        $counts = ['total' => 0];
+        foreach (array_keys(self::submission_statuses()) as $status) {
+            $counts[$status] = 0;
+        }
+        if ($this->pdo === null) {
+            return $counts;
+        }
+        try {
+            $stmt = $this->pdo->prepare("SELECT status, COUNT(*) AS cnt FROM {$this->prefix}beratung_form_submissions GROUP BY status");
+            $stmt->execute();
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [] as $row) {
+                $counts[(string) $row['status']] = (int) $row['cnt'];
+                $counts['total'] += (int) $row['cnt'];
+            }
+        } catch (\Throwable) {
+            // Tabelle fehlt.
+        }
+        return $counts;
+    }
+
+    public function count_new_submissions(): int
+    {
+        if ($this->pdo === null) {
+            return 0;
+        }
+        try {
+            $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM {$this->prefix}beratung_form_submissions WHERE status = 'new'");
+            $stmt->execute();
+            return (int) $stmt->fetchColumn();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     public function submission(int $id): ?array
@@ -400,10 +750,76 @@ final class CMS_Beratung_Storage
         if ($this->pdo === null || $id <= 0) {
             return null;
         }
-        $stmt = $this->pdo->prepare("SELECT s.*, l.public_title AS landingpage_title, l.slug AS landingpage_slug FROM {$this->prefix}beratung_form_submissions s LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id WHERE s.id = ? LIMIT 1");
+        $stmt = $this->pdo->prepare('SELECT ' . self::SUBMISSION_COLUMNS . ", s.payload_json FROM {$this->prefix}beratung_form_submissions s LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id WHERE s.id = ? LIMIT 1");
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return is_array($row) ? $row : null;
+    }
+
+    /** Status einer ungelesenen Anfrage beim Öffnen auf „Gelesen“ setzen. */
+    public function mark_submission_read(int $id): void
+    {
+        if ($this->pdo === null || $id <= 0) {
+            return;
+        }
+        $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_form_submissions SET status = 'read' WHERE id = ? AND status = 'new'");
+        $stmt->execute([$id]);
+    }
+
+    /** @param array<int,int> $ids */
+    public function update_submission_status_bulk(array $ids, string $status): int
+    {
+        $ids = self::clean_ids($ids);
+        if ($this->pdo === null || $ids === [] || !array_key_exists($status, self::submission_statuses())) {
+            return 0;
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_form_submissions SET status = ? WHERE id IN ({$placeholders})");
+        $stmt->execute(array_merge([$status], $ids));
+        return $stmt->rowCount();
+    }
+
+    /** @return array<int,array<string,mixed>> Anfragen einer Person (DSGVO), Abgleich über die E-Mail-Adresse */
+    public function submissions_for_email(string $email): array
+    {
+        $email = trim($email);
+        if ($this->pdo === null || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return [];
+        }
+        try {
+            $stmt = $this->pdo->prepare('SELECT ' . self::SUBMISSION_COLUMNS . " FROM {$this->prefix}beratung_form_submissions s LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id WHERE s.sender_email = ? ORDER BY s.created_at ASC LIMIT 1000");
+            $stmt->execute([$email]);
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    public function delete_submissions_for_email(string $email): int
+    {
+        $email = trim($email);
+        if ($this->pdo === null || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return 0;
+        }
+        $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_form_submissions WHERE sender_email = ?");
+        $stmt->execute([$email]);
+        return $stmt->rowCount();
+    }
+
+    /** Anzahl der Anfragen, die älter als $days Tage sind (Trockenlauf der Löschfrist). */
+    public function count_submissions_older_than(int $days): int
+    {
+        if ($this->pdo === null || $days <= 0) {
+            return 0;
+        }
+        try {
+            $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM {$this->prefix}beratung_form_submissions WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)");
+            $stmt->bindValue(1, max(1, min(3650, $days)), \PDO::PARAM_INT);
+            $stmt->execute();
+            return (int) $stmt->fetchColumn();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /** @param array<string,mixed> $data */
@@ -422,10 +838,10 @@ final class CMS_Beratung_Storage
             CMS_Beratung_Settings::text((string) ($data['company'] ?? '')),
             CMS_Beratung_Settings::text((string) ($data['topic'] ?? '')),
             CMS_Beratung_Settings::text((string) ($data['desired_service'] ?? '')),
-            CMS_Beratung_Settings::text((string) ($data['message'] ?? '')),
+            mb_substr(CMS_Beratung_Settings::text((string) ($data['message'] ?? '')), 0, 10000),
             !empty($data['consent']) ? 1 : 0,
             !empty($data['copy_to_sender']) ? 1 : 0,
-            json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}',
             ($settings['store_ip_enabled'] ?? '0') === '1' ? substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45) : '',
             ($settings['store_user_agent_enabled'] ?? '0') === '1' ? substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500) : '',
             !empty($data['is_spam']) ? 1 : 0,
@@ -464,9 +880,18 @@ final class CMS_Beratung_Storage
             return 0;
         }
         $days = max(1, min(3650, $days));
-        $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_form_submissions WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)");
-        $stmt->execute([$days]);
-        return $stmt->rowCount();
+        $deleted = 0;
+        $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_form_submissions WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY) LIMIT 500");
+        for ($round = 0; $round < 200; $round++) {
+            $stmt->bindValue(1, $days, \PDO::PARAM_INT);
+            $stmt->execute();
+            $affected = $stmt->rowCount();
+            $deleted += $affected;
+            if ($affected < 500) {
+                break;
+            }
+        }
+        return $deleted;
     }
 
     /** @return array<string,string> */

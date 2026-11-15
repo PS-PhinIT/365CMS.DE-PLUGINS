@@ -1,11 +1,14 @@
 <?php
 /**
- * Plugin Name: CMS Beratung
- * Plugin URI:  https://365network.de/cms-beratung
- * Description: Spezialisierter 365CMS Landingpage Builder für Microsoft 365, Copilot, KI, Security, Compliance und IT Consulting Beratungsleistungen.
- * Version:     2.9.794
- * Author:      365 Network
- * Author URI:  https://365network.de
+ * Plugin Name:       CMS Beratung
+ * Plugin URI:        https://365network.de/cms-beratung
+ * Description:       Spezialisierter 365CMS Landingpage Builder für Microsoft 365, Copilot, KI, Security, Compliance und IT Consulting Beratungsleistungen.
+ * Version:           3.0.0
+ * Author:            365 Network
+ * Author URI:        https://365network.de
+ * Requires CMS:      4.0.0
+ * Requires at least: 4.0.0
+ * Requires PHP:      8.4.1
  *
  * @package CMS_Beratung
  */
@@ -16,9 +19,9 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-defined('CMS_BERATUNG_VERSION') || define('CMS_BERATUNG_VERSION', '2.9.794');
-defined('CMS_BERATUNG_DB_VERSION') || define('CMS_BERATUNG_DB_VERSION', '3');
-defined('CMS_BERATUNG_PLUGIN_DIR') || define('CMS_BERATUNG_PLUGIN_DIR', dirname(__FILE__) . '/');
+defined('CMS_BERATUNG_VERSION') || define('CMS_BERATUNG_VERSION', '3.0.0');
+defined('CMS_BERATUNG_DB_VERSION') || define('CMS_BERATUNG_DB_VERSION', '4');
+defined('CMS_BERATUNG_PLUGIN_DIR') || define('CMS_BERATUNG_PLUGIN_DIR', __DIR__ . '/');
 defined('CMS_BERATUNG_PLUGIN_URL') || define('CMS_BERATUNG_PLUGIN_URL', '/plugins/cms-beratung/');
 
 final class CMS_Beratung
@@ -32,17 +35,12 @@ final class CMS_Beratung
 
     private function __construct()
     {
-        $this->load_dependencies();
+        self::load_dependencies();
         $this->init_hooks();
     }
 
-    private function load_dependencies(): void
+    public static function load_dependencies(): void
     {
-        $sharedAdmin = dirname(rtrim(CMS_BERATUNG_PLUGIN_DIR, '/\\')) . '/shared/admin/plugin-admin-contract.php';
-        if (is_file($sharedAdmin)) {
-            require_once $sharedAdmin;
-        }
-
         foreach ([
             'includes/class-installer.php',
             'includes/class-settings.php',
@@ -51,7 +49,9 @@ final class CMS_Beratung
             'includes/class-forms.php',
             'includes/class-seo.php',
             'includes/class-import-export.php',
+            'includes/class-integrations.php',
             'includes/class-frontend.php',
+            'admin/class-admin-defaults.php',
             'admin/class-admin-pages.php',
             'admin/class-admin-menu.php',
         ] as $file) {
@@ -69,28 +69,48 @@ final class CMS_Beratung
         }
 
         \CMS\Hooks::addAction('cms_init', [$this, 'init_plugin'], 10);
-        \CMS\Hooks::addAction('plugin_activated', [$this, 'on_activation'], 10);
         \CMS\Hooks::addAction('cms_admin_menu', [CMS_Beratung_Admin_Menu::class, 'register'], 10);
         \CMS\Hooks::addAction('register_routes', [CMS_Beratung_Admin_Pages::class, 'register_admin_routes'], 9);
         \CMS\Hooks::addAction('register_routes', [CMS_Beratung_Frontend::class, 'instance'], 10);
-        \CMS\Hooks::addAction('head', [CMS_Beratung_Admin_Pages::class, 'enqueue_admin_assets_for_request'], 20);
+        CMS_Beratung_Integrations::register();
     }
 
     public function init_plugin(): void
     {
-        CMS_Beratung_Installer::maybe_install();
-        CMS_Beratung_Frontend::instance();
-    }
-
-    public function on_activation(string $plugin): void
-    {
-        if ($plugin !== 'cms-beratung') {
-            return;
+        try {
+            CMS_Beratung_Installer::maybe_install();
+        } catch (\Throwable $e) {
+            error_log('CMS Beratung: Schema-Migration fehlgeschlagen: ' . $e->getMessage());
         }
-
-        CMS_Beratung_Installer::install();
         CMS_Beratung_Frontend::instance();
     }
 }
 
 CMS_Beratung::instance();
+
+if (!function_exists('cms_beratung_activate')) {
+    /** Aktivierung: Tabellen idempotent anlegen, Standardwerte ergänzen, Schema-Version speichern. */
+    function cms_beratung_activate(): void
+    {
+        CMS_Beratung::load_dependencies();
+        CMS_Beratung_Installer::install();
+    }
+}
+
+if (!function_exists('cms_beratung_deactivate')) {
+    /** Deaktivierung: Daten bleiben erhalten; nur der Hinweis-Cache wird verworfen. */
+    function cms_beratung_deactivate(): void
+    {
+        CMS_Beratung::load_dependencies();
+        CMS_Beratung_Installer::deactivate();
+    }
+}
+
+if (!function_exists('cms_beratung_uninstall')) {
+    /** Löschen: eigene Tabellen, Optionen und DSGVO-Exportdateien entfernen. */
+    function cms_beratung_uninstall(): void
+    {
+        CMS_Beratung::load_dependencies();
+        CMS_Beratung_Installer::uninstall();
+    }
+}

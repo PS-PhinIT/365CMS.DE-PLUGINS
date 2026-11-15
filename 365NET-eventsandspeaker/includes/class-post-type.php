@@ -42,25 +42,36 @@ final class CMS_365NET_Events_Post_Type
         $router->addRoute('GET', '/event-speakers', [$this, 'archiveSpeakers']);
         $router->addRoute('GET', '/event-speakers/:slug', [$this, 'singleSpeaker']);
 
-        $router->addRoute('GET', '/admin/365netevents', [$this, 'adminEvents']);
-        $router->addRoute('GET', '/admin/365netevents/dashboard', [$this, 'adminDashboard']);
-        $router->addRoute('GET', '/admin/365netevents/new', [$this, 'adminEventNew']);
-        $router->addRoute('GET', '/admin/365netevents/edit/:id', [$this, 'adminEventEdit']);
-        $router->addRoute('POST', '/admin/365netevents/save', [$this, 'adminEventSave']);
-        $router->addRoute('POST', '/admin/365netevents/delete/:id', [$this, 'adminEventDelete']);
-        $router->addRoute('POST', '/admin/365netevents/link-sync', [$this, 'adminLinkSync']);
-        $router->addRoute('GET', '/admin/365netevents/taxonomies', [$this, 'adminTaxonomies']);
-        $router->addRoute('POST', '/admin/365netevents/taxonomies/save', [$this, 'adminTaxonomiesSave']);
-        $router->addRoute('GET', '/admin/365netevents/settings', [$this, 'adminSettings']);
-        $router->addRoute('POST', '/admin/365netevents/settings/save', [$this, 'adminSettingsSave']);
-        $router->addRoute('POST', '/admin/365netevents/settings/backfill-descriptions', [$this, 'adminSettingsBackfillDescriptions']);
-        $router->addRoute('POST', '/admin/365netevents/settings/backfill-speakers', [$this, 'adminSettingsBackfillSpeakers']);
-
-        $router->addRoute('GET', '/admin/365netevents/speakers', [$this, 'adminSpeakers']);
-        $router->addRoute('GET', '/admin/365netevents/speakers/new', [$this, 'adminSpeakerNew']);
-        $router->addRoute('GET', '/admin/365netevents/speakers/edit/:id', [$this, 'adminSpeakerEdit']);
-        $router->addRoute('POST', '/admin/365netevents/speakers/save', [$this, 'adminSpeakerSave']);
-        $router->addRoute('POST', '/admin/365netevents/speakers/delete/:id', [$this, 'adminSpeakerDelete']);
+        // Alte Admin-Adressen (bis 3.2.0): Lesezeichen und offene Formulare auf die Plugin-Seiten des
+        // Core-AdminRouters umleiten (GET 302, POST 307 mit Formulardaten).
+        $legacyGet = [
+            '/admin/365netevents' => 'legacyEvents',
+            '/admin/365netevents/dashboard' => 'legacyDashboard',
+            '/admin/365netevents/new' => 'legacyEventNew',
+            '/admin/365netevents/edit/:id' => 'legacyEventEdit',
+            '/admin/365netevents/taxonomies' => 'legacyTaxonomies',
+            '/admin/365netevents/settings' => 'legacySettings',
+            '/admin/365netevents/speakers' => 'legacySpeakers',
+            '/admin/365netevents/speakers/new' => 'legacySpeakerNew',
+            '/admin/365netevents/speakers/edit/:id' => 'legacySpeakerEdit',
+        ];
+        foreach ($legacyGet as $path => $method) {
+            $router->addRoute('GET', $path, [$this, $method]);
+        }
+        $legacyPost = [
+            '/admin/365netevents/save' => 'legacyEventSave',
+            '/admin/365netevents/delete/:id' => 'legacyEventDelete',
+            '/admin/365netevents/link-sync' => 'legacyLinkSync',
+            '/admin/365netevents/taxonomies/save' => 'legacyTaxonomiesSave',
+            '/admin/365netevents/settings/save' => 'legacySettingsSave',
+            '/admin/365netevents/settings/backfill-descriptions' => 'legacyBackfillDescriptions',
+            '/admin/365netevents/settings/backfill-speakers' => 'legacyBackfillSpeakers',
+            '/admin/365netevents/speakers/save' => 'legacySpeakerSave',
+            '/admin/365netevents/speakers/delete/:id' => 'legacySpeakerDelete',
+        ];
+        foreach ($legacyPost as $path => $method) {
+            $router->addRoute('POST', $path, [$this, $method]);
+        }
     }
 
     public function addMenuItem(): void
@@ -100,26 +111,38 @@ final class CMS_365NET_Events_Post_Type
         $eventArgs['limit'] = self::PUBLIC_PER_PAGE;
         $eventArgs['offset'] = ((int) $pagination['current'] - 1) * self::PUBLIC_PER_PAGE;
         $events = $db->getEvents($eventArgs);
-        foreach ($events as $event) {
-            if (!is_object($event)) {
-                continue;
-            }
 
-            $linkedCompany = $db->getLinkedCompany(isset($event->linked_company_id) ? (int) $event->linked_company_id : null);
-            if ($linkedCompany === null) {
-                $eventSignals = [
+        // Top-Partner-Kennzeichen gebündelt laden (vorher je Event mehrere Abfragen).
+        $companyIds = [];
+        foreach ($events as $event) {
+            $companyId = (int) ($event->linked_company_id ?? 0);
+            if ($companyId <= 0) {
+                $companyId = (int) ($db->detectCompanyIdBySignals([
                     'organizer' => (string) ($event->organizer ?? ''),
                     'company' => (string) ($event->organizer ?? ''),
                     'contact_name' => (string) ($event->contact_name ?? ''),
                     'website' => (string) ($event->website ?? ''),
                     'registration_url' => (string) ($event->registration_url ?? ''),
                     'ticket_url' => (string) ($event->ticket_url ?? ''),
-                ];
-                $linkedCompany = $db->detectLinkedCompanyBySignals($eventSignals);
+                ]) ?? 0);
             }
-
-            $event->linked_company_is_top_partner = ($linkedCompany !== null && (int) ($linkedCompany->is_top_partner ?? 0) === 1) ? 1 : 0;
+            $event->resolved_company_id = $companyId;
+            if ($companyId > 0) {
+                $companyIds[] = $companyId;
+            }
         }
+        $flags = $db->getTopPartnerFlags($companyIds);
+        foreach ($events as $event) {
+            $event->linked_company_is_top_partner = !empty($flags[(int) ($event->resolved_company_id ?? 0)]) ? 1 : 0;
+        }
+
+        $this->setSeoMeta([
+            'title' => (string) ($settings['archive_title'] ?? 'Events'),
+            'description' => $this->plainText((string) ($settings['archive_description'] ?? ''), 300),
+            'canonical_url' => rtrim((string) SITE_URL, '/') . '/events' . ($showPast ? '?past=1' : ''),
+            'robots_index' => $search === '' && $page === 1,
+            'robots_follow' => true,
+        ]);
 
         $this->renderWithTheme('archive-events', [
             'events' => $events,
@@ -208,6 +231,17 @@ final class CMS_365NET_Events_Post_Type
             }
         }
 
+        $this->setSeoMeta([
+            'title' => (string) (($event->seo_title ?? '') ?: ($event->title ?? '')),
+            'description' => $this->plainText((string) (($event->seo_description ?? '') ?: ($event->excerpt ?? '') ?: ($event->description ?? '')), 300),
+            'canonical_url' => rtrim((string) SITE_URL, '/') . '/events/' . rawurlencode((string) $event->slug),
+            'og_type' => 'article',
+            'og_image' => (string) (($event->og_image_url ?? '') ?: ($event->image_url ?? '')),
+            'schema_type' => 'Event',
+            'robots_index' => true,
+            'robots_follow' => true,
+        ]);
+
         $this->renderWithTheme('single-event', [
             'event' => $event,
             'speakers' => $speakers,
@@ -232,10 +266,19 @@ final class CMS_365NET_Events_Post_Type
         $speakerArgs['limit'] = self::PUBLIC_PER_PAGE;
         $speakerArgs['offset'] = ((int) $pagination['current'] - 1) * self::PUBLIC_PER_PAGE;
         $speakers = $db->getSpeakers($speakerArgs);
+        $settings = $db->getSettings();
+
+        $this->setSeoMeta([
+            'title' => (string) ($settings['speaker_archive_title'] ?? 'Speaker'),
+            'description' => $this->plainText((string) ($settings['speaker_archive_description'] ?? ''), 300),
+            'canonical_url' => rtrim((string) SITE_URL, '/') . '/speakers',
+            'robots_index' => $search === '' && $page === 1,
+            'robots_follow' => true,
+        ]);
 
         $this->renderWithTheme('archive-speakers', [
             'speakers' => $speakers,
-            'settings' => $db->getSettings(),
+            'settings' => $settings,
             'filters' => ['q' => $search],
             'pagination' => $pagination,
         ]);
@@ -293,6 +336,18 @@ final class CMS_365NET_Events_Post_Type
             }
         }
 
+        $this->setSeoMeta([
+            'title' => (string) (($speaker->seo_title ?? '') ?: ($speaker->display_name ?? '')),
+            'description' => $this->plainText((string) (($speaker->seo_description ?? '') ?: ($speaker->bio ?? '') ?: ($speaker->topic ?? '')), 300),
+            // /event-speakers/… ist ein Alias – kanonisch ist /speakers/….
+            'canonical_url' => rtrim((string) SITE_URL, '/') . '/speakers/' . rawurlencode((string) $speaker->slug),
+            'og_type' => 'profile',
+            'og_image' => (string) (($speaker->og_image_url ?? '') ?: ($speaker->avatar_url ?? '')),
+            'schema_type' => 'Person',
+            'robots_index' => true,
+            'robots_follow' => true,
+        ]);
+
         $this->renderWithTheme('single-speaker', [
             'speaker' => $speaker,
             'relatedEvents' => $events,
@@ -302,350 +357,153 @@ final class CMS_365NET_Events_Post_Type
         ]);
     }
 
-    public function adminDashboard(): void
+    // --- Alte Admin-Adressen -------------------------------------------------------------------
+
+    public function legacyEvents(): void
     {
-        if (!$this->requireAdmin()) {
+        $query = [];
+        if ((string) ($_GET['past'] ?? '') === '1') {
+            $query['time'] = 'past';
+        }
+        $q = $this->cleanQuery((string) ($_GET['q'] ?? ''));
+        if ($q !== '') {
+            $query['q'] = $q;
+        }
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_EVENTS, $query);
+    }
+
+    public function legacyDashboard(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::MENU_SLUG);
+    }
+
+    public function legacyEventNew(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_EVENTS, ['action' => 'new']);
+    }
+
+    public function legacyEventEdit(string $id = ''): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_EVENTS, ['action' => 'edit', 'id' => max(0, (int) $id)]);
+    }
+
+    public function legacyTaxonomies(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_TAXONOMIES);
+    }
+
+    public function legacySettings(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_SETTINGS);
+    }
+
+    public function legacySpeakers(): void
+    {
+        $query = [];
+        foreach (['q', 'sort'] as $key) {
+            $value = $this->cleanQuery((string) ($_GET[$key] ?? ''));
+            if ($value !== '') {
+                $query[$key] = $value;
+            }
+        }
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_SPEAKERS, $query);
+    }
+
+    public function legacySpeakerNew(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_SPEAKERS, ['action' => 'new']);
+    }
+
+    public function legacySpeakerEdit(string $id = ''): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_SPEAKERS, ['action' => 'edit', 'id' => max(0, (int) $id)]);
+    }
+
+    public function legacyEventSave(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_EVENTS, ['do' => 'save'], true);
+    }
+
+    public function legacyEventDelete(string $id = ''): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_EVENTS, ['do' => 'delete', 'id' => max(0, (int) $id)], true);
+    }
+
+    public function legacyLinkSync(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_EVENTS, ['do' => 'link_sync'], true);
+    }
+
+    public function legacyTaxonomiesSave(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_TAXONOMIES, ['do' => 'save'], true);
+    }
+
+    public function legacySettingsSave(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_SETTINGS, ['do' => 'save'], true);
+    }
+
+    public function legacyBackfillDescriptions(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_SETTINGS, ['do' => 'backfill_descriptions'], true);
+    }
+
+    public function legacyBackfillSpeakers(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_SETTINGS, ['do' => 'backfill_speakers'], true);
+    }
+
+    public function legacySpeakerSave(): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_SPEAKERS, ['do' => 'save'], true);
+    }
+
+    public function legacySpeakerDelete(string $id = ''): void
+    {
+        $this->legacyRedirect(CMS_365NET_Events_Admin::PAGE_SPEAKERS, ['do' => 'delete', 'id' => max(0, (int) $id)], true);
+    }
+
+    /** @param array<string, scalar> $query */
+    private function legacyRedirect(string $page, array $query = [], bool $post = false): void
+    {
+        $target = CMS_365NET_Events_Admin::url($page, $query);
+        if (method_exists('CMS\\Security', 'safeLocalPath')) {
+            $target = CMS\Security::safeLocalPath($target, '/admin/plugins/' . CMS_365NET_Events_Admin::MENU_SLUG);
+        }
+
+        header('Location: ' . rtrim((string) SITE_URL, '/') . $target, true, $post ? 307 : 302);
+        exit;
+    }
+
+    // --- SEO ------------------------------------------------------------------------------------
+
+    /** @param array<string, mixed> $meta */
+    private function setSeoMeta(array $meta): void
+    {
+        if (!class_exists('CMS\\Services\\SEOService')) {
             return;
         }
 
-        $upcoming = [];
         try {
-            $upcoming = CMS_365NET_Events_Database::instance()->getEvents([
-                'date_mode' => 'future',
-                'from' => date('Y-m-d'),
-                'limit' => 5,
-            ]);
+            $payload = array_filter($meta, static fn(mixed $value): bool => $value !== null && $value !== '');
+            if (isset($payload['og_image']) && is_string($payload['og_image']) && str_starts_with($payload['og_image'], '/') && !str_starts_with($payload['og_image'], '//')) {
+                $payload['og_image'] = rtrim((string) SITE_URL, '/') . $payload['og_image'];
+            }
+            CMS\Services\SEOService::getInstance()->setRequestMeta($payload);
         } catch (\Throwable $e) {
-            CMS_365NET_Events::instance()->log('admin.dashboard', $e);
-        }
-        CMS_365NET_Events_Admin::instance()->renderDashboard($upcoming);
-    }
-
-    public function adminEvents(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-
-        $showPast = (string) ($_GET['past'] ?? '') === '1';
-        $events = CMS_365NET_Events_Database::instance()->getEvents([
-            'search' => $this->cleanQuery((string) ($_GET['q'] ?? '')),
-            'date_mode' => $showPast ? 'past' : 'future',
-            'from' => date('Y-m-d'),
-            'before' => date('Y-m-d'),
-            'limit' => 300,
-            'order' => $showPast ? 'date_desc' : '',
-        ]);
-        CMS_365NET_Events_Admin::instance()->renderEventsList($events, $showPast);
-    }
-
-    public function adminEventNew(): void
-    {
-        if ($this->requireAdmin()) {
-            $db = CMS_365NET_Events_Database::instance();
-            CMS_365NET_Events_Admin::instance()->renderEventForm(
-                null,
-                $db->getSpeakers(['limit' => 300]),
-                [],
-                $db->getAvailableCompanies(300),
-                $db->getAvailableExperts(300),
-                $db->getTaxonomyOptions()
-            );
+            CMS_365NET_Events::instance()->log('seo.meta', $e);
         }
     }
 
-    public function adminEventEdit(string $id = ''): void
+    private function plainText(string $value, int $length): string
     {
-        if (!$this->requireAdmin()) {
-            return;
+        $value = trim((string) preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+        if (function_exists('mb_strlen') && mb_strlen($value, 'UTF-8') > $length) {
+            return rtrim((string) mb_substr($value, 0, $length - 1, 'UTF-8')) . '…';
         }
 
-        $event = CMS_365NET_Events_Database::instance()->getEvent((int) $id);
-        if (!$event) {
-            CMS\Router::instance()->redirect('/admin/365netevents?error=not_found');
-            return;
-        }
-
-        $db = CMS_365NET_Events_Database::instance();
-        CMS_365NET_Events_Admin::instance()->renderEventForm(
-            $event,
-            $db->getSpeakers(['limit' => 300]),
-            $db->getSpeakersForEvent((int) $event->id),
-            $db->getAvailableCompanies(300),
-            $db->getAvailableExperts(300),
-            $db->getTaxonomyOptions()
-        );
-    }
-
-    public function adminEventSave(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        if (!$this->verifyCsrf('365net_event_form')) {
-            CMS\Router::instance()->redirect('/admin/365netevents?error=csrf');
-            return;
-        }
-
-        try {
-            // „id“ fehlt bei Neuanlagen regulär und wird deshalb nicht erwartet.
-            $expectedKeys = ['title', 'slug', 'description_json', 'image_url', 'location', 'organizer', 'category', 'website', 'status'];
-            $missingKeys = array_values(array_filter($expectedKeys, static fn(string $key): bool => !array_key_exists($key, $_POST)));
-            if ($missingKeys !== []) {
-                CMS_365NET_Events::instance()->log(
-                    'adminEventSaveMissingPostKeys',
-                    new RuntimeException(
-                        'Missing POST keys: ' . implode(', ', $missingKeys)
-                        . ' | posted keys count=' . count($_POST)
-                    )
-                );
-            }
-
-            $id = CMS_365NET_Events_Database::instance()->saveEvent($_POST);
-            if ($id === false) {
-                CMS_365NET_Events::instance()->log('adminEventSaveValidation', new RuntimeException('Event save returned false. Posted title length: ' . strlen((string) ($_POST['title'] ?? ''))));
-                $target = isset($_POST['id']) && (int) $_POST['id'] > 0 ? '/admin/365netevents/edit/' . (int) $_POST['id'] : '/admin/365netevents/new';
-                CMS\Router::instance()->redirect($target . '?error=required_title');
-                return;
-            }
-            try {
-                CMS_365NET_Events_Database::instance()->saveEventSpeakers($id, (array) ($_POST['speaker_ids'] ?? []));
-                CMS\Router::instance()->redirect('/admin/365netevents/edit/' . $id . '?saved=1');
-            } catch (Throwable $relationError) {
-                CMS_365NET_Events::instance()->log('adminEventSaveRelations', $relationError);
-                CMS\Router::instance()->redirect('/admin/365netevents/edit/' . $id . '?saved=1&warning=relations');
-            }
-        } catch (Throwable $e) {
-            CMS_365NET_Events::instance()->log('adminEventSave', $e);
-            $target = isset($_POST['id']) && (int) $_POST['id'] > 0 ? '/admin/365netevents/edit/' . (int) $_POST['id'] : '/admin/365netevents/new';
-            CMS\Router::instance()->redirect($target . '?error=save');
-        }
-    }
-
-    public function adminSettings(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-
-        CMS_365NET_Events_Admin::instance()->renderSettingsForm(CMS_365NET_Events_Database::instance()->getSettings());
-    }
-
-    public function adminTaxonomies(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-
-        CMS_365NET_Events_Admin::instance()->renderTaxonomiesForm(CMS_365NET_Events_Database::instance()->getSettings());
-    }
-
-    public function adminTaxonomiesSave(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        if (!$this->verifyCsrf('365net_taxonomies_form')) {
-            CMS\Router::instance()->redirect('/admin/365netevents/taxonomies?error=csrf');
-            return;
-        }
-
-        try {
-            CMS_365NET_Events_Database::instance()->saveTaxonomyOptions($_POST);
-            CMS\Router::instance()->redirect('/admin/365netevents/taxonomies?saved=1');
-        } catch (Throwable $e) {
-            CMS_365NET_Events::instance()->log('adminTaxonomiesSave', $e);
-            CMS\Router::instance()->redirect('/admin/365netevents/taxonomies?error=save');
-        }
-    }
-
-    public function adminSettingsSave(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        if (!$this->verifyCsrf('365net_settings_form')) {
-            CMS\Router::instance()->redirect('/admin/365netevents/settings?error=csrf');
-            return;
-        }
-
-        try {
-            CMS_365NET_Events_Database::instance()->saveSettings($_POST);
-            CMS\Router::instance()->redirect('/admin/365netevents/settings?saved=1');
-        } catch (Throwable $e) {
-            CMS_365NET_Events::instance()->log('adminSettingsSave', $e);
-            CMS\Router::instance()->redirect('/admin/365netevents/settings?error=save');
-        }
-    }
-
-    public function adminSettingsBackfillDescriptions(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        if (!$this->verifyCsrf('365net_settings_backfill')) {
-            CMS\Router::instance()->redirect('/admin/365netevents/settings?error=csrf');
-            return;
-        }
-
-        try {
-            $updated = CMS_365NET_Events_Database::instance()->backfillSeedEventDescriptionsFromSeed();
-            CMS\Router::instance()->redirect('/admin/365netevents/settings?backfilled=1&updated=' . max(0, $updated));
-        } catch (Throwable $e) {
-            CMS_365NET_Events::instance()->log('adminSettingsBackfillDescriptions', $e);
-            CMS\Router::instance()->redirect('/admin/365netevents/settings?error=save');
-        }
-    }
-
-    public function adminSettingsBackfillSpeakers(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        if (!$this->verifyCsrf('365net_settings_speaker_backfill')) {
-            CMS\Router::instance()->redirect('/admin/365netevents/settings?error=csrf');
-            return;
-        }
-
-        try {
-            $result = CMS_365NET_Events_Database::instance()->backfillSpeakerProfilesFromGoogle();
-            $query = [
-                'speaker_backfilled' => '1',
-                'speaker_updated' => max(0, (int) ($result['updated'] ?? 0)),
-                'speaker_skipped' => max(0, (int) ($result['skipped'] ?? 0)),
-                'speaker_failed' => max(0, (int) ($result['failed'] ?? 0)),
-            ];
-            if (!(bool) ($result['configured'] ?? false)) {
-                $query['speaker_config'] = '0';
-            }
-
-            CMS\Router::instance()->redirect('/admin/365netevents/settings?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986));
-        } catch (Throwable $e) {
-            CMS_365NET_Events::instance()->log('adminSettingsBackfillSpeakers', $e);
-            CMS\Router::instance()->redirect('/admin/365netevents/settings?error=save');
-        }
-    }
-
-    public function adminEventDelete(string $id = ''): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        if (!$this->verifyCsrf('365net_admin')) {
-            CMS\Router::instance()->redirect('/admin/365netevents?error=csrf');
-            return;
-        }
-        CMS_365NET_Events_Database::instance()->deleteEvent((int) $id);
-        CMS\Router::instance()->redirect('/admin/365netevents?deleted=1');
-    }
-
-    public function adminLinkSync(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        if (!$this->verifyCsrf('365net_admin')) {
-            CMS\Router::instance()->redirect('/admin/365netevents?error=csrf');
-            return;
-        }
-
-        try {
-            $db = CMS_365NET_Events_Database::instance();
-            $db->purgeNonPersonSpeakers();
-            $db->autoLinkExistingRecords();
-            CMS\Router::instance()->redirect('/admin/365netevents?synced=1');
-        } catch (Throwable $e) {
-            CMS_365NET_Events::instance()->log('adminLinkSync', $e);
-            CMS\Router::instance()->redirect('/admin/365netevents?error=save');
-        }
-    }
-
-    public function adminSpeakers(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        $search = $this->cleanQuery((string) ($_GET['q'] ?? ''));
-        $sort = $this->parseAdminSort((string) ($_GET['sort'] ?? 'az'));
-        $speakers = CMS_365NET_Events_Database::instance()->getSpeakers([
-            'search' => $search,
-            'order' => $sort,
-            'limit' => 300,
-        ]);
-        CMS_365NET_Events_Admin::instance()->renderSpeakersList($speakers, $search, $sort);
-    }
-
-    public function adminSpeakerNew(): void
-    {
-        if ($this->requireAdmin()) {
-            $db = CMS_365NET_Events_Database::instance();
-            CMS_365NET_Events_Admin::instance()->renderSpeakerForm(null, $db->getAvailableCompanies(300), $db->getAvailableExperts(300), $db->getTaxonomyOptions());
-        }
-    }
-
-    public function adminSpeakerEdit(string $id = ''): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        $speaker = CMS_365NET_Events_Database::instance()->getSpeaker((int) $id);
-        if (!$speaker) {
-            CMS\Router::instance()->redirect('/admin/365netevents/speakers?error=not_found');
-            return;
-        }
-        $db = CMS_365NET_Events_Database::instance();
-        CMS_365NET_Events_Admin::instance()->renderSpeakerForm($speaker, $db->getAvailableCompanies(300), $db->getAvailableExperts(300), $db->getTaxonomyOptions());
-    }
-
-    public function adminSpeakerSave(): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        if (!$this->verifyCsrf('365net_speaker_form')) {
-            CMS\Router::instance()->redirect('/admin/365netevents/speakers?error=csrf');
-            return;
-        }
-
-        try {
-            // „id“ fehlt bei Neuanlagen regulär und wird deshalb nicht erwartet.
-            $expectedKeys = ['display_name', 'slug', 'bio_json', 'avatar_url', 'theme_image_url', 'topic', 'website', 'status'];
-            $missingKeys = array_values(array_filter($expectedKeys, static fn(string $key): bool => !array_key_exists($key, $_POST)));
-            if ($missingKeys !== []) {
-                CMS_365NET_Events::instance()->log(
-                    'adminSpeakerSaveMissingPostKeys',
-                    new RuntimeException(
-                        'Missing POST keys: ' . implode(', ', $missingKeys)
-                        . ' | posted keys count=' . count($_POST)
-                    )
-                );
-            }
-
-            $id = CMS_365NET_Events_Database::instance()->saveSpeaker($_POST);
-            if ($id === false) {
-                CMS_365NET_Events::instance()->log('adminSpeakerSaveValidation', new RuntimeException('Speaker save returned false. Posted display_name length: ' . strlen((string) ($_POST['display_name'] ?? ''))));
-                $target = isset($_POST['id']) && (int) $_POST['id'] > 0 ? '/admin/365netevents/speakers/edit/' . (int) $_POST['id'] : '/admin/365netevents/speakers/new';
-                CMS\Router::instance()->redirect($target . '?error=required_title');
-                return;
-            }
-            CMS\Router::instance()->redirect('/admin/365netevents/speakers/edit/' . $id . '?saved=1');
-        } catch (Throwable $e) {
-            CMS_365NET_Events::instance()->log('adminSpeakerSave', $e);
-            CMS\Router::instance()->redirect('/admin/365netevents/speakers?error=save');
-        }
-    }
-
-    public function adminSpeakerDelete(string $id = ''): void
-    {
-        if (!$this->requireAdmin()) {
-            return;
-        }
-        if (!$this->verifyCsrf('365net_admin')) {
-            CMS\Router::instance()->redirect('/admin/365netevents/speakers?error=csrf');
-            return;
-        }
-        CMS_365NET_Events_Database::instance()->deleteSpeaker((int) $id);
-        CMS\Router::instance()->redirect('/admin/365netevents/speakers?deleted=1');
+        return strlen($value) > $length ? rtrim(substr($value, 0, $length - 1)) . '…' : $value;
     }
 
     private function renderWithTheme(string $template, array $context): void
@@ -663,21 +521,6 @@ final class CMS_365NET_Events_Post_Type
         $theme->getHeader();
         echo '<main class="cms-events-public"><div class="cms-events-container"><h1>404</h1><p>' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</p><a class="cms-events-btn" href="' . htmlspecialchars(rtrim((string) SITE_URL, '/') . $backUrl, ENT_QUOTES, 'UTF-8') . '">Zurück</a></div></main>';
         $theme->getFooter();
-    }
-
-    private function requireAdmin(): bool
-    {
-        if (!CMS\Auth::instance()->isAdmin()) {
-            CMS\Router::instance()->redirect('/login');
-            return false;
-        }
-
-        return true;
-    }
-
-    private function verifyCsrf(string $action): bool
-    {
-        return CMS\Security::instance()->verifyToken((string) ($_POST['csrf_token'] ?? ''), $action);
     }
 
     private function cleanQuery(string $value): string
@@ -714,11 +557,5 @@ final class CMS_365NET_Events_Post_Type
         $value = trim($value);
         $value = preg_replace('/[^a-zA-Z0-9_-]+/', '', $value) ?? '';
         return substr($value, 0, 255);
-    }
-
-    private function parseAdminSort(string $sort): string
-    {
-        $sort = trim($sort);
-        return in_array($sort, ['az', 'za', 'date_old_new', 'date_new_old'], true) ? $sort : 'az';
     }
 }

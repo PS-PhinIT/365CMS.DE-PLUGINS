@@ -1,6 +1,9 @@
 <?php
 /**
- * CMS Beratung – Installer and versioned data model.
+ * CMS Beratung – Installer, versioniertes Datenmodell und Lebenszyklus.
+ *
+ * Tabellen werden idempotent angelegt; Migrationen laufen nur, wenn sich die gespeicherte
+ * Schema-Version (Option `beratung_db_version`) von CMS_BERATUNG_DB_VERSION unterscheidet.
  *
  * @package CMS_Beratung
  */
@@ -13,26 +16,117 @@ if (!defined('ABSPATH')) {
 
 final class CMS_Beratung_Installer
 {
+    public const OPTION_DB_VERSION = 'beratung_db_version';
+
+    /** Eigene Tabellen ohne Präfix (für Prüfung und Deinstallation). */
+    public const TABLES = ['beratung_landingpages', 'beratung_settings', 'beratung_design_presets', 'beratung_form_submissions'];
+
+    private static bool $running = false;
+
     public static function install(): void
     {
-        self::create_tables();
-        self::seed_defaults();
-        self::store_db_version(CMS_BERATUNG_DB_VERSION);
+        if (self::$running || !class_exists('CMS\\Database')) {
+            return;
+        }
+        self::$running = true;
+        try {
+            self::create_tables();
+            self::seed_defaults();
+            self::store_db_version(CMS_BERATUNG_DB_VERSION);
+        } finally {
+            self::$running = false;
+        }
     }
 
     public static function maybe_install(): void
     {
-        if (self::get_stored_version() === CMS_BERATUNG_DB_VERSION) {
+        if (self::$running || self::get_stored_version() === CMS_BERATUNG_DB_VERSION) {
             return;
         }
 
         self::install();
     }
 
+    /** Kompatibilität: früher bei jedem Admin-Speichern aufgerufen, jetzt nur noch versionsgesteuert. */
     public static function ensure_for_admin_save(): void
     {
-        self::create_tables();
-        self::seed_defaults();
+        self::maybe_install();
+    }
+
+    public static function deactivate(): void
+    {
+        if (class_exists('CMS\\Services\\AdminNoticeService') && method_exists(\CMS\Services\AdminNoticeService::getInstance(), 'clearCache')) {
+            try {
+                \CMS\Services\AdminNoticeService::getInstance()->clearCache();
+            } catch (\Throwable) {
+                // Hinweis-Cache ist optional.
+            }
+        }
+    }
+
+    /** Deinstallation: nur eigene Tabellen, die eigene Schema-Option und eigene DSGVO-Exporte entfernen. */
+    public static function uninstall(): void
+    {
+        if (!class_exists('CMS\\Database')) {
+            return;
+        }
+        $db = \CMS\Database::instance();
+        $pdo = $db->getPdo();
+        $prefix = self::prefix($db);
+        foreach (self::TABLES as $table) {
+            try {
+                $pdo->exec('DROP TABLE IF EXISTS ' . self::quote_identifier(self::validated_table_name($prefix . $table)));
+            } catch (\Throwable $e) {
+                error_log('CMS Beratung uninstall: ' . $e->getMessage());
+            }
+        }
+        try {
+            $db->prepare("DELETE FROM {$prefix}settings WHERE option_name = ?")->execute([self::OPTION_DB_VERSION]);
+        } catch (\Throwable $e) {
+            error_log('CMS Beratung uninstall option: ' . $e->getMessage());
+        }
+        if (class_exists('CMS_Beratung_Integrations')) {
+            CMS_Beratung_Integrations::delete_privacy_exports();
+        }
+        if (class_exists('CMS\\Services\\OptionStore')) {
+            \CMS\Services\OptionStore::getInstance()->flush();
+        }
+    }
+
+    /** @return list<string> fehlende Tabellen (ohne Präfix) */
+    public static function missing_tables(): array
+    {
+        if (!class_exists('CMS\\Database')) {
+            return self::TABLES;
+        }
+        static $missing = null;
+        if (is_array($missing)) {
+            return $missing;
+        }
+        try {
+            $db = \CMS\Database::instance();
+            $prefix = self::prefix($db);
+            $names = array_map(static fn(string $table): string => $prefix . $table, self::TABLES);
+            $placeholders = implode(',', array_fill(0, count($names), '?'));
+            $stmt = $db->prepare("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ({$placeholders})");
+            $stmt->execute($names);
+            $found = array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: []);
+            $missing = [];
+            foreach (self::TABLES as $table) {
+                if (!in_array($prefix . $table, $found, true)) {
+                    $missing[] = $table;
+                }
+            }
+        } catch (\Throwable) {
+            $missing = [];
+        }
+
+        return $missing;
+    }
+
+    public static function stored_version(): string
+    {
+        return self::get_stored_version();
     }
 
     private static function create_tables(): void
@@ -144,6 +238,36 @@ final class CMS_Beratung_Installer
         // Spalten-Migrationen erst nach dem Anlegen aller Tabellen ausführen,
         // sonst scheitert die Frischinstallation am ALTER auf form_submissions.
         self::ensure_landingpage_columns($pdo, $prefix);
+        self::ensure_indexes($pdo, $prefix);
+    }
+
+    /** Schema 4: Indizes für Anfragen-Filter (Status/Datum), DSGVO-Suche (E-Mail) und Routen-Ermittlung. */
+    private static function ensure_indexes(\PDO $pdo, string $prefix): void
+    {
+        $indexes = [
+            'beratung_form_submissions' => [
+                'idx_sender_email' => '(sender_email(191))',
+                'idx_status_created' => '(status, created_at)',
+            ],
+            'beratung_landingpages' => [
+                'idx_status_updated' => '(status, updated_at)',
+            ],
+        ];
+        $check = $pdo->prepare('SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?');
+        foreach ($indexes as $table => $definitions) {
+            $fullName = $prefix . $table;
+            foreach ($definitions as $name => $columns) {
+                $check->execute([$fullName, $name]);
+                if ((int) $check->fetchColumn() > 0) {
+                    continue;
+                }
+                try {
+                    $pdo->exec('ALTER TABLE ' . self::quote_identifier(self::validated_table_name($fullName)) . ' ADD INDEX ' . self::quote_identifier($name) . ' ' . $columns);
+                } catch (\Throwable $e) {
+                    error_log('CMS Beratung index migration (' . $name . '): ' . $e->getMessage());
+                }
+            }
+        }
     }
 
     private static function seed_defaults(): void
@@ -219,11 +343,15 @@ final class CMS_Beratung_Installer
             return '0';
         }
 
+        if (class_exists('CMS\\Services\\OptionStore')) {
+            return (string) (\CMS\Services\OptionStore::getInstance()->get(self::OPTION_DB_VERSION, '0') ?? '0');
+        }
+
         try {
             $db = \CMS\Database::instance();
             $prefix = self::prefix($db);
             $stmt = $db->prepare("SELECT option_value FROM {$prefix}settings WHERE option_name = ? LIMIT 1");
-            $stmt->execute(['beratung_db_version']);
+            $stmt->execute([self::OPTION_DB_VERSION]);
             $value = $stmt->fetchColumn();
             return is_scalar($value) ? (string) $value : '0';
         } catch (\Throwable $e) {
@@ -241,12 +369,15 @@ final class CMS_Beratung_Installer
             $db = \CMS\Database::instance();
             $prefix = self::prefix($db);
             $exists = $db->prepare("SELECT option_value FROM {$prefix}settings WHERE option_name = ? LIMIT 1");
-            $exists->execute(['beratung_db_version']);
+            $exists->execute([self::OPTION_DB_VERSION]);
             if ($exists->fetch()) {
-                $db->prepare("UPDATE {$prefix}settings SET option_value = ? WHERE option_name = ?")->execute([$version, 'beratung_db_version']);
-                return;
+                $db->prepare("UPDATE {$prefix}settings SET option_value = ? WHERE option_name = ?")->execute([$version, self::OPTION_DB_VERSION]);
+            } else {
+                $db->prepare("INSERT INTO {$prefix}settings (option_name, option_value) VALUES (?, ?)")->execute([self::OPTION_DB_VERSION, $version]);
             }
-            $db->prepare("INSERT INTO {$prefix}settings (option_name, option_value) VALUES (?, ?)")->execute(['beratung_db_version', $version]);
+            if (class_exists('CMS\\Services\\OptionStore')) {
+                \CMS\Services\OptionStore::getInstance()->flush();
+            }
         } catch (\Throwable $e) {
             error_log('CMS Beratung DB version store failed: ' . $e->getMessage());
         }

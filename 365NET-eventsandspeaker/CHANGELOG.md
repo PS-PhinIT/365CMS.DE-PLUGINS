@@ -1,4 +1,47 @@
-# 365 | Events & Speaker – Changelog
+# 365CMS | Events & Speaker – Changelog
+
+## 4.0.0 – 2026-11-14
+
+### Layout
+- Alle Admin-Seiten laufen über den Core-AdminRouter (`/admin/plugins/365netevents/…`) statt über eigene Routen mit selbst gezeichneter Shell; `renderAdminLayoutStart()/End()`, der Require von `admin-menu.php` und der wirkungslose Filter `admin_menu_items` entfallen.
+- Menü- und Kopfzeilentitel „365CMS | Events & Speaker“, Tabler-Icon `ti ti-calendar-event` statt Emoji.
+- Unterseiten Events, Speaker, Kategorien & Tags und Einstellungen einheitlich: Seitenkopf (`admin-page-header`) → Meldungen → Toolbar/Filter → Karte mit Tabelle (`users-table-container`) bzw. Formular. Keine Emojis, Aktions-Icons als Tabler-Icons mit Screenreader-Text.
+- Kopfzeile mit Status-Badge (Aktiv / Aktualisierung ausstehend / Datenbankfehler) und vier KPI (kommende veröffentlichte Events, Events gesamt, öffentliche Speaker, Entwürfe), Übersicht mit Schnellaktionen, System-Check (Tabellen, Schema-Version, Eventseite, Entwürfe, Speaker, Experts & Companies, Google-Suche) und zuletzt bearbeiteten Events.
+- Admin-CSS neu (`assets/css/admin.css`): nur Tokens, Rundung ≤ 2px, Dark-Mode über die Tokens, alles unter `.cms-plugin-admin-content`; `admin-enhancements.css` und `admin-excomp-forms.css` zusammengeführt und entfernt. CSS/JS werden nur noch auf den eigenen Admin-Seiten ausgegeben (vorher über `head`/`body_end` per Pfadprüfung).
+- HTML der Seiten liegt in `admin/views/`.
+
+### Kompatibilität 4.0.0
+- Alte Adressen `/admin/365netevents/…` (Lesezeichen, offene Formulare) leiten auf die neuen Plugin-Seiten um (GET 302, POST 307).
+- Lebenszyklus über `cms_365neteventsandspeaker_activate()`, `_deactivate()` und `_uninstall()` (entfernt die vier Tabellen); die Registrierung auf `plugin_activated`/`plugin_deactivated` entfällt.
+- Plugin-Header mit `Requires CMS: 4.0.0`, `Requires at least: 4.0.0`, `Requires PHP: 8.4.1`; neue Dateien `update.json` und `plugin.json`.
+- Sitemap (`cms_sitemap_entries`): `/events`, `/speakers` und alle veröffentlichten Detailseiten. Seitensuche (`search_results`): veröffentlichte Events und Speaker, die alle Suchwörter enthalten (Scopes `events`, `speakers`).
+- Selbstauskunft (`cms_member_export_data`): Speaker-Profile mit der E-Mail-Adresse des Mitglieds.
+- Systemhinweis (`AdminNoticeService::registerCheck`) bei fehlenden Tabellen oder ausstehender Schema-Aktualisierung.
+- SEO-Meta (`SEOService::setRequestMeta`) für Detail- und Übersichtsseiten; die gespeicherten Felder SEO-Titel/-Beschreibung und Social-Bild werden jetzt ausgewertet, `/event-speakers/…` hat `/speakers/…` als Canonical, Such- und Folgeseiten sind `noindex`.
+- Verknüpfung mit „365NET Experts & Companies“ nur noch, wenn das Plugin aktiv ist (`PluginManager::isPluginActive()` bzw. dessen Versionskonstante).
+- Fehlerprotokoll über `CMS\Logger` (Kanal `plugins`) statt in `logs/` im Web-Root des Plugins.
+
+### Fertiggestellt
+- Event- und Speakerlisten: Filter nach Zeitraum (anstehend, vergangen, ohne Datum, alle) bzw. Sortierung, Status und Suche, Sammelaktionen (Veröffentlichen, Entwurf, Löschen), Pagination (25 je Seite), Löschen aus der Liste und im Bearbeitungsformular.
+- CSV-Export für Events und Speaker (UTF-8 mit BOM, Semikolon, Schutz vor Formel-Injection) mit den aktiven Filtern.
+- Speaker-Backfill über die Google-Suche ist in den Einstellungen startbar (die Route existierte, ein Button fehlte); je Lauf bis zu 25 Speaker ohne Website/LinkedIn, ein Cursor setzt beim nächsten Lauf fort.
+- Google API-Key und Suchmaschinen-ID in den Einstellungen; Umgebungsvariablen haben weiterhin Vorrang.
+- Feld „Stadt“ im Eventformular; Galerie wird als Liste der Bild-URLs bearbeitet.
+- Preisklassen sind fest vorgegeben; die wirkungslosen Eingabefelder dafür entfallen.
+
+### Sicherheit
+- Google API-Key verschlüsselt (`CryptoService`, Kontext `settings`); Klartext-Altwerte bleiben lesbar und werden beim nächsten Speichern verschlüsselt, der Key wird nie im Formular ausgegeben.
+- Alle Schreibaktionen prüfen Admin-Recht und CSRF, Weiterleitungen nur auf lokale Pfade (`Security::safeLocalPath`, 303). Fehlermeldungen aus `?error=` nur noch aus einer festen Liste.
+- `confirm()` und `data-confirm` durch das Core-Attribut `data-cms-confirm` ersetzt; `innerHTML` in `admin.js` durch DOM-APIs (`replaceChildren`, `textContent`); Admin-Script mit CSP-Nonce.
+- LIKE-Suchen maskieren `%` und `_`; `IN (...)` über erzeugte Platzhalter.
+
+### Performance
+- Fix: Das Speichern der Einstellungen schrieb `schema_version` leer, wodurch beim nächsten Aufruf Schema-Abgleich, Seeds und Verknüpfungslauf erneut liefen.
+- Keine `SELECT *` mehr: Listen laden nur die benötigten Spalten (ohne große JSON-Felder), Detail- und Formularabfragen eine explizite Spaltenliste.
+- `/events`: Top-Partner-Kennzeichen der verknüpften Firmen in einer Abfrage statt mehrerer Abfragen je Event; Quelltabelle, Spaltenliste und Signal-Abgleich je Anfrage zwischengespeichert.
+- Einstellungen je Anfrage nur einmal gelesen; `ensureSchemaForSave()` legt Tabellen nur bei abweichender Schema-Version an.
+- Neue Indizes (`status, updated_at`, `start_date`, Speaker `email`, `display_name`) per Migration mit `SHOW INDEX`-Prüfung; Schema-Version 4.0.0.
+- Leere `public.js` entfernt; Seed-Beschreibungen liegen in `defaults/event-descriptions.php` (vorher `.php.txt` ohne Zugriffsschutz).
 
 ## 3.2.0 – 2026-11-14
 

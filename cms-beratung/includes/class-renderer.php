@@ -31,8 +31,42 @@ final class CMS_Beratung_Renderer
         }
         $csrfToken = class_exists('CMS\\Security') ? (string) \CMS\Security::instance()->generateToken('beratung_form_' . (int) ($page['id'] ?? 0)) : '';
         $formGuardToken = class_exists('CMS\\Security') ? (string) \CMS\Security::instance()->generateToken('form_guard') : '';
+        $captcha = CMS_Beratung_Forms::captcha_enabled($page) ? CMS_Beratung_Forms::captcha_challenge($page) : null;
+        $trackingConfig = self::tracking_config($page, $settings);
+        $mainClasses = [];
+        if (($settings['use_default_font'] ?? '1') !== '1') {
+            $mainClasses[] = 'cms-beratung--system-font';
+        }
+        if (($settings['allow_custom_page_css_class'] ?? '1') !== '1') {
+            $page['custom_css_class'] = '';
+        }
 
         include CMS_BERATUNG_PLUGIN_DIR . 'templates/landingpage.php';
+    }
+
+    /**
+     * Tracking-Konfiguration für frontend.js (data-Attribut). Leer, wenn auf der Seite oder global nichts aktiv ist.
+     *
+     * @param array<string,mixed> $page @param array<string,string> $settings
+     */
+    private static function tracking_config(array $page, array $settings): string
+    {
+        if (array_key_exists('tracking_enabled', $page) && empty($page['tracking_enabled'])) {
+            return '';
+        }
+        $map = ['buttons' => 'tracking_button_clicks_enabled', 'form' => 'tracking_form_submit_enabled', 'anchors' => 'tracking_anchor_clicks_enabled', 'faq' => 'tracking_faq_enabled', 'downloads' => 'tracking_download_enabled', 'bookings' => 'tracking_bookings_enabled'];
+        $config = [];
+        foreach ($map as $key => $setting) {
+            if (($settings[$setting] ?? '0') === '1') {
+                $config[$key] = 1;
+            }
+        }
+        if ($config === []) {
+            return '';
+        }
+        $config['providersOnly'] = ($settings['tracking_only_when_system_active'] ?? '1') === '1' ? 1 : 0;
+        $config['page'] = (string) ($page['slug'] ?? '');
+        return (string) json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
     }
 
     /** @param array<int,array<string,mixed>> $sections @param array<string,mixed> $page @return array<int,array<string,mixed>> */
@@ -152,11 +186,11 @@ final class CMS_Beratung_Renderer
     /** @param array{fontSizes:array<string,int>,headerSpacing:int,footerSpacing:int,cardSpacing:int,sectionContentSpacing:int} $defaults @return array{fontSizes:array<string,int>,headerSpacing:int,footerSpacing:int,cardSpacing:int,sectionContentSpacing:int} */
     private static function global_design_defaults(array $defaults): array
     {
+        static $decoded = null;
         $path = CMS_BERATUNG_PLUGIN_DIR . 'config/global-design.json';
-        if (!is_file($path)) {
-            return $defaults;
+        if ($decoded === null) {
+            $decoded = is_file($path) ? json_decode((string) file_get_contents($path), true) : false;
         }
-        $decoded = json_decode((string) file_get_contents($path), true);
         if (!is_array($decoded)) {
             return $defaults;
         }
@@ -302,10 +336,6 @@ final class CMS_Beratung_Renderer
 
     public static function safe_html(string $value): string
     {
-        $value = preg_replace('#<(script|style|iframe|object|embed|form|input|button|textarea|select)\\b[^>]*>.*?</\\1>#is', '', $value) ?? '';
-        $value = preg_replace('/\\s+on[a-z]+\\s*=\\s*("[^"]*"|\'[^\']*\'|[^\\s>]+)/i', '', $value) ?? '';
-        $value = preg_replace('/(href|src)\\s*=\\s*("|\')\\s*javascript:[^"\']*\\2/i', '$1="#"', $value) ?? '';
-        $allowed = '<p><br><strong><b><em><i><u><span><small><mark><ul><ol><li><a><blockquote><code><pre><h2><h3><h4><h5><h6><div><section><article><figure><figcaption><img><table><thead><tbody><tr><th><td><hr>';
-        return strip_tags($value, $allowed);
+        return CMS_Beratung_Import_Export::purify_html($value);
     }
 }

@@ -11,9 +11,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-if (class_exists('CMS_365NET_Experts_And_Companie')) {
-    CMS_365NET_Experts_And_Companie::printInlineStyle('style.css', 'cms-excomp-public-inline');
-}
+// Styles (style.css + Design-Variablen) bindet der Hook `head` als Stylesheet-Link ein – keine Inline-Styles (CSP).
 
 $expert = is_object($expert ?? null) ? $expert : null;
 if ($expert === null) {
@@ -28,48 +26,6 @@ $mediaUrl = static fn(mixed $value): string => class_exists('CMS_365NET_Experts_
 $setting = static function (string $key, string $default) use ($settings): string {
     $value = trim((string) ($settings[$key] ?? ''));
     return $value !== '' ? $value : $default;
-};
-
-$designVars = [
-    '--cms-excomp-page-pt' => $setting('layout_page_padding_top', '24px'),
-    '--cms-excomp-page-pb' => $setting('layout_page_padding_bottom', '40px'),
-    '--cms-excomp-content-max' => $setting('layout_content_max_width', '1160px'),
-    '--cms-excomp-grid-gap' => $setting('layout_grid_gap', '18px'),
-    '--cms-excomp-grid-gap-x' => $setting('layout_grid_gap_x', $setting('layout_grid_gap', '18px')),
-    '--cms-excomp-grid-gap-y' => $setting('layout_grid_gap_y', $setting('layout_grid_gap', '18px')),
-    '--cms-excomp-section-gap' => $setting('layout_section_gap', '20px'),
-    '--cms-excomp-radius-card' => $setting('style_radius_card', '2px'),
-    '--cms-excomp-radius-btn' => $setting('style_radius_button', '2px'),
-    '--cms-excomp-radius-surface' => $setting('style_radius_surface', '4px'),
-    '--cms-excomp-radius-hero' => $setting('style_radius_hero', '4px'),
-    '--cms-excomp-color-bg' => $setting('color_bg', '#f8fafc'),
-    '--cms-excomp-color-text' => $setting('color_text', '#0f172a'),
-    '--cms-excomp-color-primary' => $setting('color_primary', '#1d4ed8'),
-    '--cms-excomp-color-hero-start' => $setting('color_hero_start', '#172554'),
-    '--cms-excomp-color-hero-end' => $setting('color_hero_end', '#1e40af'),
-    '--cms-excomp-color-expert-accent' => $setting('color_expert_accent', '#f97316'),
-    '--cms-excomp-color-company-accent' => $setting('color_company_accent', '#16a34a'),
-    '--cms-excomp-color-card-bg' => $setting('color_card_bg', '#ffffff'),
-    '--cms-excomp-color-border' => $setting('color_border', '#e2e8f0'),
-];
-
-$renderDesignVars = static function (array $vars): string {
-    $parts = [];
-    foreach ($vars as $name => $value) {
-        $name = trim((string) $name);
-        $value = trim((string) $value);
-        if ($name === '' || $value === '') {
-            continue;
-        }
-
-        $parts[] = htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . ':' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
-    }
-
-    if ($parts === []) {
-        return '';
-    }
-
-    return '<style id="cms-excomp-design-vars" ' . \CMS\Security::instance()->nonceAttr() . '>:root{' . implode(';', $parts) . ';}</style>';
 };
 
 $renderEditor = static function (mixed $json, mixed $fallback): string {
@@ -159,8 +115,6 @@ if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
 
 $hasSidebarPrimaryActions = $sidebarContactLink !== '' || $website !== '';
 ?>
-
-<?= $renderDesignVars($designVars) ?>
 
 <main class="cms-excomp-public cms-excomp-detail cms-excomp-detail--expert">
     <div class="cms-excomp-container">

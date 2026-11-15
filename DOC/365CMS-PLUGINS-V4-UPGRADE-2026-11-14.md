@@ -11,9 +11,9 @@ Ein Plugin wird erst abgehakt (`[x]`), wenn alle fünf Katalogpunkte umgesetzt s
 | `cms-promos` | `cms-promos` | 365CMS \| Promos | 3.0.4 → **4.0.0** | Batch 1 | Banner, Teaserflächen, Platzierungen, Klick-Tracking | [x] abgeschlossen |
 | `cms-projects` | `cms-projects` | 365CMS \| Projekte | 3.0.4 → **4.0.0** | Batch 1 | Projekte, Boards, Tickets, Widgets (Admin/Member/Public) | [x] abgeschlossen |
 | `cms-booking` | `cms-booking` | 365CMS \| Buchungen | 3.0.8 → **4.0.0** | Batch 1 | Termin- und Buchungssystem mit Anbietern, Leistungen, Verfügbarkeiten | [x] abgeschlossen |
-| `cms-beratung` | `cms-beratung` | 365CMS \| Beratung | 2.9.794 → **3.0.0** | Batch 2 | Landingpage-Builder für Beratungsleistungen mit Anfrageformular | [ ] offen |
-| `365NET-eventsandspeaker` | `cms-365neteventsandspeaker` | 365CMS \| Events & Speaker | 3.2.0 → **4.0.0** | Batch 2 | Event- und Speaker-Verzeichnis | [ ] offen |
-| `365NET-expertsandcompanie` | `cms-365netexpertsandcompanie` | 365CMS \| Experts & Companies | 1.2.0 → **2.0.0** | Batch 2 | Experten- und Firmenverzeichnis | [ ] offen |
+| `cms-beratung` | `cms-beratung` | 365CMS \| Beratung | 2.9.794 → **3.0.0** | Batch 2 | Landingpage-Builder für Beratungsleistungen mit Anfrageformular | [x] abgeschlossen |
+| `365NET-eventsandspeaker` | `cms-365neteventsandspeaker` | 365CMS \| Events & Speaker | 3.2.0 → **4.0.0** | Batch 2 | Event- und Speaker-Verzeichnis | [x] abgeschlossen |
+| `365NET-expertsandcompanie` | `cms-365netexpertsandcompanie` | 365CMS \| Experts & Companies | 1.2.0 → **2.0.0** | Batch 2 | Experten- und Firmenverzeichnis | [x] abgeschlossen |
 
 ## 2. In den Core übernommene Plugins (`integrated_in_core`)
 
@@ -46,9 +46,9 @@ Weitere Katalogbereinigung: `cms-forum` stand noch im Katalog, der Ordner wurde 
 | `cms-promos` 4.0.0 | [x] | [x] | [x] | [x] | [x] | [x] 14 Dateien, 0 Fehler | [x] |
 | `cms-projects` 4.0.0 | [x] | [x] | [x] | [x] | [x] | [x] 21 Dateien, 0 Fehler | [x] |
 | `cms-booking` 4.0.0 | [x] | [x] | [x] | [x] | [x] | [x] 33 Dateien, 0 Fehler | [x] |
-| `cms-beratung` 3.0.0 | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `365NET-eventsandspeaker` 4.0.0 | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| `365NET-expertsandcompanie` 2.0.0 | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
+| `cms-beratung` 3.0.0 | [x] | [x] | [x] | [x] | [x] | [x] 26 Dateien, 0 Fehler | [x] |
+| `365NET-eventsandspeaker` 4.0.0 | [x] | [x] | [x] | [x] | [x] | [x] 21 Dateien, 0 Fehler | [x] |
+| `365NET-expertsandcompanie` 2.0.0 | [x] | [x] | [x] | [x] | [x] | [x] 24 Dateien, 0 Fehler | [x] |
 
 Prüfungen je Plugin (alle ohne Befund): `php -l` aller PHP-Dateien; grep auf Inline-Handler (`onclick=`, `onchange=`, `onsubmit=`, `oninput=`, `onload=`, `javascript:`), entfernte/veraltete APIs (`curl_close`, `finfo_close`, `imagedestroy`, `MYSQL_ATTR_`, `renderAdminLayoutStart`, `buildSidebarPluginIcon`, `isSlugActive`, `invalidateFeedCache`, Hook `plugin_uninstalled`), `innerHTML`/`outerHTML`/`insertAdjacentHTML` in Assets, `SELECT *`, `<style>`/`<script>` ohne Nonce bzw. ohne `src`; JSON-Validierung von `update.json`/`plugin.json`; `includes/plugin-workspace.php` byte-identisch mit dem Core-Partial.
 
@@ -555,15 +555,470 @@ Core-Fallback-Slugs `booking-dashboard`, `booking-bookings`, `booking-providers`
 - Member-CSRF-Aktion heißt `member_plugin_booking` (Bereichs-Slug), nicht `member_plugin_cms-booking` – siehe 3.2.
 - Integrierte Quell-Plugins (`cms-experts`, `cms-speakers`, `cms-events`, `cms-companies`) sind nicht im Repo; Sync nur gegen die dokumentierte Spaltenkonfiguration geprüft.
 
-### `cms-beratung`
+### Bericht: cms-beratung 2.9.794 → 3.0.0 (365CMS 4.0.0)
 
-Wird mit Batch 2 umgesetzt; Befunde und Umsetzung folgen mit dem zugehörigen Pull Request.
+Plugin-Ordner: `cms-beratung` · DB-Schema 3 → 4 · Lifecycle-Präfix `cms_beratung_`
 
-### `365NET-eventsandspeaker`
+#### 1. Inventar
 
-Wird mit Batch 2 umgesetzt; Befunde und Umsetzung folgen mit dem zugehörigen Pull Request.
+**Dateien (nach dem Umbau)**
+- Bootstrap: `cms-beratung.php` (Header, Konstanten, Hooks, `cms_beratung_activate/deactivate/uninstall` am Dateiende)
+- Admin: `admin/class-admin-pages.php` (Dispatch, Layout, Aktionen, Downloads, Upload), `admin/class-admin-menu.php`, `admin/class-admin-defaults.php` (neu: Vorlagen/Standardinhalt, aus der Admin-Klasse ausgelagert), `admin/views/*.php` (neu: dashboard, landingpages, proposals, editor, submissions, submission-detail, faqs, presets, settings, import-export, help)
+- Logik: `includes/class-installer.php`, `-settings.php`, `-storage.php`, `-forms.php`, `-seo.php`, `-renderer.php`, `-import-export.php`, `-frontend.php`, `-integrations.php` (neu: Sitemap/Suche/DSGVO/Löschfrist/Hinweise), `includes/plugin-workspace.php` (kanonische Kopie)
+- Template: `templates/landingpage.php`
+- Assets: `assets/css/admin.css` (neu geschrieben; `admin-faq.css` und `admin-media.css` gelöscht und zusammengeführt), `assets/css/cms-plugin-workspace.css` (kanonische Kopie), `assets/css/frontend*.css` (5 Dateien, unverändert bis auf eine Regel in `frontend-extra.css`), `assets/js/admin-builder.js`, `assets/js/frontend.js`, `assets/img/consultant-portrait.svg`
+- Metadaten: `update.json`, `plugin.json` (neu), `CHANGELOG.md` (neu); `DOC/GLOBAL-DESIGN-MODULE.md`, `config/global-design.json`, `src/theme/*` unverändert
 
-### `365NET-expertsandcompanie`
+**Tabellen** (Präfix + …): `beratung_landingpages`, `beratung_settings`, `beratung_design_presets`, `beratung_form_submissions`; Option `beratung_db_version` in `{prefix}settings`.
 
-Wird mit Batch 2 umgesetzt; Befunde und Umsetzung folgen mit dem zugehörigen Pull Request.
+**Admin-Unterseiten** (Hauptmenü `cms-beratung`, Titel „365CMS | Beratung“, Icon `ti ti-briefcase`; alle Slugs beibehalten)
+
+| Slug | URL | Inhalt |
+|---|---|---|
+| `cms-beratung` | `/admin/plugins/cms-beratung` | Übersicht (Dashboard) – **vorher Landingpage-Liste** |
+| `cms-beratung-landingpages` | `/admin/plugins/cms-beratung/cms-beratung-landingpages` | Liste; jetzt eigener Menüeintrag |
+| `cms-beratung-new` (Ansicht) | `…/cms-beratung-landingpages?view=cms-beratung-new[&id=]` | Editor (auch alter Weg `…/cms-beratung?view=cms-beratung-new` funktioniert) |
+| `cms-beratung-preview` (Ansicht) | leitet 303 auf `/api/cms-beratung/preview?id=` | Vorschau |
+| `cms-beratung-submissions` | `…/cms-beratung-submissions[?id=]` | Anfragen, Detail |
+| `cms-beratung-faqs` | `…/cms-beratung-faqs` | M365 FAQs |
+| `cms-beratung-presets` | `…/cms-beratung-presets` | Design Presets |
+| `cms-beratung-settings` | `…/cms-beratung-settings?tab=design\|contact\|privacy\|seo\|tracking` | Einstellungen (Reiter = Menüpunkte, Gruppe „Einstellungen“) |
+| `cms-beratung-import-export` | `…/cms-beratung-import-export[?export=ID]` | Import/Export |
+| `cms-beratung-help` | `…/cms-beratung-help` | Hilfe |
+
+**Öffentliche Routen**: GET/POST `/beratung/{slug}`, `/de/beratung/{slug}`, `/en/beratung/{slug}` (nur veröffentlichte Seiten) und dieselben für einen optionalen Standalone-Slug; GET `/api/cms-beratung/preview?id=` (nur Admin); POST `/api/cms-beratung/media-upload` (Admin + persistenter Token `editorjs_media`). Kein Member-Bereich.
+
+#### 2. Gefundene Mängel (Stand 2.9.794)
+
+##### Punkt 1 – Layout
+- `admin/class-admin-pages.php:1220–1241` `render_with_layout()` rief `renderAdminLayoutStart/End()` bzw. `cms_plugin_admin_layout_start()` auf; kein `cms_plugin_workspace_open()`, kein Plugin-Menü, kein Dashboard.
+- Dashboard fehlte; Hauptseite war die Landingpage-Liste mit eigenen `stat-card`s im Inhalt (`:223`).
+- Eigene Karten/Hero-Gestaltung (`beratung-card` mit `<h1>` in jeder Unterseite, z. B. `:318`, `:353`, `:378`, `:468`), Emoji-Icons in Vorlagenkarten (`:629–634`).
+- `admin.css` (32 KB): Radien 10–24px und 999px, Verläufe, feste Weißflächen, ~34 Hex-Werte ohne Tokens; `admin-media.css` 29 Hex-Werte.
+- Admin-CSS zusätzlich global im Hook `head` (`cms-beratung.php:75`, `enqueue_admin_assets_for_request()` per URI-Substring).
+- Vorschau gab ein vollständiges HTML-Dokument im Router-Callback aus (`:438–463`) → landete verschachtelt in der Admin-Shell.
+
+##### Punkt 2 – Kompatibilität 4.0.0
+- Header ohne `Requires CMS/at least/PHP` (`cms-beratung.php:2–10`); `update.json` mit `"requires": "365CMS"`, `requires_cms: 3.4.00`.
+- Lifecycle nur über Hook `plugin_activated` (`cms-beratung.php:73`); keine `_activate/_deactivate/_uninstall`, keine Deinstallation.
+- Verweise auf nicht existierende `shared/admin/plugin-admin-contract.php` (`cms-beratung.php:41`, `admin/class-admin-pages.php:1543–1552`, Aufrufe `cms_plugin_admin_*`).
+- SEO: eigene `<title>`/Meta/Canonical/OG-Tags im Hook `head` (`includes/class-seo.php:16–66`) → Dopplung mit dem Core-SEO-Head; kein `setRequestMeta()`.
+- Keine Sitemap-, Such-, DSGVO-, Löschfrist- oder Systemhinweis-Anbindung, obwohl personenbezogene Anfragen gespeichert werden.
+
+##### Punkt 3 – Unfertiges
+- Anfragen: nur Liste der letzten 100 (`:374–388`), keine Detailansicht, Status/Notiz/Löschen trotz vorhandener Storage-Methoden `update_submission`, `delete_submissions`, `purge_old_submissions` (nie aufgerufen).
+- Einstellungen gespeichert, aber nie gelesen: `error_message`, `captcha_prepared` (+ `contact.captcha_enabled` im Builder), `show_submissions_backend`, `use_default_font`, `allow_custom_page_css_class`, alle `tracking_*`; `auto_delete_submissions_enabled`/`retention_days`/`notification_enabled`/`store_*`/`tracking_faq|download|bookings_enabled` nicht einmal im Formular.
+- Presets: „Eigene Presets sind im Datenmodell vorbereitet“ (`:318`) ohne Funktion.
+- Fehler: Einstellungs-Checkboxen ließen sich nie abwählen (verstecktes Feld „0“ + `$raw !== ''` in `class-settings.php:sanitize_from_post`).
+- Fehler: E-Mail-/Telefon-Buttonziele gingen beim zweiten Speichern verloren (`class-import-export.php:button_target`, gespeichertes `mailto:` wurde verworfen).
+- Landingpage-Liste ohne Filter/Suche/Pagination/Sammelaktionen; Export nur als Textarea.
+- `frontend.js:17` rief nicht existierendes `window.cmsTracking` auf.
+
+##### Punkt 4 – Sicherheit & CSP
+- `assets/js/admin-builder.js`: 17× `innerHTML` (u. a. `:221, 250, 286, 289, 299, 325, 386, 540, 588, 632, 715, 733, 1216, 1219, 1254, 1256, 1453`); `sectionTemplate()` setzte `section.internal_name` **unescaped** ein (`:1363`, DOM-XSS z. B. über importiertes JSON); Inline-`style` in der CTA-Vorschau (`:1348`). Unter Trusted Types liefen alle Zuweisungen durch die DOMPurify-Default-Policy.
+- JSON-LD ohne `JSON_HEX_TAG` bei `JSON_UNESCAPED_SLASHES` → `</script>` aus Seitentexten konnte den Block beenden (`class-seo.php:92/134/149/161`).
+- Mails: `cms_mail()` behandelt den Body als HTML, wenn kein `text/plain` gesetzt ist → Nutzereingaben als HTML in Benachrichtigungen (`class-forms.php:send_mail`).
+- Formular ohne Ratenbegrenzung, ohne Längenlimits, ohne Core-Antispam.
+- Upload (`class-admin-pages.php:130–196`): Endung + „ist irgendein Bild“ statt MIME je Endung, Größe erst nach Inhaltsprüfung, vorhersagbare Dateinamen (`name-1.ext`), SVG-Prüfung ohne DOCTYPE/ENTITY/`style`/externe Referenzen.
+- JSON-Import ohne Größenlimit, ohne Endungs-/MIME-Prüfung (`:1470–1478`).
+- `check_access()` leitete per 302 um; Redirects ohne `safeLocalPath`.
+
+##### Punkt 5 – Performance
+- `register_routes` bei **jedem Request** `SELECT *` über alle Landingpages inkl. aller JSON-Spalten (`class-frontend.php:107`), Standalone-Auflösung mit Schleife über alle Seiten (`:242`).
+- `CMS_Beratung_Installer::ensure_for_admin_save()` (CREATE TABLE + Spaltenchecks + Seeds) bei jedem Speichern, beim Öffnen von Editor und Presets.
+- FAQ-Konfiguration: 10 Einzelabfragen pro Aufruf (`class-storage.php:m365_faq_config`), mehrfach je Seitenaufbau (Renderer + SEO).
+- `Settings::save()` mit einer SELECT-Abfrage je Schlüssel; `SELECT *` in allen Lesefunktionen; fehlende Indizes für E-Mail-Suche und Status/Datum.
+
+#### 3. Umsetzung
+
+##### Punkt 1 – Layout
+- `open_layout()/close_layout()` in der Admin-Klasse: `load_workspace()` (Core-Partial, sonst Plugin-Kopie + Rückfall-CSS), `cms_plugin_workspace_open()` mit Titel, Icon, Version, Status (danger bei fehlenden Tabellen, warning bei fehlendem Empfänger), 4 Live-KPIs und explizitem Menü (`nav_explicit`); Einstellungsreiter als Gruppe „Einstellungen“.
+- Dashboard (`views/dashboard.php`) mit `cms_plugin_dashboard()` (Aktionen, 7 Checks, Aktivität „Zuletzt geänderte Landingpages“) und Zusatztabelle „Neueste Anfragen“.
+- Alle Unterseiten: `admin-page-header` → `alert` → Toolbar (`form method=get`) → `admin-card`/`users-table-container`. Emoji-Vorlagenicons → Tabler.
+- `admin.css` neu (nur Builder/Formular/Toolbar/Medien-Bausteine, alles unter `.cms-plugin-admin-content .beratung-admin` bzw. `.beratung-media-modal`, Tokens mit Hex nur als Fallback, Radius 2px). Assets nur im Callback; Script mit Nonce + `defer`.
+- Vorschau als eigene Route `/api/cms-beratung/preview` (vollständiges Dokument, noindex, Admin-Prüfung); alte Admin-Vorschau-URL leitet um.
+
+##### Punkt 2 – Kompatibilität
+- Header/Version/`update.json`/`plugin.json`/`CHANGELOG.md` gemäß Brief. `requires`-Feld entfernt.
+- `cms_beratung_activate()` (Installation), `_deactivate()` (Hinweis-Cache leeren), `_uninstall()` (4 Tabellen, Option, DSGVO-Exporte). Hook `plugin_activated` entfernt.
+- Shared-Contract-Verweise und `renderAdminLayoutStart` entfernt; Dispatcher wertet Callback-Slug, `?view=` und `$_GET['page']` aus; alle `dispatch_*`-Methoden bleiben erhalten.
+- `CMS_Beratung_SEO::apply_request_meta()` vor dem Theme-Header (Titel, Beschreibung, Canonical, robots_index/follow – Standalone-Variante immer noindex –, OG, Twitter); Plugin-Fallback-Meta nur ohne SEOService; JSON-LD bleibt plugin-eigen.
+- `includes/class-integrations.php`: Sitemap, Suche, DSGVO, Selbstauskunft, Löschfrist, Systemhinweise (alle mit `class_exists` und `try/catch`).
+
+##### Punkt 3 – Fertiggestellt
+- Anfragen: Filter/Suche/Pagination, Detail (Status, Notiz, Löschen, „Antworten“-Mailto), Sammelaktionen (Status/Löschen), CSV-Export (BOM, `;`, Formel-Schutz), Auto-„Gelesen“, DSGVO-Auskunftsdateien (Download/Löschen, Auto-Bereinigung nach 30 Tagen via `cms_cron_daily`).
+- Landingpages: Suche, Status, Sortierung, Pagination, Sammelaktionen, Zeilenaktionen (Bearbeiten, Vorschau, Public, Standalone, JSON-Download, Duplizieren, Veröffentlichen/Zurückziehen, Löschen mit `data-cms-confirm`).
+- Eigene Presets anlegen/löschen; Konfigurations-Export/-Import (Einstellungen, FAQs, Presets).
+- Einstellungen in 5 Bereiche mit deutschen Beschriftungen; nur Schlüssel des Bereichs werden gespeichert; Checkbox-Fehler behoben.
+- Verdrahtet: `error_message`, Sicherheitsfrage (Session-Rechenaufgabe, global oder je Seite), `show_submissions_backend` (Menüpunkt + Seite), `allow_custom_page_css_class`, `use_default_font` (CSS-Klasse), Löschfrist, Tracking (`data-beratung-tracking` → `_paq`/`gtag`/`dataLayer` nur wenn vom Core-Loader nach Einwilligung geladen; optional DOM-Ereignis), `tracking_enabled` je Seite. `mailto:`/`tel:`-Fehler behoben.
+
+##### Punkt 4 – Sicherheit
+- Builder: strikter DOM-Builder `fragmentFrom()`/`setMarkup()` (Tokenizer → `createElement`/`setAttribute`/`createTextNode`, verwirft script/style/iframe/svg u. a., `on*`, `style`, `srcdoc`, `javascript:/vbscript:/data:`-URLs); Medienraster/Leerzustände direkt mit `createElement`/`textContent`; `esc()` escaped auch `'`; Bereichsname escaped; CTA-Vorschau per Klasse. Mit Node-Testskript geprüft (Handler/Script/JS-URL werden entfernt, Entities korrekt).
+- JSON-LD/Datenblöcke mit HEX-Flags (+ Nonce bei JSON-LD).
+- Formular: Rate-Limit (Session + `checkDbRateLimit`/`recordDbRateLimitAttempt`), `AntispamService::evaluate()`, Feldlängen, Plain-Text-Mails, Betreff/Header ohne Steuerzeichen, Reply-To.
+- Upload: Größe zuerst, `finfo`-MIME je Endung, `getimagesize` für Raster, zufällige Namen (`name-<12 hex>.ext`), schärfere SVG-Prüfung, kein `finfo_close()`; JSON-Antwort verwirft vorher alle Ausgabepuffer.
+- Import: 2 MB, `.json`, MIME, Tiefe 64, Schema-/Inhaltsprüfung, interne IDs entfernt; HTML-Bereich über `PurifierService` (`hub`).
+- Alle POSTs: `verify_nonce()` = Admin-Recht **und** `verifyToken()`; Redirects 303 über `safeLocalPath()`; Downloads per POST.
+
+##### Punkt 5 – Performance
+- `Storage::published_routes()` (eine schlanke Abfrage, Request-Cache) für Routen, Sitemap, Standalone-Auflösung; Regex-Vorprüfung vor jeder Frontend-DB-Abfrage.
+- Explizite Spaltenlisten (`LIST_COLUMNS`, `PAGE_COLUMNS`, `SUBMISSION_COLUMNS`); kein `SELECT *` mehr.
+- FAQ/Settings aus einem gebündelten Cache (`Settings::raw()`); Settings speichern mit einer Vorababfrage.
+- Migrationen nur bei Versionswechsel; Schema-Version über `OptionStore`; Rekursionsschutz in `install()`.
+- Schema 4: `idx_sender_email`, `idx_status_created`, `idx_status_updated` (idempotent über `information_schema.STATISTICS`).
+- Blockweises Löschen alter Anfragen; Global-Design-JSON statisch gecacht.
+
+#### 4. Erweiterungspunkte
+
+| Hook/Service | Status | Begründung |
+|---|---|---|
+| `cms_sitemap_entries` | umgesetzt | veröffentlichte Seiten ohne noindex, `beratung/<slug>`, lastmod = updated_at; Standalone-Varianten ausgeschlossen (Duplikat) |
+| `search_results` | umgesetzt | Typ `beratung`, alle Wörter in Titel/Beschreibung/Keyword/Hero/Bereichen, Prepared Statements, LIMIT gebunden, try/catch |
+| `SEOService::setRequestMeta()` | umgesetzt | Titel, Beschreibung, Canonical, Robots, OG, Twitter; JSON-LD bleibt im Plugin |
+| `dsgvo_export_data` / `dsgvo_delete_data` | umgesetzt | Anfragen sind personenbezogen; Abgleich über E-Mail, Export als JSON in `PrivateStorageService` (`cms-beratung/privacy-exports`) |
+| `cms_member_export_data` | umgesetzt | Schlüssel `beratung_anfragen`, Abgleich über die E-Mail des Mitglieds (Anfragen sind nicht an user_id gebunden) |
+| `DataRetentionService::registerRule()` | umgesetzt | Regel `cms_beratung.submissions`, Frist aus Einstellungen → Datenschutz, Standard 0 = nie |
+| `AdminNoticeService::registerCheck()` | umgesetzt | fehlende Tabellen (danger), fehlender Empfänger (warning), neue Anfragen (info) |
+| `ContentTypeRegistry` | bewusst nicht | Trash bräuchte Soft-Delete-Spalte und geänderte Löschsemantik, Exchange einen zweiten Import-/Exportpfad neben dem vorhandenen, validierten JSON-Format; nicht sauber ohne größere Schemaänderung |
+| Member-Dashboard | nicht relevant | Plugin hat keinen Member-Bereich |
+| `CMS\Http\Client`, `CryptoService` | nicht relevant | keine externen Abrufe, keine Secrets |
+
+#### 5. Prüfungen
+
+- `php -l`: 26 PHP-Dateien, 0 Fehler. `node --check` für beide JS-Dateien ohne Fehler.
+- Inline-Handler/`javascript:`: leer (ein JS-Kommentar wurde umformuliert, der tote Regex-Fallback im Renderer gelöscht).
+- Deprecated/entfernte APIs: nur Changelog-Texte (`update.json` Eintrag 2.9.794, `CHANGELOG.md` Zeilen 18 und 52), laut Brief ausgenommen.
+- `innerHTML|insertAdjacentHTML|outerHTML` in `assets`: leer.
+- `<style`/`<script` in PHP: zwei externe Scripts mit Nonce + `defer`, JSON-LD mit Nonce, zwei `type="application/json"`-Datenblöcke (nicht ausführbar, HEX-escaped); keine `<style>`-Blöcke.
+- JSON: `update.json`, `plugin.json`, `config/global-design.json`, `src/theme/global-design.schema.json` gültig.
+- Admin-CSS: alle Hex-Werte nur als `var()`-Fallback, alle Radien `var(--beratung-a-radius)` = 2px.
+- Smoke-Test (Harness mit gestubbten `CMS\Hooks/Security/Auth`, ohne DB): alle 13 Admin-Ansichten (inkl. 5 Einstellungsbereiche), Frontend-Render der Standardvorlage mit Sicherheitsfrage, SEO-Head und JSON-Export→Import-Roundtrip (12/12 Bereiche) ohne PHP-Warnungen.
+- Statische Prüfung: alle Klassen-/Methodenaufrufe existieren und sind sichtbar (Python-Skript über alle PHP-Dateien).
+- Formularpfade per Code-Lesen durchgespielt: Editor (`…landingpages?view=cms-beratung-new&id=` → `render_new_page`, Token `beratung_save_landingpage`, 303 mit `notice`), Liste (Token `beratung_landingpage_action`, Zeilen-/Sammelaktionen), Anfragen (Token `beratung_submissions`: Update, Löschen, Bulk, CSV, DSGVO-Datei), FAQs, Presets, Einstellungen je Bereich, Import/Export (Token `beratung_import_export`), Upload (`editorjs_media`), Frontend-Formular (`form_guard` + `beratung_form_<id>`).
+
+#### 6. Offene Punkte / Risiken
+
+- Kein laufendes 365CMS/MySQL im Container: SQL (JSON-Spalten, `information_schema`, neue Indizes, `LIMIT ?` mit `PARAM_INT`) und die Core-Anbindungen (Sitemap, Suche, DSGVO-Flows, Retention, Notices, `setRequestMeta`) sind nur per Code-Lesen gegen den Core 4.0.0 geprüft.
+- Verhaltensänderung: `/admin/plugins/cms-beratung` zeigt jetzt die Übersicht statt der Liste (Slug unverändert, Liste unter `cms-beratung-landingpages`).
+- Frontend-Template nutzt weiterhin `style="--…"`-Attribute für seitenindividuelle Farb-/Größenwerte; die Core-CSP überführt sie per `InlineStyleRewriter` in nonce-geschützte Klassen. Frontend-CSS (viele Hex-Werte, Theme-unabhängiges Landingpage-Design) bewusst nicht angefasst.
+- `src/theme/*.ts` + Schema werden zur Laufzeit nicht verwendet (keine Build-Pipeline; reine Typ-/Dokumentationsreferenz zu `config/global-design.json`, das der Renderer liest) – unverändert gelassen.
+- DOM-Builder im Admin unterstützt bewusst nur das plugin-eigene Markup (kein SVG/MathML); visuell im Browser nicht getestet.
+- Sicherheitsfrage braucht eine aktive Sitzung (ohne Sitzung wird sie übersprungen, das Formular funktioniert dann aber ohnehin nicht wegen der CSRF-Tokens).
+- Tracking meldet nur an Anbieter, deren Globals (`_paq`, `gtag`, `dataLayer`) der Core-Loader nach Einwilligung angelegt hat; Ereignisnamen (`button_click`, `form_submit`, …) sind neu und ggf. im Analysewerkzeug einzurichten.
+- Hochgeladene Bilder unter `/uploads/beratung` bleiben bei der Deinstallation erhalten (können in Inhalten weiterverwendet werden).
+
+### 365NET-eventsandspeaker → 4.0.0
+
+Plugin-Ordner: `365NET-eventsandspeaker` (Installationsordner/Slug `cms-365neteventsandspeaker`), Version 3.2.0 → **4.0.0**.
+
+#### 1. Inventar
+
+**Dateien (nach dem Umbau)**
+- `cms-365neteventsandspeaker.php` – Bootstrap, Header, öffentliche Assets, Logger, Lifecycle-Funktionen
+- `includes/class-database.php` – Schema/Migrationen/Seeds, CRUD, Listen, Sammelaktionen, Export, Sitemap/Suche, Google-Backfill
+- `includes/class-admin.php` – Menü, Seiten-Callbacks (AdminRouter), POST-Handler, CSV-Export, KPI/Dashboard/Badges, Formular-Bausteine
+- `includes/class-post-type.php` – öffentliche Routen, SEO-Meta, Umleitungen der alten Admin-Adressen
+- `includes/class-integrations.php` (neu) – Sitemap, Suche, Selbstauskunft, Systemhinweis
+- `includes/class-template-loader.php` – unverändert
+- `admin/views/` (neu) – `dashboard.php`, `events-list.php`, `event-form.php`, `speakers-list.php`, `speaker-form.php`, `taxonomies.php`, `settings.php`
+- `includes/phinit-admin-nav.php`, `includes/plugin-workspace.php`, `assets/css/phinit-admin-nav.css` – synchronisierte Kopien, **nicht verändert**
+- `assets/css/admin.css` (neu geschrieben), `assets/css/public.css`, `assets/js/admin.js`
+- `defaults/seed-data.php`, `defaults/event-descriptions.php` (umbenannt aus `_generated_event_descriptions_map.php.txt`)
+- `templates/*.php` (4 öffentliche Templates, unverändert), `update.json` (neu), `plugin.json` (neu), `CHANGELOG.md`, `README.md`, `.env.example`, `.htaccess`
+- Entfernt: `assets/css/admin-enhancements.css`, `assets/css/admin-excomp-forms.css` (in `admin.css` aufgegangen), `assets/js/public.js` (leer), `logs/.gitkeep` (Log jetzt über Core-Logger)
+
+**Tabellen**: `{prefix}365net_events`, `{prefix}365net_event_speakers`, `{prefix}365net_event_speaker_rel` (FK CASCADE), `{prefix}365net_event_settings`. Schema-Version 3.0.0 → 4.0.0.
+
+**Admin-Unterseiten** (Top-Level-Slug `365netevents`, Slugs unverändert):
+| Slug | URL (Helfer) | Callback |
+|---|---|---|
+| `365netevents` | `/admin/plugins/365netevents` | `pageDashboard` |
+| `365netevents-events` | `…/365netevents?view=365netevents-events` (+ `action=new\|edit\|export`) | `pageEvents` |
+| `365netevents-speakers` | `…?view=365netevents-speakers` | `pageSpeakers` |
+| `365netevents-taxonomies` | `…?view=365netevents-taxonomies` | `pageTaxonomies` |
+| `365netevents-settings` | `…?view=365netevents-settings` | `pageSettings` |
+
+`/admin/plugins/365netevents/<unterseite>` funktioniert ebenfalls (Helfer leitet um). Alte Adressen `/admin/365netevents[/…]` → 302/307 auf die neuen URLs.
+
+**Öffentliche Routen**: `/events`, `/events/:slug`, `/speakers`, `/speakers/:slug`, `/event-speakers`, `/event-speakers/:slug` (Alias). Kein Member-Bereich.
+
+#### 2. Gefundene Mängel (Stand 3.2.0, Datei:Zeile vor der Änderung)
+
+**Punkt 1 – Layout**
+- `includes/class-admin.php:77` Menütitel „PHINIT | Events & Speaker“, Icon-Emoji „📅“; `:39` Titel im `adopt()` ebenso.
+- `class-admin.php:88-111` Menü-Callbacks waren nur Redirects auf eigene Routen `/admin/365netevents/…`; die Seiten zeichneten die Shell selbst (`startShell()` `:706-722` mit `renderAdminLayoutStart()`, Fallback auf `admin/partials/header.php`/`sidebar.php`), `:65` Require von `admin/partials/admin-menu.php`, `:60` Require einer nicht existierenden `../shared/admin/plugin-admin-contract.php`.
+- `:54/:113-126` Filter `admin_menu_items` (existiert im Core 4.0.0 nicht) mit Emoji-Icon.
+- Seitenköpfe mit Emojis (`:330`, `:377`, `:483`, `:500`, `:592`, `:621`), Buttons nur als Emoji (`:354-358`, `:488`), eigene Header-Klassen `cms365-admin-header`, Sortier-Buttonleiste als zweite Reiterleiste (`:486`), Filter in separater Karte.
+- CSS: `admin.css` mit Radien 14–24px, festen Weißflächen/Verläufen, Schatten (kein Dark-Mode); `admin-excomp-forms.css` mit `!important`-Kaskaden, Radien 10–14px; `admin-enhancements.css` mit `#fff`-Flächen.
+- Assets global über `head`/`body_end` per Pfadprüfung `/admin/365netevents…` (`cms-365neteventsandspeaker.php:99-100, 217-233, 333-346`) – auf den AdminRouter-Seiten griff die Prüfung nur über `?page=365netevents…`.
+- `assets/js/admin.js:38, 54, 74, 173` `innerHTML`; `:416-423` `window.confirm()` über `data-confirm`.
+- Medien-Modal auf jeder Seite ausgegeben (`endShell()` `:756`).
+
+**Punkt 2 – Kompatibilität**
+- `cms-365neteventsandspeaker.php:97-98` Lifecycle über Hooks `plugin_activated/deactivated` statt `<slug>_activate()`…; kein `_uninstall()` – Tabellen blieben beim Löschen liegen.
+- Header ohne `Requires CMS/at least/PHP`; keine `update.json`/`plugin.json`.
+- Keine Anbindung an Sitemap, Suche, SEO-Meta, Systemhinweise. Gespeicherte Felder `seo_title`, `seo_description`, `og_image_url` wurden nie ausgewertet (Templates/Routen setzen keine Meta-Daten).
+- Experts-&-Companies-Tabellen wurden gelesen und beschrieben, sobald sie existierten – unabhängig davon, ob das Plugin aktiv ist (`class-database.php` `resolvePreferredSourceTable`, `syncExcompLinksFromSpeaker`).
+- Log-Datei `logs/cms-365neteventsandspeaker.log` im Web-Root des Plugins (nur Dotfiles per `.htaccess` gesperrt).
+
+**Punkt 3 – Unfertig**
+- Route `POST /admin/365netevents/settings/backfill-speakers` (`class-post-type.php:57`, Handler `:500`) ohne Button im Formular – Funktion nicht erreichbar.
+- Google API-Key nur per ENV/.env; keine Konfiguration im Admin.
+- Listen ohne Status-Filter, ohne Pagination (feste `limit 300`, `class-post-type.php:336, 573`), ohne Sammelaktionen, ohne Export.
+- Taxonomie-Formular speicherte Preisklassen, die `getTaxonomyOptions()` (`class-database.php:2314-2328`) fest überschreibt (gespeichert, nie gelesen).
+- Platzhalter „Speaker, Thema oder Tag suchen“ – Suche prüfte keine Tags.
+
+**Punkt 4 – Sicherheit/CSP**
+- `class-admin.php:805` Fehlermeldung gibt beliebigen `$_GET['error']`-Text aus (escaped, aber frei steuerbar).
+- `admin.js` `innerHTML` (s. o.), `confirm()`.
+- Google API-Key nur im Klartext (ENV/.env, auch `.env` im Web-Root des Plugins zugelassen).
+- LIKE-Platzhalter `%`/`_` im Suchbegriff nicht maskiert.
+
+**Punkt 5 – Performance/Best Practices**
+- **Bug**: `saveSettings()` (`class-database.php:2265`) iterierte über `array_keys(getSettings())` – darin auch `schema_version` aus der Tabelle; das Speichern der Einstellungen schrieb `schema_version = ''`, beim nächsten Request lief `ensureSchema()` komplett (Seeds, Purge, Auto-Link mit Hunderten UPDATEs).
+- `SELECT *`: `getEvent` `:806`, `getEventBySlug` `:816`, `getSpeaker` `:1035`, `getSpeakerBySlug` `:1045`, Backfill `:2597`; zusätzlich `e.*`/`s.*` in `getEvents`, `getSpeakers`, `getSpeakersForEvent`, `getEventsForSpeaker`.
+- `/events` (`class-post-type.php:103-122`): je Event `getLinkedCompany()` + ggf. `detectLinkedCompanyBySignals()`; dabei je Aufruf `SHOW COLUMNS` (nicht gecacht) und `COUNT(*)` auf die Firmentabelle (`resolvePreferredSourceTable`) – bei 15 Events pro Seite ~60–90 Zusatzabfragen.
+- `getSettings()` mehrfach je Request (Head-Style, Menüpunkt, Archiv) ohne Cache.
+- `ensureSchemaForSave()` lief bei jedem Speichern (`CREATE TABLE IF NOT EXISTS` ×4 + `SHOW COLUMNS`).
+- Speaker-Backfill: bis zu 500 Google-Anfragen à 12 s in einer Anfrage, auch für bereits vollständige Profile.
+- Leere `public.js` wurde auf allen öffentlichen Plugin-Seiten geladen.
+- `defaults/_generated_event_descriptions_map.php.txt`: **nicht verwaist** (wird von `seed-data.php:340` per `require` geladen), aber PHP-Code ohne ABSPATH-Guard mit `.txt`-Endung (per Web als Text abrufbar).
+
+#### 3. Umsetzung
+
+**Punkt 1 – Layout**
+- Menü: `add_menu_page('365CMS | Events & Speaker', '365CMS | Events & Speaker', 'manage_options', '365netevents', …, 'ti ti-calendar-event', 45)`; `adopt()` mit `menu_title`/`title` = „365CMS | Events & Speaker“, `status`-Callback (Aktiv / Aktualisierung ausstehend / Datenbankfehler), `stats` (4 echte KPI: kommende veröffentlichte Events, Events gesamt, öffentliche Speaker, Entwürfe – je mit Link), `dashboard` (intro, 4 Schnellaktionen, 8 Checks: Tabellen, Schema-Version, Eventseite, Entwürfe, Speaker-Verzeichnis, Experts & Companies, Google-Suche, Fehlerfall; Aktivität „Zuletzt bearbeitete Events“ mit more_url), `badges` (Entwürfe an „Events“).
+- Alle Callbacks geben nur Inhalt aus; der Helfer setzt Kopfzeile und Plugin-Menü. Ohne Helfer-Datei öffnet `renderPage()` das Layout selbst über `cms_plugin_workspace_open()` (Core-Partial bzw. mitgelieferte Kopie).
+- Jede Unterseite: `admin-page-header` (h2 + Einzeiler + `header-actions` mit Tabler-Icons) → Meldungen (`alert alert-success|warning|danger`) → Toolbar (`form method="get" class="cms365-toolbar"`) → `admin-card` mit `users-table-container`/`users-table` bzw. Formular-Sektionen. Keine Emojis, keine zweite Reiterleiste (Sortierung jetzt als Select in der Toolbar), kein doppelter Pluginname.
+- Overflow: Tabellen in `users-table-container`, Grids mit `minmax(...)`/`min-width: 0`, Toolbar/Media-Zeilen umbrechend.
+- `assets/css/admin.css` neu: nur `var(--cms-…, var(--tblr-…, fallback))`, `border-radius` ≤ 2px, keine festen Weiß-/Schwarzflächen, alles unter `.cms-plugin-admin-content` bzw. `.cms365-media-*`. Nur auf eigenen Seiten (`printAssets()` im Callback, Script `defer` + CSP-Nonce, Cache-Buster Version+filemtime).
+- `admin.js`: `innerHTML` → `replaceChildren()`/`textContent` (Helfer `textSpan()`); `data-confirm`/`confirm()` entfernt → `data-cms-confirm` (Core); neu „Alle markieren“.
+- Medien-Modal nur noch auf Event-/Speaker-Formularen.
+
+**Punkt 2 – Kompatibilität**
+- Bootstrap-Header: `Plugin Name: 365CMS | Events & Speaker`, `Version: 4.0.0`, `Requires CMS: 4.0.0`, `Requires at least: 4.0.0`, `Requires PHP: 8.4.1`.
+- Lifecycle-Funktionen am Dateiende (mit `function_exists`): `cms_365neteventsandspeaker_activate()` (ensureSchema + Hook `cms_365net_events_activated`), `_deactivate()` (Hook, Daten bleiben), `_uninstall()` (DROP der 4 eigenen Tabellen, alte Logdatei löschen). Hook-Registrierungen auf `plugin_activated/deactivated` entfernt.
+- `renderAdminLayoutStart/End`, `admin-menu.php`-Require, `shared/`-Require, Filter `admin_menu_items` entfernt.
+- Formulare posten auf die eigene Unterseite (verstecktes Feld `cms365_action`), Weiterleitung 303 über `Security::safeLocalPath()`. Alte Admin-Routen in `class-post-type.php` als Umleitungen (GET 302, POST 307 mit `do=<aktion>`); die CSRF-Aktionsnamen der Formulare sind gleich geblieben, damit auch offene alte Formulare durchlaufen.
+- Integration Experts & Companies nur bei aktivem Plugin (`CMS_365NET_EXCOMP_VERSION` oder `PluginManager::instance()->isPluginActive('cms-365netexpertsandcompanie')`); im Formular Hinweis, wenn inaktiv. Nachbar-Plugin nicht verändert; dessen gelesene Spalten (`id, display_name, slug, topic, linked_expert_id, linked_company_id, status`) unverändert.
+- Logging über `CMS\Logger` (Kanal `plugins`), Fallback `error_log`.
+- Alle Dateien mit `declare(strict_types=1)` + ABSPATH-Guard; `event-descriptions.php` mit Guard.
+
+**Punkt 3 – Fertiggestellt**
+- Listen Events/Speaker: Suche, Status-Filter, Zeitraum (Events: anstehend/vergangen/ohne Datum/alle) bzw. Sortierung (Speaker), Sammelaktionen Veröffentlichen/Entwurf/Löschen (`bulkSetStatus`, `bulkDelete`, IN-Platzhalter), Zeilen-Löschen per Button im Sammelformular (`row_delete`, `data-cms-confirm`), Pagination 25/Seite (`p`), Löschen auch im Bearbeitungsformular.
+- CSV-Export Events/Speaker (GET mit persistentem Token `365net_export`, aktive Filter, UTF-8-BOM, `;`, Formel-Schutz `csvCell()`, Puffer geleert, `exit`).
+- Speaker-Backfill-Button in den Einstellungen (CSRF `365net_settings_speaker_backfill`), deaktiviert mit Begründung, solange nicht konfiguriert; Batches à 25 Speaker ohne Website/LinkedIn mit Cursor (`speaker_backfill_cursor`), Meldung „weitere stehen an“.
+- Google-Zugangsdaten im Formular (Key-Feld leer mit Platzhalter „gespeichert“, „Key entfernen“-Checkbox, CSE-ID); ENV hat Vorrang.
+- SEO-Felder werden ausgewertet (s. Erweiterungspunkte). Preisklassen-Felder entfernt (fest vorgegeben, `saveTaxonomyOptions` überspringt sie). Speaker-Suche prüft jetzt auch Tags. Eventformular: Feld „Stadt“; Galerie-JSON wird als URL-Liste angezeigt (vorher rohes JSON im Textfeld).
+- Import: bewusst nicht gebaut (Seeds sind die vorgesehene Datenquelle; ein CSV-Import für Events mit Speaker-Relationen wäre ein eigenes Feature).
+
+**Punkt 4 – Sicherheit**
+- Admin-Recht (`Auth::isAdmin()` in `guard()`) + CSRF (`verifyToken`, einmalig) bei jeder Schreibaktion; GET verändert nichts (Export nur lesend).
+- Fehler-/Hinweistexte nur aus Whitelist.
+- API-Key: `CryptoService::encrypt(…, CONTEXT_SETTINGS, 'cms365net_events.google_api_key')`, Format-Prüfung, ohne verfügbare Verschlüsselung wird kein Klartext gespeichert (Warnung); Klartext-Altwerte lesbar und beim nächsten Speichern verschlüsselt; nie ins Formular zurückgegeben; `getSettings()` liefert interne Schlüssel (`schema_version`, `google_*`, Cursor) nicht mehr aus.
+- `escapeLike()` für alle LIKE-Suchen; Spalten-/ORDER-BY-Werte nur aus Whitelists bzw. Konstanten; LIMIT/OFFSET gecastet.
+- `.env` im Plugin-Ordner wird weiterhin gelesen (Abwärtskompatibilität), README/Formular empfehlen ENV bzw. verschlüsselte Einstellung.
+
+**Punkt 5 – Performance**
+- `saveSettings()` nur über bekannte Standard-Schlüssel → `schema_version` bleibt erhalten (Bug behoben).
+- Kein `SELECT *`/`alias.*` mehr: Listenspalten-Konstanten ohne große JSON-Felder, Detail/Formular über `allEventColumns()`/`allSpeakerColumns()`, jeweils geschnitten mit den vorhandenen Spalten (`selectColumns()`, `SHOW COLUMNS` 1× je Tabelle und Request).
+- `/events`: verknüpfte Firmen-IDs sammeln, Top-Partner-Kennzeichen in **einer** Abfrage (`getTopPartnerFlags`); Quelltabelle, Fremdspalten und Signal-Treffer je Request gecacht.
+- Einstellungen: eine Abfrage je Request (`loadSettingRows`/`settingsCache`, Invalidierung beim Schreiben).
+- `ensureSchemaForSave()` nur bei abweichender Schema-Version.
+- Neue Indizes per Migration mit `SHOW INDEX`-Prüfung: Events `idx_status_updated (status, updated_at)`, `idx_start_date`; Speaker `idx_status_updated`, `idx_email`, `idx_display_name`.
+- `public.js` entfernt; Admin-Assets nicht mehr im globalen `head`.
+- Views nach `admin/views/` ausgelagert; tote Dateien/Funktionen entfernt.
+
+#### 4. Erweiterungspunkte
+
+| Hook/Service | Status | Begründung |
+|---|---|---|
+| `cms_sitemap_entries` | umgesetzt | `/events`, `/speakers` + alle veröffentlichten Event-/Speaker-Detailseiten mit `lastmod` (max. 5000 je Typ); `/event-speakers` als Alias nicht gemeldet |
+| `search_results` | umgesetzt | Scopes `events`/`speakers`, nur veröffentlicht, alle Suchwörter (≥ 2 Zeichen, max. 6) per Prepared Statement, LIMIT int, `try/catch`, `$results` sonst unverändert |
+| SEO-Meta (`SEOService::setRequestMeta`) | umgesetzt | Detailseiten (Titel/Beschreibung aus SEO-Feldern mit Fallback, Canonical, og_image absolut, schema_type Event/Person), Übersichten (noindex bei Suche/Folgeseiten); Speaker-Alias kanonisch auf `/speakers/…` |
+| `cms_member_export_data` | umgesetzt | Speaker-Profile, deren E-Mail der Mitglieds-E-Mail entspricht (Schlüssel `event_speaker_profiles`) |
+| `dsgvo_export_data` / `dsgvo_delete_data` | bewusst nicht | Speaker/Event-Kontakte sind redaktionelle Datensätze und **nicht an CMS-Konten gebunden** (kein `user_id`). Automatisches Löschen bei Kontolöschung wäre fachlich falsch; Löschung erfolgt im Admin (Einzeln/Sammelaktion). Selbstauskunft per E-Mail-Abgleich ist über den Filter abgedeckt |
+| `DataRetentionService::registerRule` | bewusst nicht | Keine Logs/Anfragen mit Löschfrist; vergangene Events sind gewolltes Archiv |
+| `AdminNoticeService::registerCheck` | umgesetzt | „Tabellen fehlen“ (danger) bzw. „Schema-Aktualisierung ausstehend“ (warning); billige Prüfung (tableExists + 1 Settings-Abfrage) |
+| `ContentTypeRegistry` | bewusst nicht | Eigenes Datenmodell mit Seed-Abgleich und Relationstabelle, kein Papierkorb; die Provider-Schnittstelle lässt sich nicht ohne Doppelpflege sauber abbilden |
+| `CMS\Http\Client` | war bereits umgesetzt | Google-Abruf (`fetchGoogleSearchItems`) nutzt den Client (timeout 12 s, maxBytes, Content-Type-Whitelist) |
+| `CryptoService` | umgesetzt | Google API-Key |
+| `OptionStore` | nicht genutzt | Plugin speichert in eigener Tabelle; stattdessen eine gebündelte Abfrage je Request mit Cache |
+| `PluginManager::isPluginActive` | umgesetzt | Gate für die Experts-&-Companies-Integration |
+
+#### 5. Prüfungen
+
+- `php -l`: 21 PHP-Dateien, 0 Fehler.
+- `grep onclick=|onchange=|onsubmit=|oninput=|onload=|javascript:` → leer.
+- `grep curl_close|finfo_close|imagedestroy|MYSQL_ATTR_|renderAdminLayoutStart|renderAdminLayoutEnd|buildSidebarPluginIcon|isSlugActive|invalidateFeedCache|plugin_uninstalled|admin-menu.php` → leer.
+- `grep innerHTML|insertAdjacentHTML|outerHTML assets` → leer (die synchronisierte `phinit-admin-nav.css` enthält ohnehin kein JS).
+- `grep "<style\|<script>" --include=*.php` → nur `cms-365neteventsandspeaker.php:276` (öffentliches Einstellungs-CSS mit `nonceAttr()`).
+- Alle PHP-Dateien mit `declare(strict_types=1)` und ABSPATH-Guard.
+- `update.json`, `plugin.json`: `json_decode(..., JSON_THROW_ON_ERROR)` ok.
+- Render-Test mit Stub-Harness (Scratchpad `evtest/harness.php`, Stubs für `CMS\Hooks`, `CMS\Security`, `CMS\Auth`): alle 7 Views (inkl. neues/bearbeitetes Event, Speaker, Einstellungen, Taxonomien) rendern ohne Notice/Warning unter `error_reporting=-1`; Links/Formularziele auf `?view=…`, GET-Toolbar mit verstecktem `view`, Escaping von Titeln geprüft; `csvCell('=SUM(1)')` → `'=SUM(1)`.
+- Formulare/Pfade (Code-Lesen): Event speichern (`cms365_action=save`, CSRF `365net_event_form`, 303 auf Bearbeiten + `saved`), Event löschen (Formular/Zeile, `365net_admin`), Sammelaktion, Verknüpfungs-Sync, Speaker speichern/löschen/Sammelaktion, Taxonomien, Einstellungen (+ Google-Daten), Backfill Beschreibungen/Speaker, CSV-Export; alte POST-Routen → 307 → gleiche Handler.
+
+#### 6. Offene Punkte / Risiken
+
+- Kein laufendes CMS/keine Datenbank im Container: Migrationen (neue Indizes, Schema 4.0.0), SQL der neuen Abfragen (Bulk, Export, Suche, Sitemap, Top-Partner-Batch), Redirect-Verhalten im AdminRouter + Helfer und das Zusammenspiel mit `cms-inline-actions.js` (`data-cms-confirm`) sind nur durch Code-Lesen geprüft.
+- Beim Update auf 4.0.0 läuft `ensureSchema()` einmal (neue Schema-Version): dabei wie bisher Seeds (nur bei leerer Tabelle), `purgeNonPersonSpeakers()` (löscht Nicht-Personen-Speaker, setzt `company = NULL`) und Auto-Link – das war schon in 3.x das Verhalten bei Versionswechsel.
+- `WHERE`-Bedingungen nutzen Meta-Spalten (`tags`, `specializations`, `excerpt`) direkt; sie existieren nach der Migration. Schlägt ein `ALTER` fehl, liefert die Suche einen abgefangenen Fehler (Sitemap/Suche brechen nicht), die Admin-Suche würde einen Fehler werfen.
+- Öffentliche Templates enthalten weiterhin `style="--cms-events-…-bg:…"` (je Datensatz gesetzte CSS-Variable) und Emojis in Buttons; bei strenger `style-src` ohne `unsafe-inline` würden diese Variablen ignoriert (Fallback-Farbe greift). Nicht angefasst, da öffentliches Design.
+- `.env` im Plugin-Ordner wird aus Kompatibilitätsgründen noch gelesen (bei nginx selbst absichern, siehe `.env.example`).
+- `index.json` im Repo-Root (außerhalb des Plugin-Ordners) führt noch den Namen „365 | Events & Speaker“ – nicht geändert (Ordner-Regel).
+
+### Bericht: 365NET-expertsandcompanie → 2.0.0 (365CMS 4.0.0)
+
+Plugin-Ordner: `365NET-expertsandcompanie` · Bootstrap `cms-365NETexpertsandcompanie.php` · Version 1.2.0 → **2.0.0**
+
+#### 1. Inventar
+
+**Dateien (nach Umbau)**
+- `cms-365NETexpertsandcompanie.php` – Bootstrap, Frontend-Styles inkl. Design-Variablen-Link, `designVarsCss()`, Schema-Gate, Lifecycle-Funktionen
+- `includes/class-database.php` – Schema/Migration (Schema-Version 2.0.0), Seed, CRUD, Batch-Abfragen, Löschen/Status, Export, Suche, Sitemap, DSGVO
+- `includes/class-admin.php` – Admin-Menü, `adopt()`-Optionen (Stats/Status/Dashboard), Seiten-Controller, POST-Handler, Formular-Bausteine
+- `includes/class-post-type.php` – öffentliche Routen, Design-Variablen-Stylesheet, Bild-Upload-API, Umleitungen alter Admin-Adressen, SEO-Meta
+- `includes/class-transfer.php` (neu) – CSV-Export/-Import/-Vorlage, gemeinsamer CSV-Parser (auch für Seeds)
+- `includes/class-integrations.php` (neu) – Sitemap, Suche, DSGVO, Systemhinweis, Cron-Aufräumen
+- `includes/class-template-loader.php` – unverändert
+- `admin/views/` (neu) – `_notice`, `overview`, `public-hub`, `experts-list`, `companies-list`, `expert-form`, `company-form`, `settings`, `transfer`
+- `templates/*.php` (5) – Inline-Styles entfernt
+- `assets/css/admin.css` (neu geschrieben), `assets/js/admin-media.js` (neu geschrieben), `assets/js/admin.js` (neu), `assets/css/style.css` (unverändert)
+- Synchronisierte Kopien **unverändert**: `includes/phinit-admin-nav.php`, `includes/plugin-workspace.php`, `assets/css/phinit-admin-nav.css` (per `git diff 9d925c7` geprüft)
+- `defaults/seed-data.php` (nutzt jetzt den Transfer-Parser), `defaults/experts.csv`, `defaults/companies.csv`
+- Metadaten: `update.json`, `plugin.json` (neu), `CHANGELOG.md` (neu), `README.md`, `FeatureList.md`
+
+**Tabellen** (unverändert benannt, Schnittstelle zum Events-Plugin): `{prefix}365net_excomp_experts` (+ neue Spalte `email`), `{prefix}365net_excomp_companies`, `{prefix}365net_excomp_settings`; neue Indizes `idx_updated`, `idx_email`, `idx_status_updated` (beide Entitäten).
+
+**Admin** (Top-Level-Slug `experts-companie`, Capability `manage_options`, Unterseiten-Slugs beibehalten; die PhinIT-Navigation stellt sie als `…/experts-companie/experts-companie?view=<slug>` dar, Pfad-Routen leitet sie weiter):
+
+| Seite | Slug | URL |
+|---|---|---|
+| Übersicht | `experts-companie` | `/admin/plugins/experts-companie` |
+| Public Hub | `experts-companie-public` | `/admin/plugins/experts-companie/experts-companie-public` |
+| Experts (Liste, `?action=edit&id=`) | `experts-companie-experts` | `/admin/plugins/experts-companie/experts-companie-experts` |
+| Companies | `experts-companie-companies` | `…/experts-companie-companies` |
+| Import & Export (neu) | `experts-companie-transfer` | `…/experts-companie-transfer` |
+| Einstellungen | `experts-companie-settings` | `…/experts-companie-settings` |
+| Expert anlegen (versteckt, Elternpunkt Experts) | `experts-companie-expert-new` | `…/experts-companie-expert-new` |
+| Company anlegen (versteckt, Elternpunkt Companies) | `experts-companie-company-new` | `…/experts-companie-company-new` |
+
+Alte Routen `/admin/experts-companie[/…]` (GET + POST) leiten weiter (GET 301, POST 307).
+
+**Public-Routen:** `/experts-companie`, `/experts-and-companie`, `/experts-companies`, `/experts`, `/experts/:id`, `/companies`, `/companies/:id`, neu `/experts-companie/design-vars` (CSS). API: `POST /api/experts-companie/media-upload`. Kein Member-Bereich.
+
+**Schnittstellen zum Nachbarn 365NET-eventsandspeaker** (per `grep -rn` geprüft, nicht gebrochen): Tabellennamen `365net_excomp_experts/companies` und Spalten (`id, name, website, logo_url, location_city, industry, linked_expert_id, linked_speaker_id, status, first_name, last_name, email, position, company, photo_url, linked_company_id, is_top_partner`), Konstante `CMS_365NET_EXCOMP_VERSION`, öffentliche URLs `/experts/<id>`, `/companies/<id>`. Die neue Expert-Spalte `email` wird vom Events-Plugin bereits optional gelesen (Speaker-Abgleich). Im Nachbarordner wurde nichts geändert.
+
+#### 2. Gefundene Mängel (vorher, Stand `9d925c7`)
+
+**Punkt 1 – Layout**
+- `includes/class-admin.php:73-80` Menütitel „PHINIT | Experts & Companies“, Icon als Emoji `🤝`; `:36-37` adopt-Titel „PHINIT | …“.
+- Eigene Admin-Routen außerhalb des AdminRouters (`class-post-type.php:44-58`); Menü-Callbacks waren nur Redirect-Brücken (`class-admin.php:93-126`).
+- Eigene Shell: `class-admin.php:1053-1086` (`cms_plugin_admin_layout_start`, `renderAdminLayoutStart`, `header.php`/`sidebar.php`), `:59-67` Require `admin/partials/admin-menu.php` und `shared/admin/plugin-admin-contract.php`.
+- Unterseiten-Header mit Emojis und eigenen Klassen (`cms-excomp-admin-header`, z. B. `:413`, `:539`, `:629`, `:723`, `:841`), Sortier-Buttons als zweite Leiste statt Toolbar, Meldungen als `admin-card` statt `alert`.
+- `admin.css` (8 KB): `border-radius` 10–24px, feste Farben (`#fff`, `#64748b` …), Schatten/Verläufe, unscoped Klassen, tote Klassen (`cms-excomp-admin-card--experts`, `-grid`); Laden global per Hook `head` (`cms-365NET…php:218-228`) und zusätzlich als Inline-`<style>` (`class-admin.php:1063/1073/1082`).
+- 6× `<style>`: `printInlineStyle()` (`cms-365NET…php:249-275`) + Design-Variablen in 5 Templates (`archive-experts.php:123`, `archive-companies.php:123`, `archive-experts-companie.php:109`, `single-expert.php:72`, `single-company.php:72`); zusätzlich `style.css` komplett inline in jedem Template (`:15`).
+- Inline-Script-Block `class-admin.php:1103` (`<script type="application/json">`).
+- 7× `innerHTML` in `assets/js/admin-media.js:64, 93, 128, 131, 141, 167, 229`.
+- „Public Hub“ war kein Inhalt, sondern ein Redirect auf `/experts` (`class-admin.php:98-101`).
+
+**Punkt 2 – Kompatibilität 4.0.0**
+- Keine Lifecycle-Funktionen; Aktivierung über Hook `plugin_activated` (`cms-365NET…php:141`).
+- Header ohne `Requires CMS/at least/PHP`; `update.json` `min_cms_version 3.0.0`, `min_php 8.1`.
+- Toter Filter `admin_menu_items` (`class-admin.php:51`, `:139-151`; vom Core nicht mehr ausgewertet).
+- Keine Sitemap-, Such-, DSGVO-, Systemhinweis-Anbindung; keine SEO-Meta; unbekannte Detailseiten mit HTTP 200.
+
+**Punkt 3 – Unfertiges**
+- Keine Lösch-Funktion für Experts/Companies (kein Handler), keine Sammelaktionen, kein Status-Filter, Liste hart auf 400 Einträge (`class-post-type.php:405`, `:512`) ohne Seiten.
+- Kein CSV-Import/-Export (`defaults/seed-data.php:6` „Keine Upload- oder Import-Funktion“).
+- Status als Freitextfeld (`class-admin.php:787`, `:862`).
+- **Bug:** `saveSettings()` (`class-database.php:174-204`) iterierte über alle geladenen Schlüssel inkl. `schema_version` und leerte nicht gesendete Felder (`schema_version`, `layout_grid_gap`) bei jedem Speichern.
+- Fehlermeldung bei `?error=save` wurde nirgends angezeigt; `?saved=1` in Listen ohne Ausgabe.
+
+**Punkt 4 – Sicherheit**
+- Design-Variablen nur `htmlspecialchars` in einem `<style>`-Block → CSS-Injektion über Einstellungen möglich (`archive-experts.php:107-124` u. a.); Header-Button-URLs erlaubten `//host`.
+- Upload (`class-post-type.php:633-690`): Endungen inkl. `bmp`, `ico`; MIME nicht an die Endung gebunden (`uploadedFileIsImage` akzeptierte jedes `image/*` bzw. `exif`/`getimagesize`-Treffer); SVG-Prüfung ohne Entity-/externe-URL-Checks; vorhersagbare Dateinamen; Kommentar mit `finfo_close()` (`:701`).
+- Redirects über `CMS\Router::redirect()` ohne `safeLocalPath`.
+
+**Punkt 5 – Performance/Best Practice**
+- `ensureSchema()` (CREATE TABLE IF NOT EXISTS, SHOW COLUMNS, Seed-COUNT, Speaker-Sync mit bis zu 4.000 UPDATEs) bei **jedem** Request über `cms_init` (`cms-365NET…php:171-181`).
+- N+1 in den Archiven: je Expert bis zu 3, je Company bis zu 5 Abfragen (`class-post-type.php:299-339`), bei 30 Karten > 200 Abfragen im Hub.
+- 2× `SELECT *` (`class-database.php:247`, `:262`); `getSettings()` ohne Cache (mehrfach je Request: Hauptmenü, Archive, Dashboard).
+- Views und Logik vermischt in `class-admin.php` (66 KB).
+
+#### 3. Umsetzung
+
+**Punkt 1 – Layout**
+- Menütitel/Header `365CMS | Experts & Companies`, Icon `ti ti-heart-handshake`; Callbacks rendern nur Inhalt, die (unveränderte) PhinIT-Navigation setzt Kopfzeile/KPI/Menü über den Core-Partial.
+- KPI (`adminStats()`, 2 COUNT-Abfragen): Experts, Companies, Öffentlich sichtbar, Ausgeblendet – mit Links. Status-Badge (`adminStatus()`): „Aktiv“ bzw. „Aktualisierung ausstehend“/„Datenbank fehlt“.
+- Dashboard (`adminDashboard()`): 5 Schnellaktionen, Checks (Schema-Version, öffentliche Experts/Companies x von y, Hauptmenü-Link, Upload-Ordner beschreibbar, Sitemap & Suche, Events & Speaker), Aktivität „Zuletzt bearbeitet“ mit `more_url`; darunter nur die Seed-Karte (keine KPI-Wiederholung).
+- Jede Unterseite: `admin-page-header` (h2, Einzeiler, `header-actions`) → `alert` → `form.toolbar` (Suche/Status/Sortierung, GET mit `view`) → Sammelaktions-Formular + `users-table-container`/`users-table` → Pagination. Formulare in `admin-card`-Abschnitten, Löschen mit `data-cms-confirm`. Public Hub ist jetzt eine echte Seite (Routen, Zähler, Anbindungs-Tabelle).
+- Alle `<style>`-Blöcke entfernt: `style.css` + Design-Variablen als `<link>` im Hook `head` (nur Frontend-Routen); Design-Variablen über Route `/experts-companie/design-vars?v=<hash>` (text/css, validierte Werte, `immutable`-Cache). `printInlineStyle()` bleibt als No-op für alte Theme-Overrides.
+- Medien-Konfiguration als `data-config`-Attribut (JSON mit HEX-Flags) statt Script-Block; `admin-media.js` vollständig auf `createElement`/`textContent`/`replaceChildren` umgestellt (0× innerHTML), `admin.js` für „Alle auswählen“.
+- `admin.css` neu: nur Tokens mit Fallback, Radius ≤ 2px, Dark-Mode über Tokens, Scope `.cms-plugin-admin-content`/`.cms-excomp-`; `min-width: 0` an Grid-/Flex-Kindern, `overflow-x:auto` für Tabellen. Laden nur im Callback (`printAssets()`), JS mit `defer`, Cache-Buster `?v=2.0.0`.
+
+**Punkt 2 – Kompatibilität**
+- Eigene Shell und Requires entfernt; Pfad-Routen `/admin/plugins/experts-companie/<sub>`; Formulare posten auf die eigene Unterseite; alte Adressen per `register_routes` umgeleitet (GET 301, POST 307 inkl. `excomp_action`).
+- Lifecycle `cms_365NETexpertsandcompanie_activate/_deactivate/_uninstall` am Dateiende (mit `function_exists`); `plugin_activated`-Listener entfernt. Activate: Schema + Seed; Deactivate: Systemhinweis-Cache leeren; Uninstall: eigene 3 Tabellen + eigene DSGVO-Dateien (Bilder unter `/uploads/experts-companie` bleiben bewusst).
+- Header `Requires CMS: 4.0.0`, `Requires at least: 4.0.0`, `Requires PHP: 8.4.1`; Version 2.0.0 in Header, Konstante, `update.json`, `plugin.json`. Slug in `update.json`/`plugin.json`: `cms-365netexpertsandcompanie` (= kanonischer, kleingeschriebener Slug des PluginManagers/UpdateService; `index.json` außerhalb des Ordners nutzt die Mixed-Case-Schreibweise des Ordners – case-insensitiv identisch).
+- Erweiterungspunkte siehe Abschnitt 4; alle Core-Klassen per `class_exists`/`method_exists`, Hooks in `try/catch`.
+- `declare(strict_types=1)` + ABSPATH-Guard in allen 24 PHP-Dateien; `fgetcsv/fputcsv` mit explizitem `escape ''` (PHP 8.4).
+
+**Punkt 3 – Fertiggestellt**
+- Löschen (Zeile, Bearbeiten-Seite, Sammelaktion) mit Lösen der Verweise (Companies/Experts/Speaker); Sammelaktionen aktivieren/deaktivieren/löschen; Status-Filter; Sortierung; 25 je Seite.
+- CSV: Export (Liste mit aktuellem Filter oder Import-&-Export-Seite; BOM, `;`, Formel-Schutz), leere Vorlage, Import (Format der Seed-Dateien + ID/EMAIL/PHOTO_URL/LOGO_URL/Verknüpfungen; `;`/`,`/Tab, BOM, Windows-1252, Zeilenumbrüche in Quotes; Aktualisieren per ID mit Übernahme fehlender Spalten; Ergebnis angelegt/aktualisiert/übersprungen + Zeilenfehler). Seeds nutzen denselben Parser.
+- Expert-Feld E-Mail; Status-Select; Pflichtfelder (`required`) und Fehlermeldungen; Meldungen nur über feste Codes (keine reflektierten Texte).
+- Settings-Bug behoben: nur Formularschlüssel, `schema_version` intern, nicht gesendete Felder bleiben, ungültige CSS-/URL-Werte werden abgelehnt und im Formular markiert.
+
+**Punkt 4 – Sicherheit**
+- Jede POST-Aktion: `Auth::isAdmin()` + `current_user_can('manage_options')` + CSRF (`verifyToken`; Downloads `verifyPersistentToken`). Redirects via `Security::safeLocalPath` + 303. GET verändert nichts.
+- Design-Variablen: Whitelist-Regex für Längen/Farben beim Speichern und bei der Ausgabe.
+- Upload: Endungen jpg/png/gif/webp/avif/svg, finfo-MIME je Endung, `getimagesize` für Raster, SVG-Prüfung (Scripts, Handler, `<!ENTITY`/interne DTD, `xml-stylesheet`, `javascript:`, externe href/src/url(), `@import`) – getestet mit 8 Fällen; Dateiname mit `random_bytes`; Admin + Capability + CSRF; `finfo_close()` entfällt (Objekt-API).
+- CSV-Import: Endung, finfo-MIME, 2 MB, 5.000 Zeilen; Werte laufen durch `saveExpert/saveCompany` (Sanitizing, E-Mail/URL-Validierung).
+- Alle Ausgaben escaped (Smoke-Test: `ACME <b>` erscheint nur escaped); SQL ausschließlich prepared, Spaltennamen aus Whitelists, LIMIT/OFFSET als gecastete ints, `IN (…)` über generierte Platzhalter, LIKE-Muster in Suche/Export escaped.
+
+**Punkt 5 – Performance**
+- Migration nur bei abweichender Schema-Version (`needsSchemaUpgrade()` = eine Einstellungsabfrage, ohnehin für Menü/Archive benötigt) bzw. bei Aktivierung/„Seed neu einspielen“.
+- Archive: 3 bzw. 5 Batch-Abfragen statt N+1 (`getCompaniesByIds`, `getExpertsByIds`, `getSpeakersByIds`, `getSpeakersByLinkedExpertIds`, `getExpertsByLinkedCompanyIds`, `getSpeakersByLinkedCompanyIds`) – gleiche Semantik wie zuvor (inkl. manuell verknüpfter Einträge vorn).
+- `SELECT *` → Spaltenlisten (`EXPERT_COLUMNS`/`COMPANY_COLUMNS`), `buildSelect`-Fallback `id`; Einstellungs-Cache je Request; Indizes per idempotenter Migration (information_schema-Prüfung statt `SHOW INDEX … WHERE ?`).
+- Views in `admin/views/`, tote Funktionen entfernt (`normalizePluginSlug`, `isAdminRoute`, `addMenuItem` (Admin), Bridge-Callbacks, alte Admin-Handler).
+
+#### 4. Erweiterungspunkte
+
+| Hook/Service | Status | Begründung |
+|---|---|---|
+| `cms_sitemap_entries` | umgesetzt | 3 Verzeichnisse (0.6, weekly) + alle aktiven Detailseiten (0.5, monthly, lastmod = updated_at); keine Filter-/Suchvarianten |
+| `search_results` | umgesetzt | Experts/Companies mit Status aktiv, alle Wörter (max. 6, ≥ 2 Zeichen) müssen vorkommen, `_type` `experts`/`companies`, `$context['type']` fremder Scopes → unverändert; try/catch |
+| SEO-Meta (`SEOService::setRequestMeta`) | umgesetzt | Titel/Beschreibung/Canonical; Filter-/Seitenansichten `noindex`; 404 mit `noindex` |
+| `dsgvo_export_data` | umgesetzt | Experts (neue Spalte `email`) und Companies (Kontakt-E-Mail) per E-Mail; JSON im PrivateStorage `experts-companie/privacy-exports`, Download/Löschen unter Import & Export, Audit-Log |
+| `dsgvo_delete_data` | umgesetzt | Expert-Profile der Adresse löschen (Verweise lösen), bei Companies nur E-Mail/Telefon entfernen |
+| `cms_member_export_data` | bewusst nicht | Einträge sind nicht an CMS-Konten gebunden (keine `user_id`), kein Member-Bereich; Auskunft läuft über die Admin-DSGVO-Anfrage |
+| `DataRetentionService::registerRule` | bewusst nicht | Verzeichnisdaten ohne fachliche Löschfrist; Auskunftsdateien werden per `cms_cron_daily` nach 30 Tagen entfernt |
+| `AdminNoticeService::registerCheck` | umgesetzt | „Tabellen fehlen“ (danger) / „Datenbank-Update ausstehend“ (warning); nur Einstellungs-Cache, keine schweren Queries |
+| `ContentTypeRegistry` | bewusst nicht | kein Papierkorb-Modell (kein `deleted_at`), eigener CSV-Austausch vorhanden; Provider-Schnittstelle (Trash/Exchange) ließe sich nur mit Schemaänderung sauber implementieren |
+| `CMS\Http\Client` | n. z. | keine externen Abrufe |
+| `CryptoService` | n. z. | keine Secrets |
+| `OptionStore` | n. z. | Einstellungen in eigener Tabelle, jetzt eine Abfrage je Request |
+| Member-Dashboard | n. z. | kein Member-Bereich |
+
+#### 5. Prüfungen
+
+- `php -l`: 24 PHP-Dateien, 0 Fehler (PHP 8.3).
+- `grep onclick=|onchange=|onsubmit=|oninput=|onload=|javascript:` → leer (die drei synchronisierten Helfer-Dateien ausgenommen – dort ebenfalls keine Treffer relevant).
+- `grep curl_close|finfo_close|imagedestroy|MYSQL_ATTR_|renderAdminLayoutStart|…|plugin_uninstalled` → nur Changelog-Texte (`CHANGELOG.md`, `update.json` 1.0.18).
+- `grep innerHTML|insertAdjacentHTML|outerHTML` in `assets` → leer.
+- `grep "<style\|<script>"` in PHP → leer. `SELECT *` → nur Changelog.
+- JSON: `update.json`, `plugin.json` gültig (`JSON_THROW_ON_ERROR`). JS: `node --check` für beide Dateien ok.
+- Smoke-Tests (Stubs für `CMS\Hooks`/`CMS\Security`, `error_reporting=-1`): alle 9 Views rendern ohne Notice/Warning, 19/19 Formulare und 193/193 `<div>` ausgeglichen, Escaping geprüft; CSV-Parser (BOM, Komma, mehrzeilige Felder, Windows-1252, Formel-Maskierung) und SVG-Prüfung (8 Fälle) getestet; Seed-Parser liefert 163 Experts / 104 Companies wie zuvor.
+- Admin-Pfade gedanklich durchgespielt: Seed (POST Übersicht → `excomp_admin` → 303 `?notice=seeded`), Settings (`excomp_settings_form`), Expert/Company speichern (`excomp_expert_form`/`excomp_company_form` → Bearbeiten-Seite mit Meldung), Löschen/Sammelaktion (`excomp_list`), Export/Vorlage/Auskunft-Download (`excomp_export`, persistent, Download mit `exit` ohne Layout), Import/Auskunft löschen (`excomp_transfer`), Upload-API (`editorjs_media`), alte POST-Adressen (307 → Router → PhinIT-Weiterleitung 307 → Handler).
+
+#### 6. Offene Punkte / Risiken
+
+- Kein laufendes 365CMS/MySQL im Container: SQL (Batch-Abfragen, Migration mit `ALTER TABLE … AFTER last_name`, information_schema-Indexprüfung, DSGVO-Abfragen), AdminRouter-/PhinIT-Navigation-Zusammenspiel, CSP im Browser und Downloads wurden nur per Code-Lesen bzw. Stub-Tests geprüft.
+- Design-Variablen-Route `/experts-companie/design-vars` muss vom Webserver an `index.php` durchgereicht werden (bewusst ohne `.css`-Endung gewählt); bei restriktiver Server-Konfiguration greifen die Standardwerte aus `style.css`.
+- Neues Expert-Feld E-Mail wird (wie im bestehenden Template vorgesehen) öffentlich als Kontakt-Button gezeigt – im Formular so beschriftet.
+- Vorher ungültige Design-Werte in bestehenden Installationen werden bei der Ausgabe durch Standardwerte ersetzt (bisher ungeprüft ausgegeben) – kann die Optik ändern, wenn z. B. `calc()` genutzt wurde.
+- Biografien und Beschreibungen unter 250 Wörtern werden (Altverhalten) auch beim CSV-Import automatisch verlängert.
+- Uninstall löscht Tabellen; das Events-Plugin verliert dann seine Expert/Company-Verknüpfungsquelle (es prüft `tableExists`, bricht also nicht).
+- `index.json` (außerhalb des Ordners) trägt noch den alten Namen „365 | Experts & Companies“ und `cms-365NETexpertsandcompanie` als Slug – ggf. zentral angleichen.
 

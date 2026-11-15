@@ -1,37 +1,43 @@
-# 365NET | Experts & Companies
+# 365CMS | Experts & Companies
 
-Version: 1.2.0
-Kombi-Plugin für eine gemeinsame Public-Übersicht von **Experts** und **Companies**.
+Version: 2.0.0
 
-## Features
+Kombi-Plugin für Experts und Companies mit gemeinsamer Public-Übersicht, eigenen Verzeichnissen und Detailseiten.
 
-- Gemeinsamer Public-Hub unter:
-  - `/experts-companie`
-  - `/experts-and-companie`
-  - `/experts-companies`
-  - `/experts`
-  - `/companies`
-- Eigener Admin-Einstieg: **PHINIT | Experts & Companies** im einheitlichen Plugin-Layout von 365CMS 4.0.0: Kopfzeile mit vier KPI-Karten (Experts, Companies, öffentlich sichtbar, ausgeblendet), links das Plugin-Menü (Übersicht, Experts, Companies, Einstellungen), rechts der Inhalt
-- Übersicht unter `/admin/experts-companie`: Schnellaktionen (Neuer Expert, Neue Company, Texte & Layout, öffentlicher Hub), Status-/System-Check (Tabellen, öffentliche Experts/Companies, Hauptmenü-Link, Speaker-Verknüpfung) und zuletzt bearbeitete Einträge
-- Vollständig standalone: eigene Tabellen, eigene Seed-Daten, eigenes CRUD
-- UI angelehnt an Events/Speakers:
-  - **Experts** in Orange-Tönen
-  - **Firmen** in Grün-Tönen
+## Anforderungen
+
+- 365CMS 4.0.0 oder neuer
+- PHP 8.4.1 oder neuer
+- Optional: Plugin „Events & Speaker“ (Verknüpfung von Experts/Companies mit Speakern)
+
+## Öffentliche Seiten
+
+- Gemeinsamer Hub: `/experts-companie` (Aliase `/experts-and-companie`, `/experts-companies`)
+- Verzeichnisse: `/experts`, `/companies`; Detailseiten `/experts/<id>`, `/companies/<id>`
+- Sitemap (`plugins.xml`), Seitensuche und SEO-Meta sind angebunden.
+
+## Admin
+
+`/admin/plugins/experts-companie` – Menütitel **365CMS | Experts & Companies** im Layout-Vertrag von 365CMS 4.0.0:
+
+- Übersicht: Schnellaktionen, Status-/System-Check, zuletzt bearbeitet, Seed-Daten
+- Public Hub: Routen, Hauptmenü-Link, Sitemap/Suche
+- Experts / Companies: Suche, Status-Filter, Sortierung, Seiten, Sammelaktionen, Bearbeiten, Löschen
+- Import & Export: CSV-Export/-Import (Format von `defaults/*.csv`), Vorlage, DSGVO-Auskunftsdateien
+- Einstellungen: Navigation, Texte, Layout, Rundungen, Farben
 
 ## Technische Struktur
 
-- `cms-365NETexpertsandcompanie.php` – Bootstrap & Hook-Registrierung
-- `includes/class-post-type.php` – Routen, Datenaggregation, Controller
-- `includes/class-database.php` – Schema, Seed, CRUD
-- `includes/class-admin.php` – Admin-Menü und Übersicht
-- `includes/class-template-loader.php` – Template-Lookup inkl. Theme-Override
-- `templates/archive-experts-companie.php` – Public-Ausgabe
-- `templates/archive-experts.php` – Dedicated Experts Publicsite
-- `templates/archive-companies.php` – Dedicated Companies Publicsite
-- `assets/css/style.css` – Public-Styling
-- `assets/css/admin.css` – Admin-Styling
+- `cms-365NETexpertsandcompanie.php` – Bootstrap, Frontend-Styles, Design-Variablen, Lifecycle-Funktionen
+- `includes/class-database.php` – Schema (Version in `365net_excomp_settings`), Seed, CRUD, Batch-Abfragen
+- `includes/class-admin.php` – Admin-Menü, Seiten-Controller; Views in `admin/views/`
+- `includes/class-post-type.php` – öffentliche Routen, Bild-Upload, Weiterleitungen alter Admin-Adressen
+- `includes/class-transfer.php` – CSV-Import/-Export
+- `includes/class-integrations.php` – Sitemap, Suche, DSGVO, Systemhinweise
+- `includes/class-template-loader.php` – Templates inkl. Theme-Override (`<theme>/cms-expertsandcompanie/`)
+- `includes/phinit-admin-nav.php`, `includes/plugin-workspace.php`, `assets/css/phinit-admin-nav.css` – synchronisierte Kopien (nicht direkt bearbeiten)
 
 ## Hinweise
 
-- Das Plugin nutzt ausschließlich eigene Tabellen: `365net_excomp_experts`, `365net_excomp_companies`, `365net_excomp_settings`.
-- Seed-Daten kommen fest eingebettet aus `defaults/experts.csv` und `defaults/companies.csv`.
+- Eigene Tabellen: `365net_excomp_experts`, `365net_excomp_companies`, `365net_excomp_settings` (werden auch vom Plugin „Events & Speaker“ gelesen).
+- Seed-Daten: `defaults/experts.csv`, `defaults/companies.csv`.
