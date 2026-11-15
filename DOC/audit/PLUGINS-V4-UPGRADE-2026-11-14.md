@@ -16,8 +16,8 @@
 |---|---|---|---|---:|---:|---|---|
 | CMS Beratung | `cms-beratung/` | `365CMS \| Beratung` | 2.9.794 → 3.0.0 | 5.030 | 1.771 / 4.852 | `beratung_landingpages`, `beratung_design_presets`, `beratung_settings`, `beratung_form_submissions` | [x] |
 | CMS Booking | `cms-booking/` | `365CMS \| Buchungen` | 3.0.8 → 4.0.0 | 6.484 | 430 / 773 | `bookings`, `booking_providers`, `booking_services`, `booking_availability`, `booking_meta`, `booking_settings` | [x] |
-| CMS Projects | `cms-projects/` | `365CMS \| Projekte` | 3.0.4 → 4.0.0 | 3.788 | 171 / 626 | `projects_projects`, `projects_boards`, `projects_widgets`, `projects_tasks`, `projects_audit_logs` | [x] |
-| CMS Promos | `cms-promos/` | `365CMS \| Promos` | 3.0.4 → 4.0.0 | 2.456 | 40 / 531 | `promos`, `promo_placements`, `promo_settings` | [x] |
+| CMS Projects | `cms-projects/` | `365CMS \| Projekte` | 3.0.4 → 4.0.0 → 4.0.1 | 3.788 | 171 / 626 | `projects_projects`, `projects_boards`, `projects_widgets`, `projects_tasks`, `projects_audit_logs` | [x] |
+| CMS Promos | `cms-promos/` | `365CMS \| Promos` | 3.0.4 → 4.0.0 → 4.0.1 | 2.456 | 40 / 531 | `promos`, `promo_placements`, `promo_settings` | [x] |
 
 Je Plugin liegt die aktuelle technische Dokumentation unter `<plugin>/DOC/`: `README.md` (Admin-Menü, KPIs, Routen, Core-Integrationen, Lebenszyklus, Sicherheit, Assets), `DATABASE.md`, `HOOKS.md`, `API.md`; die Versionshistorie bleibt in `<plugin>/CHANGELOG.md`.
 
@@ -40,7 +40,7 @@ Abgehakt (`[x]`) wird ein Plugin erst, wenn alle fünf Phasen umgesetzt und alle
 
 ## 3. Befunde & Umsetzung je Plugin
 
-_(wird je Plugin während der Umsetzung ergänzt)_
+Je Plugin: Befund vor der Umsetzung, umgesetzte Änderungen je Phase und Prüfung. Fehler, die erst der Integrationstest (Abschnitt 5) gefunden hat, stehen dort.
 
 ### 3.1 CMS Promos (`cms-promos`, 3.0.4 → 4.0.0) – [x] abgeschlossen
 
@@ -170,11 +170,56 @@ _(wird je Plugin während der Umsetzung ergänzt)_
 
 ## 4. Abschluss
 
-| Plugin | Phasen 1–5 | `php -l` | Smoke-Test Admin | DOC |
-|---|---|---|---|---|
-| cms-promos 4.0.0 | [x] | [x] | 7 Ansichten | [x] |
-| cms-projects 4.0.0 | [x] | [x] | 9 Ansichten | [x] |
-| cms-booking 4.0.0 | [x] | [x] | 11 Ansichten | [x] |
-| cms-beratung 3.0.0 | [x] | [x] | 14 Ansichten | [x] |
+| Plugin | Phasen 1–5 | `php -l` | Smoke-Test Admin | Integrationstest (Abschn. 5) | DOC |
+|---|---|---|---|---|---|
+| cms-promos 4.0.1 | [x] | [x] | 7 Ansichten | [x] | [x] |
+| cms-projects 4.0.1 | [x] | [x] | 9 Ansichten | [x] | [x] |
+| cms-booking 4.0.0 | [x] | [x] | 11 Ansichten | [x] | [x] |
+| cms-beratung 3.0.0 | [x] | [x] | 14 Ansichten | [x] | [x] |
 
-**Nicht durchgeführt:** Ein Lauf gegen eine echte 365CMS-4.0.0-Installation (Datenbank, Mailversand, Cron, Browser mit Produktiv-CSP). Die Smoke-Tests nutzen das echte Core-Partial `plugin-workspace.php` mit gestubbten Datenklassen; SQL wurde nur per Review geprüft. Vor dem Release empfohlen: Aktivierung/Migration auf einer bestehenden 3.x-Datenbank, Mail-/Cron-Test (Booking-Erinnerungen, Beratung-Benachrichtigung) und eine Prüfung der Builder-Oberfläche im Browser.
+Den Lauf gegen eine echte Installation, der bei der ersten Fassung dieses Protokolls noch fehlte, dokumentiert Abschnitt 5.
+
+## 5. Integrationstest gegen eine echte 365CMS-4.0.0-Installation (2026-11-15)
+
+### 5.1 Umgebung
+
+- Core `365CMS.DE` 4.0.0 (unverändert bis auf testbedingte Anpassungen, siehe unten), frische Installation über den Installer, **MariaDB 10.11**, PHP-Built-in-Server mit Core-Router, Admin-Login mit Produktiv-CSP (`script-src 'self' 'nonce-…'`, `style-src` ohne `unsafe-inline`, Trusted Types).
+- Alle vier Plugins aus diesem Repository installiert und über die Plugin-Verwaltung aktiviert (Tabellen, Indizes und Versionsoptionen über die Lifecycle-Callbacks).
+- **Einschränkungen der Testumgebung:** In der Sandbox stand nur **PHP 8.3** zur Verfügung; für den Test wurden in einer *Kopie* des Cores `Version::MIN_PHP`, die PHP-Prüfung in `config.php` und `validateBundledPhpPlatform()` gelockert. Die Plugins nutzen keine 8.4-only-Syntax (`php -l`). Es gab keinen Mailserver: `mail()` schlug erwartungsgemäß fehl; geprüft wurde, dass die Plugins Versand anstoßen, Fehler protokollieren und den Ablauf nicht abbrechen.
+
+### 5.2 Abgedeckte Abläufe (HTTP-Client mit Session, echte Formulare inkl. CSRF-Token)
+
+| Plugin | Geprüft |
+|---|---|
+| Alle | Crawl aller 32 Plugin-Admin-Seiten (Status 200, kein PHP-Notice, genau ein `aria-current`, kein Fallback „Plugin-Adminseite nicht gefunden“); Formular-POST mit falschem CSRF-Token wird abgewiesen |
+| cms-promos | Platzierung/Promo anlegen, Validierung (Titel, URL, Zeitraum), Duplizieren, Filter, öffentliches Archiv, Theme-Hook-Fläche auf der Startseite, Klick-Redirect mit UTM, Entwurf → 404, CSV/JSON-Export, Export mit falschem Token, Statistik zurücksetzen, Einstellungen speichern/validieren/zurücksetzen, Löschen |
+| cms-projects | Projekt-CRUD, Boards/Widgets/Tickets, Ticket verschieben, Überfällig-KPI, JSON/CSV-Export, öffentliche Projektseiten mit Akzentfarbe, Suche, Einstellungen, Tabellenreparatur, kaskadierendes Löschen |
+| cms-booking | Anbieter anlegen/bearbeiten, Wochenplan inkl. Validierung, Abwesenheiten, Leistung (https-Pflicht für Meeting-Links), Slot-API (gesperrter Tag leer, Überschneidungen konsistent mit dem Absenden), **öffentliche Buchung**, Bestätigungsseite mit Token (falsches Token → 403), iCal, Admin-Bestätigung, Notiz, Erinnerungen, CSV, Primärfarbe, Abschließen, Anonymisieren, Member-Seite, Löschen |
+| cms-beratung | Landingpage aus Vorlage speichern, Entwurf → 404 / Vorschau für Admins, Veröffentlichen, `/en/…`, Filter, **Kontaktformular** (Erfolg, Validierung, falsches Token → 403), Anfragen: Detail, Status/Notiz, Filter, CSV (Formel-Schutz `'=`), Export mit falschem Token, Löschfrist; Presets anlegen/bearbeiten/übernehmen/löschen (System-Preset geschützt), Einstellungen, FAQs, JSON-Export/-Import (inkl. defektem JSON), Sitemap und Suche, Duplizieren/Deaktivieren/Löschen |
+
+### 5.3 Browser-Prüfung (Chromium/Playwright)
+
+- 35 Seiten (alle Plugin-Admin-Seiten, öffentliche Archive, Landingpage) mit vollständig geladenen Core-Assets: **0 Konsolenfehler, 0 JavaScript-Fehler, 0 CSP-Verletzungen** (`securitypolicyviolation`).
+- Beratung-Builder: 13 Bereiche und 29 Hero-Felder werden aus dem JSON aufgebaut; Speichern über die JS-Oberfläche serialisiert Bereiche, Hero, Kontakt und Design korrekt. Kontaktformular im Browser abgeschickt.
+- Mobil (390 px): kein horizontales Scrollen in den vier Plugin-Admins; der Workspace stapelt unter 992 px.
+
+### 5.4 Gefundene und behobene Fehler
+
+| Plugin | Fehler | Ursache | Behebung |
+|---|---|---|---|
+| cms-beratung | Plugin lud weder Routen noch Admin-Seiten | `if (class_exists('CMS_Beratung', false)) return;` vor einer unbedingten Klassendeklaration – PHP registriert die Klasse beim Kompilieren, der Guard war immer wahr | Klasse in `if (!class_exists(…)) { … }` |
+| cms-booking | Öffentliches Buchungsformular → 403 | Core-Router verlangt für öffentliche POSTs `form_guard`; das Formular sendet sein eigenes Token | Filter `cms_public_form_persistent_token` für `/booking/<anbieter>/<leistung>` |
+| cms-booking | Buchung eingeloggter Mitglieder schlug fehl | `CMS\Auth::getUser()` existiert in 4.0.0 nicht | `Auth::isLoggedIn()` + `Auth::instance()->currentUser()`; Fehler werden mit Datei/Zeile protokolliert |
+| cms-promos, cms-beratung | Leerer Slug ergab immer `promo` bzw. `beratung` (+ Zähler) | `??` greift bei leerem String nicht bzw. Sanitizer setzte den Fallback vor der Titel-Ableitung | Slug aus Titel/Name; Umlaute transliteriert (auch cms-projects) |
+| alle vier | Neue/geänderte öffentliche Inhalte fehlten in `plugins.xml` bis zum Tages-Cron | Core speichert das Sitemap-Bundle als Datei und verwirft es nur bei Seiten-/Beitragsänderungen | Nach relevanten Admin-Änderungen `SEOService::getInstance()->invalidateSavedSitemaps()` |
+| cms-beratung | Rechtes Inhaltsverzeichnis bei 1100–1800 px fast vollständig abgeschnitten (vorbestehend) | ältere `.is-toc-expanded`-Regel überstimmte die 280-px-Spalte | Spezifität angeglichen, Spalte inkl. Randabstand |
+| cms-beratung | Import ohne Slug meldete „Slug-Konflikt“; Editorfelder vertikal gestreckt | Vergleich mit leerem Slug; Grid-Stretch | Vergleich nur bei vorhandenem Slug; `align-content:start` |
+| cms-booking | Validierungsfehler im PHP-Fehlerprotokoll | Logging aller Exceptions | `InvalidArgumentException` wird nicht mehr geloggt |
+
+Ergebnis: Nach den Korrekturen laufen alle Abläufe aus 5.2 und 5.3 ohne Fehler; das PHP-Fehlerprotokoll enthält nur die erwarteten Mail-Fehler der Sandbox und die Warnungen der absichtlich falschen CSRF-Token.
+
+### 5.5 Weiterhin offen (nicht in der Sandbox prüfbar)
+
+- Lauf unter PHP 8.4.1 ohne Test-Anpassungen am Core.
+- Upgrade einer bestehenden 3.x-Datenbank (getestet wurde eine frische Installation; die Migrationen sind idempotent und nur bei geänderter Schema-Version aktiv).
+- Echter Mailversand (Buchungsbestätigung, Erinnerungen, Beratung-Benachrichtigung) und Ausführung von `cms_cron_hourly` über den System-Cron (die Erinnerungslogik wurde über die manuelle Admin-Aktion ausgelöst).
