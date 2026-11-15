@@ -3,6 +3,7 @@
  * Einstellungen von CMS Promos.
  *
  * @var array<string,string> $settings
+ * @var bool                 $hasWebhook
  * @var string               $csrfToken
  *
  * @package CMS_Promos
@@ -56,7 +57,14 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         <div class="pr-panel-header"><h3>Klick-Export</h3></div>
         <p class="pr-muted">Jeder Klick löst die Action <code>cms_promos_click_export</code> aus (GA4-freundliches Payload). Optional wird das Payload zusätzlich per <code>POST</code> an einen öffentlichen Webhook gesendet – über den Core-HTTP-Client mit SSRF-Schutz (keine privaten oder lokalen Ziele).</p>
         <label class="form-check"><input class="form-check-input" type="checkbox" name="click_export_enabled" value="1" <?php echo (($settings['click_export_enabled'] ?? '0') === '1') ? 'checked' : ''; ?>> <span class="form-check-label">Webhook-Export aktivieren</span></label>
-        <div class="form-group"><label class="form-label" for="ps-webhook">Webhook-URL</label><input id="ps-webhook" type="url" name="click_export_webhook_url" class="form-control" value="<?php echo $e($settings['click_export_webhook_url'] ?? ''); ?>" placeholder="https://example.com/webhooks/promo-click"></div>
+        <div class="form-group">
+            <label class="form-label" for="ps-webhook">Webhook-URL</label>
+            <input id="ps-webhook" type="url" name="click_export_webhook_url" class="form-control" value="" autocomplete="off" placeholder="<?php echo $hasWebhook ? 'Gespeichert – leer lassen zum Beibehalten' : 'https://example.com/webhooks/promo-click'; ?>">
+            <div class="form-hint">Die URL kann ein Token enthalten; sie wird verschlüsselt gespeichert und hier nicht angezeigt.</div>
+        </div>
+        <?php if ($hasWebhook): ?>
+            <label class="form-check"><input class="form-check-input" type="checkbox" name="click_export_webhook_remove" value="1"> <span class="form-check-label">Gespeicherte Webhook-URL entfernen</span></label>
+        <?php endif; ?>
     </div>
 
     <div class="pr-form-actions">

@@ -130,6 +130,7 @@ final class CMS_Promos_Admin_Pages
     {
         self::render_page('promos-settings', static function (CMS_Promos_Repository $repository): void {
             $settings = $repository->get_settings();
+            $hasWebhook = $repository->has_webhook_url();
             $csrfToken = Security::instance()->generateToken(self::CSRF_ACTION);
 
             include CMS_PROMOS_PLUGIN_DIR . 'admin/views/page-settings.php';
