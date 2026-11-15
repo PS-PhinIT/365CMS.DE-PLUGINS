@@ -1,13 +1,14 @@
 {
   "slug": "cms-beratung",
   "name": "CMS Beratung",
-  "version": "2.9.794",
-  "requires": "365CMS",
+  "version": "3.0.0",
+  "requires": "4.0.0",
   "tested": "4.0.0",
   "author": "365 Network",
   "description": "Spezialisierter 365CMS Landingpage Builder für Microsoft 365, Copilot, KI, Security, Compliance und IT Consulting Beratungsleistungen.",
   "download_url": "PLUGINS/cms-beratung/cms-beratung.zip",
   "changelog": {
+    "3.0.0": "Angleichung an 365CMS 4.0.0 – Admin im einheitlichen Plugin-Layout (KPI-Kopfzeile, linkes Menü Übersicht/Landingpages/Formular-Anfragen/M365 FAQs/Design-Presets/Globale Einstellungen/Import & Export/Hilfe, neues Dashboard mit Schnellaktionen, System-Check und neuesten Anfragen); Formular-Anfragen mit Filter, Detailansicht, Status, interner Notiz, Löschen, CSV-Export; eigene Design-Presets anlegen/bearbeiten/löschen und in die globalen Einstellungen übernehmen; JSON-Download im Export; Datenschutz-Einstellungen bearbeitbar und Löschfrist als Regel in System › Datenaufbewahrung (vorher nie ausgeführt); Vorschau über /beratung-vorschau/{id} statt verschachteltem HTML-Dokument; parametrisierte Routen statt Laden aller Landingpages bei jedem Request; Sitemap- und Suchintegration; Systemhinweis für neue Anfragen; Lebenszyklus-Callbacks; XSS-Fix im Builder (Bereichstitel), eine sanitisierte HTML-Senke (DOMPurify/Trusted Types), JSON_HEX_TAG, keine SELECT *, Admin-CSS nur mit Core-Tokens; Requires CMS 4.0.0 / PHP 8.4.1.",
     "2.9.794": "Fix PHP 8.5: Der Bild-Upload im Landingpage-Editor nutzte finfo_close(); der Deprecation-Hinweis landete bei aktivem display_errors vor der JSON-Antwort und ließ den Upload scheitern. Geprüft mit 365CMS 4.0.0: Landingpages anlegen, bearbeiten und speichern funktionieren (Fix für „Plugin-Adminseite nicht gefunden“ seit 2.9.792).",
     "2.9.793": "Admin-Seitenleiste: Der Menüeintrag heißt jetzt „365CMS | Beratung“ (bisher „Beratung“), damit die öffentlichen 365CMS-Plugins im Abschnitt „Plugin-Erweiterungen“ zusammen stehen.",
     "2.9.792": "Fix: Frischinstallation scheiterte, weil die Spaltenmigration vor dem Anlegen von form_submissions lief. Landingpage-Übersicht, „Neue Landingpage“ und Vorschau sind wieder erreichbar (Menüeintrag „Landingpages“, Unteransichten per ?view=). Toter admin_menu_items-Filter entfernt, Admin-Builder bricht bei fehlendem Ziel-Selektor nicht mehr ab. Admin-Oberfläche an das einheitliche, schlichte 365CMS-Plugin-Admin-Design angeglichen (Emoji-/Kürzel-Icons entfernt, Icon-Buttons mit Tabler-Icons, Menüname ohne Präfix); geprüft gegen 365CMS 3.4.00 inkl. Produktiv-CSP.",
@@ -104,5 +105,8 @@
     "2.9.701": "Erweiterter Landingpage Editor mit Hero Bereich, flexiblen Inhaltsbereichen, Drag-and-Drop Sections/Cards, Card-Typen und responsivem Layoutsystem.",
     "2.9.700": "Initiale Grundstruktur mit Backend-Verwaltung, Landingpage-Datenmodell, Frontend-Rendering, SEO, Formularen sowie JSON Import und Export."
   },
-  "requires_cms": "3.4.00"
+  "requires_cms": "4.0.0",
+  "min_php": "8.4.1",
+  "requires_php": "8.4.1",
+  "last_updated": "2026-11-15"
 }

@@ -89,7 +89,7 @@ final class CMS_Beratung_SEO
             'audience' => (string) ($seo['audience'] ?? 'IT Administratoren und Unternehmen'),
             'serviceType' => (string) ($seo['category'] ?? 'Microsoft 365 Consulting'),
         ];
-        echo '<script type="application/ld+json">' . json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>' . "\n";
+        echo '<script type="application/ld+json">' . json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . '</script>' . "\n";
     }
 
     /** @param array<string,mixed> $page @param array<string,string> $settings */
@@ -131,7 +131,7 @@ final class CMS_Beratung_SEO
             '@type' => 'FAQPage',
             'mainEntity' => $entities,
         ];
-        echo '<script type="application/ld+json">' . json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>' . "\n";
+        echo '<script type="application/ld+json">' . json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . '</script>' . "\n";
     }
 
     /** @param array<string,mixed> $page @param array<string,string> $settings */
@@ -146,7 +146,7 @@ final class CMS_Beratung_SEO
             ['@type' => 'ListItem', 'position' => 1, 'name' => 'Startseite', 'item' => $base . '/'],
             ['@type' => 'ListItem', 'position' => 2, 'name' => (string) ($page['public_title'] ?? 'Beratung'), 'item' => $base . '/beratung/' . trim((string) ($page['slug'] ?? ''), '/')],
         ]];
-        echo '<script type="application/ld+json">' . json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>' . "\n";
+        echo '<script type="application/ld+json">' . json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . '</script>' . "\n";
     }
 
     /** @param array<string,mixed> $page */
@@ -158,6 +158,6 @@ final class CMS_Beratung_SEO
         }
         $schema = ['@context' => 'https://schema.org', '@type' => !empty($seo['local_business_schema_enabled']) ? 'LocalBusiness' : 'Organization', 'name' => (string) ($seo['provider_name'] ?? '365CMS'), 'url' => (string) ($seo['provider_url'] ?? (defined('SITE_URL') ? SITE_URL : ''))];
         if (!empty($seo['region'])) { $schema['areaServed'] = (string) $seo['region']; }
-        echo '<script type="application/ld+json">' . json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>' . "\n";
+        echo '<script type="application/ld+json">' . json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . '</script>' . "\n";
     }
 }

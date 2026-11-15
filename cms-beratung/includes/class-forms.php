@@ -157,12 +157,9 @@ final class CMS_Beratung_Forms
 
     private static function send_mail(string $recipient, string $subject, string $body): void
     {
-        if (function_exists('cms_mail')) {
-            cms_mail($recipient, $subject, $body);
-            return;
-        }
-        if (function_exists('mail')) {
-            @mail($recipient, $subject, $body);
+        // Core-Versand (MailService: SMTP/Graph, Mail-Log); seit 365CMS 4.0.0 immer vorhanden.
+        if (!function_exists('cms_mail') || !cms_mail($recipient, $subject, $body)) {
+            error_log('[cms-beratung] Benachrichtigung konnte nicht versendet werden.');
         }
     }
 }

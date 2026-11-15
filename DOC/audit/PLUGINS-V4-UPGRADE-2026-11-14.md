@@ -5,7 +5,7 @@
 
 ## 0. Vorbemerkungen
 
-- In diesem Repository liegen die Plugins direkt im Wurzelverzeichnis (`<slug>/`); installiert werden sie nach `CMS/plugins/<slug>/`. Die im Core integrierten Plugins (`cms-contact`, `cms-downloads`, `cms-feed`, `cms-newsletter`, `cms-knowledgebase`) sind hier bereits entfernt und gehören nicht zum Umfang; `index.json` verweist aber noch auf sie (→ bereinigt).
+- In diesem Repository liegen die Plugins direkt im Wurzelverzeichnis (`<slug>/`); installiert werden sie nach `CMS/plugins/<slug>/`. Die im Core integrierten Plugins (`cms-contact`, `cms-downloads`, `cms-feed`, `cms-newsletter`, `cms-knowledgebase`) sind hier bereits entfernt und gehören nicht zum Umfang; `index.json` verwies noch auf sie und auf das entfernte `cms-forum` – bereinigt, enthält jetzt nur die vier vorhandenen Plugins.
 - **Core-Dateien:** Der Core 4.0.0 liefert den einheitlichen Plugin-Layout-Vertrag bereits vollständig aus: `admin-plugins.css` (Split-Header, KPI-Karten, `240px minmax(0, 1fr)`-Workspace, Umbruch unter `992px`, `--cms-*`/`--tblr-*`-Tokens, max. 2px Radius, Dark-Mode) und `admin/partials/plugin-workspace.php` (`cms_plugin_workspace_open()`, `cms_plugin_workspace_close()`, `cms_plugin_dashboard()`). Der `AdminRouter` lädt beides automatisch vor jedem Plugin-Callback. **Eine Core-Änderung war daher nicht nötig**; alle Plugins nutzen ausschließlich diese Core-Helfer.
 - Prüfgrundlage: `DOC/plugins/PLUGIN-DEVELOPMENT.md` (Core, Stand 2026-11-14), `AdminRouter`, `Security` (CSP `script-src 'self' 'nonce-…'`, `style-src` ohne `unsafe-inline`), `PluginDashboardRegistry::checkCapability()`, `Http\Client`, `DataRetentionService`, `AdminNoticeService`.
 - Syntaxprüfung: `php -l` auf allen PHP-Dateien (lokal PHP 8.3 CLI; die Plugins nutzen keine 8.4-only-Syntax).
@@ -14,7 +14,7 @@
 
 | Plugin | Ordner | Familie / Menütitel | Version alt → neu | PHP-Zeilen | JS/CSS-Zeilen | Eigene Tabellen | Status |
 |---|---|---|---|---:|---:|---|---|
-| CMS Beratung | `cms-beratung/` | `365CMS \| Beratung` | 2.9.794 → 3.0.0 | 5.030 | 1.771 / 4.852 | `beratung_landingpages`, `beratung_presets`, `beratung_settings`, `beratung_form_submissions` | [ ] |
+| CMS Beratung | `cms-beratung/` | `365CMS \| Beratung` | 2.9.794 → 3.0.0 | 5.030 | 1.771 / 4.852 | `beratung_landingpages`, `beratung_design_presets`, `beratung_settings`, `beratung_form_submissions` | [x] |
 | CMS Booking | `cms-booking/` | `365CMS \| Buchungen` | 3.0.8 → 4.0.0 | 6.484 | 430 / 773 | `bookings`, `booking_providers`, `booking_services`, `booking_availability`, `booking_meta`, `booking_settings` | [x] |
 | CMS Projects | `cms-projects/` | `365CMS \| Projekte` | 3.0.4 → 4.0.0 | 3.788 | 171 / 626 | `projects_projects`, `projects_boards`, `projects_widgets`, `projects_tasks`, `projects_audit_logs` | [x] |
 | CMS Promos | `cms-promos/` | `365CMS \| Promos` | 3.0.4 → 4.0.0 | 2.456 | 40 / 531 | `promos`, `promo_placements`, `promo_settings` | [x] |
@@ -135,3 +135,46 @@ _(wird je Plugin während der Umsetzung ergänzt)_
 **Dokumentation:** `cms-booking/DOC/README.md`, `DATABASE.md`, `HOOKS.md`, `API.md` (neu), `README.md`, `CHANGELOG.md`, `update.json`.
 
 **Prüfung:** `php -l` für alle PHP-Dateien fehlerfrei; Render-Smoke-Test aller 11 Admin-Ansichten (inkl. Detail-, Formular- und Verfügbarkeitsansicht) mit Core-Partial ohne Notices, ohne `style=`-/`on*=`-Attribute, genau ein `aria-current`.
+
+### 3.4 CMS Beratung (`cms-beratung`, 2.9.794 → 3.0.0) – [x] abgeschlossen
+
+**Befunde**
+
+| # | Bereich | Befund | Schwere |
+|---|---|---|---|
+| BR-1 | Sicherheit | **XSS im Builder:** Bereichstitel (`internal_name`/`title`) wurden mit `text()` statt `esc()` in ein `innerHTML`-Template eingesetzt – ausnutzbar z. B. über importiertes Landingpage-JSON | hoch |
+| BR-2 | CSP | 17 `innerHTML`-Zuweisungen in `admin-builder.js`, Inline-`style` mit hartkodiertem Verlauf in der CTA-Vorschau | mittel |
+| BR-3 | Performance | `register_routes()` lud bei **jedem** Request alle Landingpages per `SELECT *` (inkl. aller JSON-Spalten), um je Seite drei GET- und drei POST-Routen zu registrieren | hoch |
+| BR-4 | 4.0.0 | Admin-Vorschau gab ein vollständiges `<!doctype html>`-Dokument im Plugin-Callback aus → AdminRouter bettete es in die Admin-Shell ein (verschachteltes HTML, Admin-CSS auf der Vorschau) | mittel |
+| BR-5 | Unfertig | Formular-Anfragen nur als Tabelle: kein Status, keine Notiz, kein Löschen, kein Export, obwohl `update_submission()`/`delete_submissions()` existierten | hoch |
+| BR-6 | Unfertig/Datenschutz | Einstellungen `auto_delete_submissions_enabled`/`retention_days` vorhanden, `purge_old_submissions()` wurde aber nie aufgerufen; Datenschutz-Schalter (IP, User-Agent, Löschfrist, Benachrichtigung) im Formular nicht bearbeitbar | hoch |
+| BR-7 | Unfertig | Design-Presets: „Eigene Presets sind im Datenmodell vorbereitet“ – keine Anlage/Bearbeitung; Export nur als Textarea ohne Download | mittel |
+| BR-8 | Design | Eigene Layout-Shell, keine KPI-Kopfzeile, kein Dashboard, Stat-Karten im Inhalt; `admin.css` mit über 100 hartkodierten Farben und 10–24px-Radien (kein Dark-Mode) | mittel |
+| BR-9 | 4.0.0 | `shared/admin/plugin-admin-contract.php`, `cms_plugin_admin_*`-Funktionen, `plugin_activated` statt Lebenszyklus-Funktionen, Menü-Icon leer, `head`-Hook für Admin-Assets | mittel |
+| BR-10 | Sicherheit | Eingebettetes JSON ohne `JSON_HEX_TAG` (nur `</script`-Ersetzung); `@mail()`-Fallback | niedrig |
+| BR-11 | Integration | Keine Sitemap-/Suchintegration für veröffentlichte Landingpages, kein Systemhinweis für neue Anfragen | niedrig |
+
+**Umsetzung (Phasen 1–5)**
+
+1. **Design:** `render_with_layout()` auf `cms_plugin_workspace_open()` mit Titel `365CMS | Beratung`, 4 KPIs (Landingpages, veröffentlicht, neue/offene Anfragen); linkes Menü Übersicht · Landingpages · Formular-Anfragen · M365 FAQs · Design-Presets · Globale Einstellungen · Import & Export · Hilfe mit Badges; neues Dashboard über `cms_plugin_dashboard()`. Admin-CSS (3 Dateien) mechanisch auf Core-Tokens umgestellt, neue Bausteine ergänzt.
+2. **4.0.0:** Shared-Contract-Abhängigkeiten entfernt, Router-Shell, Tabler-Icon `ti-presentation`, `safeLocalPath()`, `OptionStore`; Lebenszyklus-Callbacks; `cms_sitemap_entries`, `search_results`, `DataRetentionService::registerRule('cms_beratung_submissions')`, `AdminNoticeService::registerCheck('cms_beratung_new_submissions')`; Vorschau-Route `/beratung-vorschau/{id}` über die Theme-Pipeline.
+3. **Ausbau:** Formular-Anfragen (Filter, Detail, Status, Notiz, Löschen, CSV, Bereinigen), Design-Presets (CRUD, Übernehmen), Datenschutz-Einstellungen, JSON-Download, Landingpage-Filter, Flash-Meldungen/PRG für alle Aktionen.
+4. **Sicherheit:** BR-1 behoben; eine HTML-Senke `setHtml()` (DOMPurify `RETURN_TRUSTED_TYPE`, Fallback Core-Default-Policy), `replaceChildren()` statt `innerHTML = ''`; `JSON_HEX_TAG`; Export-Token und CSV-Formel-Schutz; Mail nur über `cms_mail()`.
+5. **Speed:** Parametrisierte Routen + `resolve_public_slug()` (eine Abfrage, `JSON_EXTRACT` für Standalone-Slugs); explizite Spaltenlisten; Aggregatabfragen für Kennzahlen; Builder-JS nur im Editor.
+
+**Bewusst nicht geändert:** Das öffentliche Template `templates/landingpage.php` gibt Per-Page-Designwerte als `style="--var:…"` aus (14 Stellen). Diese werden vom Core-`InlineStyleRewriter` CSP-konform in nonce-geschützte Klassen überführt; die Werte sind farb-/zahlvalidiert. Eine Umstellung auf Klassen-Generierung im Plugin ist als Folgeaufgabe sinnvoll, war aber für die 4.0.0-Kompatibilität nicht erforderlich.
+
+**Dokumentation:** `cms-beratung/DOC/README.md`, `DATABASE.md`, `HOOKS.md`, `API.md` (neu), `DOC/GLOBAL-DESIGN-MODULE.md` (aktualisiert: `sectionContentSpacing`, Presets, CSP-Hinweis), `README.md` und `CHANGELOG.md` (neu), `update.json`.
+
+**Prüfung:** `php -l` für alle PHP-Dateien fehlerfrei, `node --check` für `admin-builder.js`; Render-Smoke-Test aller 14 Admin-Ansichten (inkl. Editor, Preset-Bearbeitung, Anfrage-Detail, Export-Anzeige) mit Core-Partial ohne Notices, ohne `style=`-Attribute, genau ein `aria-current`, Builder-Skripte nur im Editor.
+
+## 4. Abschluss
+
+| Plugin | Phasen 1–5 | `php -l` | Smoke-Test Admin | DOC |
+|---|---|---|---|---|
+| cms-promos 4.0.0 | [x] | [x] | 7 Ansichten | [x] |
+| cms-projects 4.0.0 | [x] | [x] | 9 Ansichten | [x] |
+| cms-booking 4.0.0 | [x] | [x] | 11 Ansichten | [x] |
+| cms-beratung 3.0.0 | [x] | [x] | 14 Ansichten | [x] |
+
+**Nicht durchgeführt:** Ein Lauf gegen eine echte 365CMS-4.0.0-Installation (Datenbank, Mailversand, Cron, Browser mit Produktiv-CSP). Die Smoke-Tests nutzen das echte Core-Partial `plugin-workspace.php` mit gestubbten Datenklassen; SQL wurde nur per Review geprüft. Vor dem Release empfohlen: Aktivierung/Migration auf einer bestehenden 3.x-Datenbank, Mail-/Cron-Test (Booking-Erinnerungen, Beratung-Benachrichtigung) und eine Prüfung der Builder-Oberfläche im Browser.
