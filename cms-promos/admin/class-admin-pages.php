@@ -233,6 +233,9 @@ final class CMS_Promos_Admin_Pages
 
         $success = (bool) ($result['success'] ?? false);
         self::store_notice($success, (string) ($result['message'] ?? $result['error'] ?? ''));
+        if ($success && in_array($action, ['save_promo', 'delete_promo', 'save_placement', 'delete_placement'], true)) {
+            self::invalidate_sitemaps();
+        }
 
         // Nach Fehlern im Formular bleiben, nach Erfolg zur Liste (bzw. zur duplizierten Promo).
         $query = [];
@@ -245,6 +248,18 @@ final class CMS_Promos_Admin_Pages
         }
 
         self::redirect(self::current_page(), $query);
+    }
+
+    /** Gespeichertes Sitemap-Bundle verwerfen, damit plugins.xml öffentliche Änderungen sofort zeigt. */
+    private static function invalidate_sitemaps(): void
+    {
+        if (!class_exists('CMS\\Services\\SEOService')) {
+            return;
+        }
+        try {
+            \CMS\Services\SEOService::getInstance()->invalidateSavedSitemaps();
+        } catch (\Throwable) {
+        }
     }
 
     /**

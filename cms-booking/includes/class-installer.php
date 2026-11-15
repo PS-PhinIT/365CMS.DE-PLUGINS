@@ -37,12 +37,8 @@ final class CMS_Booking_Installer
             if ($stored === CMS_BOOKING_DB_VERSION) {
                 return;
             }
-            if ($stored === '0') {
-                self::install();
-            } else {
-                self::create_tables();
-                self::store_db_version(CMS_BOOKING_DB_VERSION);
-            }
+            // Tabellen/Indizes idempotent ergänzen und fehlende Standardwerte nachtragen (INSERT IGNORE).
+            self::install();
         } catch (\Throwable $e) {
             self::log_install_error($e);
         }
@@ -214,6 +210,22 @@ final class CMS_Booking_Installer
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
         self::add_foreign_keys($pdo, $p);
+        self::ensure_index($pdo, "{$p}bookings", 'idx_reminder', "ALTER TABLE {$p}bookings ADD INDEX idx_reminder (status, reminder_sent, booking_date)");
+        self::ensure_index($pdo, "{$p}bookings", 'idx_provider_date', "ALTER TABLE {$p}bookings ADD INDEX idx_provider_date (provider_id, booking_date, status)");
+        self::ensure_index($pdo, "{$p}booking_availability", 'idx_provider_date', "ALTER TABLE {$p}booking_availability ADD INDEX idx_provider_date (provider_id, specific_date)");
+    }
+
+    private static function ensure_index(\PDO $pdo, string $table, string $index, string $ddl): void
+    {
+        $stmt = $pdo->prepare('SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1');
+        $stmt->execute([$table, $index]);
+        if ($stmt->fetchColumn() === false) {
+            try {
+                $pdo->exec($ddl);
+            } catch (\Throwable $e) {
+                error_log('[cms-booking] index skipped (' . $index . '): ' . $e->getMessage());
+            }
+        }
     }
 
     private static function add_foreign_keys(\PDO $pdo, string $p): void
@@ -361,36 +373,89 @@ final class CMS_Booking_Installer
     /*  Seeds                                                              */
     /* ================================================================== */
 
+    /**
+     * Standardwerte aller Einstellungen.
+     *
+     * @return array<string,string>
+     */
+    public static function default_settings(): array
+    {
+        return [
+            'admin_email'              => '',
+            'from_name'                => defined('SITE_NAME') ? (string) SITE_NAME : '365CMS',
+            'from_email'               => '',
+            'default_duration'         => '60',
+            'default_buffer'           => '15',
+            'default_timezone'         => 'Europe/Berlin',
+            'default_currency'         => 'EUR',
+            'booking_advance_min'      => '1',
+            'booking_advance_max'      => '90',
+            'booking_min_notice_hours' => '0',
+            'booking_daily_limit'      => '0',
+            'cancellation_hours'       => '24',
+            'auto_confirm'             => '0',
+            'send_reminders'           => '1',
+            'reminder_hours'           => '24',
+            'primary_color'            => '',
+            'retention_days'           => '730',
+        ];
+    }
+
     private static function seed_defaults(): void
     {
         $db = \CMS\Database::instance();
-        $p  = $db->getPrefix();
-
-        $defaults = [
-            'admin_email'          => '',
-            'from_name'            => defined('SITE_NAME') ? SITE_NAME : '365CMS',
-            'from_email'           => '',
-            'default_duration'     => '60',
-            'default_buffer'       => '15',
-            'default_timezone'     => 'Europe/Berlin',
-            'default_currency'     => 'EUR',
-            'booking_advance_min'  => '1',
-            'booking_advance_max'  => '90',
-            'booking_min_notice_hours' => '0',
-            'booking_daily_limit'  => '0',
-            'cancellation_hours'   => '24',
-            'auto_confirm'         => '0',
-            'send_reminders'       => '1',
-            'reminder_hours'       => '24',
-            'primary_color'        => '#3b82f6',
-        ];
-
-        $stmt = $db->prepare(
-            "INSERT IGNORE INTO {$p}booking_settings (setting_key, setting_value) VALUES (?, ?)"
-        );
-        foreach ($defaults as $k => $v) {
+        $stmt = $db->prepare("INSERT IGNORE INTO {$db->getPrefix()}booking_settings (setting_key, setting_value) VALUES (?, ?)");
+        foreach (self::default_settings() as $k => $v) {
             $stmt->execute([$k, $v]);
         }
+    }
+
+    /**
+     * Alle Einstellungen (einmal je Request gelesen, mit Standardwerten ergänzt).
+     *
+     * @return array<string,string>
+     */
+    public static function read_settings(bool $refresh = false): array
+    {
+        static $cache = null;
+        if ($cache !== null && !$refresh) {
+            return $cache;
+        }
+
+        $settings = self::default_settings();
+        try {
+            $db = \CMS\Database::instance();
+            $stmt = $db->prepare("SELECT setting_key, setting_value FROM {$db->getPrefix()}booking_settings");
+            $stmt->execute();
+            foreach ($stmt->fetchAll(\PDO::FETCH_KEY_PAIR) ?: [] as $key => $value) {
+                $settings[(string) $key] = (string) $value;
+            }
+        } catch (\Throwable $e) {
+            error_log('[cms-booking] settings not readable: ' . $e->getMessage());
+        }
+
+        return $cache = $settings;
+    }
+
+    /**
+     * @param array<string,string> $values
+     */
+    public static function write_settings(array $values): void
+    {
+        $db = \CMS\Database::instance();
+        $stmt = $db->prepare(
+            "INSERT INTO {$db->getPrefix()}booking_settings (setting_key, setting_value) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
+        );
+        foreach ($values as $key => $value) {
+            $stmt->execute([(string) $key, (string) $value]);
+        }
+        self::read_settings(true);
+    }
+
+    public static function stored_version(): string
+    {
+        return self::get_stored_version();
     }
 
     /* ================================================================== */
@@ -399,11 +464,13 @@ final class CMS_Booking_Installer
 
     private static function get_stored_version(): string
     {
+        // OptionStore: Request-Cache der Core-Optionen (keine eigene Abfrage pro Request).
         try {
+            if (class_exists('CMS\\Services\\OptionStore')) {
+                return (string) (\CMS\Services\OptionStore::getInstance()->get('booking_db_version') ?? '0');
+            }
             $db   = \CMS\Database::instance();
-            $stmt = $db->prepare(
-                "SELECT option_value FROM {$db->getPrefix()}settings WHERE option_name = ?"
-            );
+            $stmt = $db->prepare("SELECT option_value FROM {$db->getPrefix()}settings WHERE option_name = ?");
             $stmt->execute(['booking_db_version']);
             return (string) ($stmt->fetchColumn() ?: '0');
         } catch (\Throwable $e) {

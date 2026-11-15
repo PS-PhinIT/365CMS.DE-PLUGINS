@@ -329,9 +329,8 @@ final class CMS_Booking_Frontend
                     throw new \RuntimeException('Booking record missing after creation.');
                 }
 
-                if (class_exists('CMS_Booking_Notifications')) {
-                    CMS_Booking_Notifications::instance()->send_booking_created($booking);
-                }
+                // Benachrichtigungen versendet CMS_Booking_Notifications über die Action `booking_created`
+                // (ausgelöst in CMS_Booking_Bookings::create()).
 
                 // Zugangs-Token für Bestätigungsseite generieren
                 $accessToken = $this->generate_access_token($bookingId, $booking['ical_uid'] ?? '');
@@ -342,6 +341,7 @@ final class CMS_Booking_Frontend
                 header('Location: ' . $confirmUrl, true, 303);
                 exit;
             } catch (\Throwable $e) {
+                error_log('[cms-booking] Buchung konnte nicht gespeichert werden: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
                 $error = $this->t('error_save_failed', $lang, 'Beim Speichern der Buchung ist ein Fehler aufgetreten.');
             }
         }
@@ -386,7 +386,7 @@ final class CMS_Booking_Frontend
         // Token-basierter Zugangsschutz (DSGVO)
         $token = (string) ($_GET['token'] ?? '');
         $expectedToken = $this->generate_access_token($bookingId, $booking['ical_uid'] ?? '');
-        if (!hash_equals($expectedToken, $token)) {
+        if (!$this->is_valid_access_token($bookingId, (string) ($booking['ical_uid'] ?? ''), $token)) {
             http_response_code(403);
             echo '<h1>' . htmlspecialchars($this->t('access_denied', $lang, 'Zugriff verweigert'), ENT_QUOTES, 'UTF-8') . '</h1>';
             echo '<p>' . htmlspecialchars($this->t('access_token_invalid', $lang, 'Ungültiger oder fehlender Zugangs-Token.'), ENT_QUOTES, 'UTF-8') . '</p>';
@@ -428,7 +428,7 @@ final class CMS_Booking_Frontend
         // Token-basierter Zugangsschutz (DSGVO)
         $token = (string) ($_GET['token'] ?? '');
         $expectedToken = $this->generate_access_token($bookingId, $booking['ical_uid'] ?? '');
-        if (!hash_equals($expectedToken, $token)) {
+        if (!$this->is_valid_access_token($bookingId, (string) ($booking['ical_uid'] ?? ''), $token)) {
             http_response_code(403);
             echo htmlspecialchars($this->t('access_denied', $lang, 'Zugriff verweigert'), ENT_QUOTES, 'UTF-8');
             exit;
@@ -535,12 +535,11 @@ final class CMS_Booking_Frontend
 
     private function get_current_user_id(): ?int
     {
-        if (class_exists('CMS\Auth')) {
-            $auth = \CMS\Auth::instance();
-            if ($auth->isLoggedIn()) {
-                $user = $auth->getUser();
-                return isset($user['id']) ? (int) $user['id'] : null;
-            }
+        // 4.0.0: Auth::getUser() existiert nicht mehr – der angemeldete Benutzer ist ein Objekt (currentUser()).
+        if (class_exists('CMS\\Auth') && \CMS\Auth::isLoggedIn()) {
+            $user = \CMS\Auth::instance()->currentUser();
+            $id = is_object($user) ? (int) ($user->id ?? 0) : 0;
+            return $id > 0 ? $id : null;
         }
         return null;
     }
@@ -550,11 +549,40 @@ final class CMS_Booking_Frontend
      */
     private function generate_access_token(int $bookingId, string $icalUid): string
     {
-        $secret = defined('CMS_SECRET_KEY') && CMS_SECRET_KEY !== ''
-            ? (string) CMS_SECRET_KEY
-            : hash('sha256', (defined('ABSPATH') ? (string) ABSPATH : __DIR__) . '|' . (defined('SITE_URL') ? (string) SITE_URL : ''));
+        // 365CMS 4.0.0 stellt AUTH_KEY/SECURE_AUTH_KEY aus der Installation bereit; CMS_SECRET_KEY bleibt für ältere Setups.
+        $secret = '';
+        foreach (['SECURE_AUTH_KEY', 'AUTH_KEY', 'CMS_SECRET_KEY'] as $constant) {
+            if (defined($constant) && is_string(constant($constant)) && strlen((string) constant($constant)) >= 32
+                && !str_starts_with((string) constant($constant), 'REPLACE_VIA_INSTALLER')) {
+                $secret = (string) constant($constant);
+                break;
+            }
+        }
+        if ($secret === '') {
+            // Fallback: die zufällige iCal-UID (128 Bit) macht den Token auch ohne Schlüssel unvorhersagbar.
+            $secret = hash('sha256', (defined('ABSPATH') ? (string) ABSPATH : __DIR__) . '|' . (defined('SITE_URL') ? (string) SITE_URL : ''));
+        }
 
         return hash_hmac('sha256', $bookingId . ':' . $icalUid, $secret);
+    }
+
+    /**
+     * Prüft den Zugangs-Token; akzeptiert übergangsweise auch Tokens mit dem bis 3.0.8 genutzten
+     * Ersatzschlüssel, damit bereits versendete Bestätigungslinks gültig bleiben.
+     */
+    private function is_valid_access_token(int $bookingId, string $icalUid, string $token): bool
+    {
+        if ($token === '' || $icalUid === '') {
+            return false;
+        }
+
+        if (hash_equals($this->generate_access_token($bookingId, $icalUid), $token)) {
+            return true;
+        }
+
+        $legacySecret = hash('sha256', (defined('ABSPATH') ? (string) ABSPATH : __DIR__) . '|' . (defined('SITE_URL') ? (string) SITE_URL : ''));
+
+        return hash_equals(hash_hmac('sha256', $bookingId . ':' . $icalUid, $legacySecret), $token);
     }
 
     private function is_valid_time(string $time): bool

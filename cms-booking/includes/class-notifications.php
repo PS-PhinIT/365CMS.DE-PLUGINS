@@ -181,6 +181,7 @@ final class CMS_Booking_Notifications
             'provider-new-booking'  => $this->tpl_provider_new_booking(),
             'provider-cancellation' => $this->tpl_provider_cancellation(),
             'admin-new-booking'     => $this->tpl_admin_new_booking(),
+            'customer-reminder'     => $this->tpl_customer_reminder(),
         ];
 
         return $templates[$name] ?? '<p>{{customer_name}}, Ihre Buchung #{{booking_id}} wurde registriert.</p>';
@@ -209,6 +210,30 @@ final class CMS_Booking_Notifications
             <tr><td style="padding:.5rem;color:#64748b;">Preis:</td><td style="padding:.5rem;">{{price}}</td></tr>
         </table>
         <p style="color:#64748b;font-size:.875rem;">Sie erhalten eine weitere E-Mail, sobald Ihre Buchung bestätigt wird.</p>
+        <p style="margin-top:1.5rem;color:#94a3b8;font-size:.8rem;">– {{site_name}}</p>
+    </div>
+</div>
+HTML;
+    }
+
+    private function tpl_customer_reminder(): string
+    {
+        return <<<'HTML'
+<div style="max-width:600px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;">
+    <div style="background:#3b82f6;color:#fff;padding:1.5rem;text-align:center;border-radius:8px 8px 0 0;">
+        <h2 style="margin:0;font-size:1.25rem;">Terminerinnerung</h2>
+    </div>
+    <div style="padding:1.5rem;background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;">
+        <p>Hallo {{customer_name}},</p>
+        <p>wir erinnern Sie an Ihren bestätigten Termin.</p>
+        <table style="width:100%;border-collapse:collapse;margin:1rem 0;">
+            <tr><td style="padding:.5rem;color:#64748b;">Leistung:</td><td style="padding:.5rem;">{{service_title}}</td></tr>
+            <tr><td style="padding:.5rem;color:#64748b;">Anbieter:</td><td style="padding:.5rem;">{{provider_name}}</td></tr>
+            <tr><td style="padding:.5rem;color:#64748b;">Datum:</td><td style="padding:.5rem;">{{date}}</td></tr>
+            <tr><td style="padding:.5rem;color:#64748b;">Uhrzeit:</td><td style="padding:.5rem;">{{time}}</td></tr>
+            <tr><td style="padding:.5rem;color:#64748b;">Ort / Link:</td><td style="padding:.5rem;">{{meeting_url}}</td></tr>
+        </table>
+        <p style="color:#64748b;font-size:.875rem;">Falls Sie den Termin nicht wahrnehmen können, sagen Sie bitte rechtzeitig ab.</p>
         <p style="margin-top:1.5rem;color:#94a3b8;font-size:.8rem;">– {{site_name}}</p>
     </div>
 </div>
@@ -306,6 +331,11 @@ HTML;
     /*  Mail-Versand                                                       */
     /* ================================================================== */
 
+    /**
+     * Versand über den Core-MailService (SMTP/Graph, Mail-Log, Zustellfehler-Klassifizierung).
+     * Die Absenderadresse aus den Booking-Einstellungen wird als Reply-To gesetzt; der Absender
+     * selbst folgt der zentralen Mail-Konfiguration (SPF/DKIM).
+     */
     private function send(string $to, string $subject, string $htmlBody): bool
     {
         $to = $this->sanitize_email($to);
@@ -313,25 +343,53 @@ HTML;
             return false;
         }
 
-        $fromName  = $this->sanitize_header_value(
-            $this->get_setting('from_name') ?: (defined('SITE_NAME') ? SITE_NAME : '365CMS')
-        );
-        $fromEmail = $this->sanitize_email(
-            $this->get_setting('from_email') ?: (defined('ADMIN_EMAIL') ? ADMIN_EMAIL : '')
-        );
-        if ($fromEmail === '') {
-            $fromEmail = 'noreply@localhost';
-        }
         $subject = $this->sanitize_header_value($subject);
+        $headers = ['X-365CMS-Test-Source' => 'cms-booking'];
+        $replyTo = $this->sanitize_email($this->get_setting('from_email'));
+        if ($replyTo !== '') {
+            $headers['Reply-To'] = $replyTo;
+        }
 
-        $headers   = [];
-        $headers[] = 'MIME-Version: 1.0';
-        $headers[] = 'Content-Type: text/html; charset=UTF-8';
-        $headers[] = "From: {$fromName} <{$fromEmail}>";
+        if (!class_exists('CMS\\Services\\MailService')) {
+            $this->log_notice('MailService nicht verfügbar – Benachrichtigung nicht gesendet');
+            return false;
+        }
 
-        $sent = mail($to, $subject, $htmlBody, implode("\r\n", $headers));
-        if (!$sent) {
-            $this->log_notice('booking notification mail not sent');
+        try {
+            $result = \CMS\Services\MailService::getInstance()->sendDetailed($to, $subject, $htmlBody, $headers);
+        } catch (\Throwable $e) {
+            $this->log_notice('booking notification failed: ' . $e->getMessage());
+            return false;
+        }
+
+        if (empty($result['success'])) {
+            $this->log_notice('booking notification mail not sent: ' . (string) ($result['error'] ?? 'unbekannt'));
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Cron (stündlich): Erinnerungen für bestätigte Termine innerhalb von `reminder_hours` versenden.
+     * Liefert die Anzahl versendeter Erinnerungen.
+     */
+    public function send_due_reminders(): int
+    {
+        if ($this->get_setting('send_reminders') === '0') {
+            return 0;
+        }
+
+        $hours = max(1, (int) ($this->get_setting('reminder_hours') ?: 24));
+        $bookings = CMS_Booking_Bookings::instance();
+        $sent = 0;
+        foreach ($bookings->get_due_reminders($hours) as $booking) {
+            $subject = 'Terminerinnerung – ' . ($booking['service_title'] ?? 'Termin');
+            if ($this->send((string) $booking['customer_email'], $subject, $this->render_template('customer-reminder', $booking))) {
+                $sent++;
+            }
+            // Auch bei Zustellfehlern markieren, damit kein Mail-Sturm bei dauerhaft ungültigen Adressen entsteht.
+            $bookings->mark_reminder_sent((int) $booking['id']);
         }
 
         return $sent;
@@ -339,22 +397,7 @@ HTML;
 
     private function get_setting(string $key): string
     {
-        static $settings = null;
-        if (is_array($settings)) {
-            return (string) ($settings[$key] ?? '');
-        }
-
-        try {
-            $db   = \CMS\Database::instance();
-            $stmt = $db->prepare("SELECT setting_key, setting_value FROM {$db->getPrefix()}booking_settings");
-            $stmt->execute();
-            $settings = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
-        } catch (\Throwable $e) {
-            $settings = [];
-            $this->log_notice('booking settings not readable for notifications');
-        }
-
-        return (string) ($settings[$key] ?? '');
+        return (string) (CMS_Booking_Installer::read_settings()[$key] ?? '');
     }
 
     private function sanitize_email(string $email): string

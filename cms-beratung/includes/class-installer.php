@@ -29,6 +29,27 @@ final class CMS_Beratung_Installer
         self::install();
     }
 
+    /** Deinstallation: alle Plugin-Tabellen und die Versionsoption entfernen. */
+    public static function uninstall(): void
+    {
+        if (!class_exists('CMS\\Database')) {
+            return;
+        }
+        $db = \CMS\Database::instance();
+        $pdo = $db->getPdo();
+        $prefix = self::prefix($db);
+        foreach (['beratung_form_submissions', 'beratung_design_presets', 'beratung_settings', 'beratung_landingpages'] as $table) {
+            $pdo->exec('DROP TABLE IF EXISTS ' . self::quote_identifier(self::validated_table_name($prefix . $table)));
+        }
+        $stmt = $db->prepare("DELETE FROM {$prefix}settings WHERE option_name = ?");
+        $stmt->execute(['beratung_db_version']);
+    }
+
+    public static function stored_version(): string
+    {
+        return self::get_stored_version();
+    }
+
     public static function ensure_for_admin_save(): void
     {
         self::create_tables();
@@ -217,6 +238,11 @@ final class CMS_Beratung_Installer
     {
         if (!class_exists('CMS\\Database')) {
             return '0';
+        }
+
+        // OptionStore: Request-Cache der Core-Optionen (keine eigene Abfrage pro Request).
+        if (class_exists('CMS\\Services\\OptionStore')) {
+            return (string) (\CMS\Services\OptionStore::getInstance()->get('beratung_db_version') ?? '0');
         }
 
         try {

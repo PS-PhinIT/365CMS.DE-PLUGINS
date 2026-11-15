@@ -67,18 +67,17 @@ cms-booking/
     │   ├── booking-public.css
     │   └── booking-admin.css
     └── js/
-        ├── booking-public.js     ← Kalender, Slots, Stepper
-        └── booking-admin.js      ← Modale, Bestätigungen
+        └── booking-public.js     ← Kalender, Slots, Stepper
 ```
 
 ## Schnellstart
 
 1. Plugin-Ordner `cms-booking/` nach `CMS/plugins/` kopieren
 2. Im Admin unter **Plugins** das Plugin **CMS Booking** aktivieren
-3. Unter **Plugins → Buchungen → Einstellungen** die Grundkonfiguration vornehmen
-4. Anbieter werden automatisch aus verknüpften Plugins synchronisiert oder können manuell angelegt werden
-5. Leistungen je Anbieter erstellen (Dauer, Preis, Ort-Typ)
-6. Verfügbarkeiten über Wochenplan definieren
+3. Unter **365CMS | Buchungen → Einstellungen** die Grundkonfiguration vornehmen
+4. Unter **Anbieter** einen Anbieter anlegen (oder aus verknüpften Plugins synchronisieren)
+5. Unter **Verfügbarkeit** Wochenplan und Abwesenheiten festlegen
+6. Unter **Leistungen** Angebote mit Dauer, Puffer, Preis und Buchungsart anlegen
 
 ## Integration eigener Plugins
 
@@ -108,11 +107,9 @@ CMS\Hooks::addAction('booking_register_providers', function () {
 | `/booking/ical/{booking-id}` | GET | iCal-Download |
 | `/api/booking/slots/{provider-id}/{date}` | GET | Verfügbare Zeitfenster (JSON) |
 
-## Sicherheitsstatus (2026-04-04)
+## Weitere Dokumentation
 
-- Snyk-Code-Audit für `cms-booking` abgeschlossen, aktuell ohne offene Findings.
-- Die öffentliche Slot-Auswahl rendert Zeitfenster jetzt konsequent per DOM-API statt per `innerHTML`, wodurch DOM-XSS-Risiken aus Remote-Slotdaten reduziert wurden.
-- Die Buchungszusammenfassung nutzt im Frontend nur noch textbasierte Ausgabe für dynamische Inhalte.
+[DOC/README.md](DOC/README.md) · [DOC/DATABASE.md](DOC/DATABASE.md) · [DOC/HOOKS.md](DOC/HOOKS.md) · [DOC/API.md](DOC/API.md) · [CHANGELOG.md](CHANGELOG.md)
 
 ## Lizenz
 

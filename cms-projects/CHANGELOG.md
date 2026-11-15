@@ -1,5 +1,14 @@
 # Changelog – CMS Projects
 
+## 4.0.1 – 2026-11-15
+
+Fixes aus dem Integrationstest gegen eine echte 365CMS-4.0.0-Installation (MariaDB, Router, CSP).
+
+### Behoben
+
+- Umlaute im Projekt-Slug werden transliteriert (`ä` → `ae`, `ß` → `ss` …); bisher fielen sie ersatzlos weg.
+- `plugins.xml`: Nach Speichern/Löschen eines Projekts wird das gespeicherte Sitemap-Bundle über `SEOService::invalidateSavedSitemaps()` verworfen – bisher blieben neue/geänderte öffentliche Projekte bis zum nächsten Tages-Cron unsichtbar.
+
 ## 4.0.0 – 2026-11-14
 
 ### Kompatibilität

@@ -13,6 +13,11 @@ if (!defined('ABSPATH')) {
 
 final class CMS_Beratung_Storage
 {
+    /** Explizite Spaltenlisten (keine Wildcard-Selects). */
+    private const LANDINGPAGE_COLUMNS = 'id, tenant_id, internal_title, public_title, slug, meta_title, meta_description, focus_keyword, status, template, max_content_width, custom_design_enabled, use_global_settings, use_global_design, show_header, show_footer, show_breadcrumb, show_toc, show_anchor_nav, noindex, nofollow, canonical_url, custom_css_class, hero_json, contact_json, seo_json, design_json, sections_json, tracking_enabled, created_by, updated_by, created_at, updated_at';
+    private const SUBMISSION_COLUMNS = 's.id, s.landingpage_id, s.tenant_id, s.sender_name, s.sender_email, s.phone, s.company, s.topic, s.desired_service, s.message, s.internal_note, s.consent, s.copy_to_sender, s.payload_json, s.ip_address, s.user_agent, s.status, s.is_spam, s.created_at';
+    private const PRESET_COLUMNS = 'id, tenant_id, name, slug, description, design_json, is_system, created_at, updated_at';
+
     private static ?self $instance = null;
     private ?\PDO $pdo = null;
     private string $prefix = 'cms_';
@@ -38,7 +43,7 @@ final class CMS_Beratung_Storage
             return [];
         }
 
-        $stmt = $this->pdo->prepare("SELECT * FROM {$this->prefix}beratung_landingpages ORDER BY updated_at DESC, id DESC");
+        $stmt = $this->pdo->prepare('SELECT ' . self::LANDINGPAGE_COLUMNS . " FROM {$this->prefix}beratung_landingpages ORDER BY updated_at DESC, id DESC");
         $stmt->execute();
         return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
     }
@@ -49,7 +54,7 @@ final class CMS_Beratung_Storage
             return null;
         }
 
-        $stmt = $this->pdo->prepare("SELECT * FROM {$this->prefix}beratung_landingpages WHERE id = ? LIMIT 1");
+        $stmt = $this->pdo->prepare('SELECT ' . self::LANDINGPAGE_COLUMNS . " FROM {$this->prefix}beratung_landingpages WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return is_array($row) ? $this->decode_landingpage($row) : null;
@@ -61,7 +66,7 @@ final class CMS_Beratung_Storage
             return null;
         }
 
-        $sql = "SELECT * FROM {$this->prefix}beratung_landingpages WHERE slug = ?";
+        $sql = 'SELECT ' . self::LANDINGPAGE_COLUMNS . " FROM {$this->prefix}beratung_landingpages WHERE slug = ?";
         $params = [$slug];
         if ($publicOnly) {
             $sql .= " AND status = 'published'";
@@ -127,6 +132,7 @@ final class CMS_Beratung_Storage
             $values[] = $id;
             $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_landingpages SET {$assignments} WHERE id = ?");
             $stmt->execute($values);
+            $this->invalidate_sitemaps();
             return $id;
         }
 
@@ -137,7 +143,9 @@ final class CMS_Beratung_Storage
             $values[] = $payload[$column] ?? null;
         }
         $stmt->execute($values);
-        return (int) $this->pdo->lastInsertId();
+        $newId = (int) $this->pdo->lastInsertId();
+        $this->invalidate_sitemaps();
+        return $newId;
     }
 
     public function update_status(int $id, string $status): bool
@@ -146,7 +154,9 @@ final class CMS_Beratung_Storage
             return false;
         }
         $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_landingpages SET status = ? WHERE id = ?");
-        return $stmt->execute([$status, $id]);
+        $ok = $stmt->execute([$status, $id]);
+        $this->invalidate_sitemaps();
+        return $ok;
     }
 
     public function duplicate_landingpage(int $id): int
@@ -174,7 +184,21 @@ final class CMS_Beratung_Storage
             return false;
         }
         $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_landingpages WHERE id = ?");
-        return $stmt->execute([$id]);
+        $ok = $stmt->execute([$id]);
+        $this->invalidate_sitemaps();
+        return $ok;
+    }
+
+    /** Gespeichertes Sitemap-Bundle verwerfen, damit plugins.xml Veröffentlichungen sofort zeigt. */
+    private function invalidate_sitemaps(): void
+    {
+        if (!class_exists('CMS\\Services\\SEOService')) {
+            return;
+        }
+        try {
+            \CMS\Services\SEOService::getInstance()->invalidateSavedSitemaps();
+        } catch (\Throwable) {
+        }
     }
 
     /** @return array<int,array<string,mixed>> */
@@ -183,7 +207,7 @@ final class CMS_Beratung_Storage
         if ($this->pdo === null) {
             return [];
         }
-        $stmt = $this->pdo->prepare("SELECT * FROM {$this->prefix}beratung_design_presets ORDER BY is_system DESC, name ASC");
+        $stmt = $this->pdo->prepare('SELECT ' . self::PRESET_COLUMNS . " FROM {$this->prefix}beratung_design_presets ORDER BY is_system DESC, name ASC");
         $stmt->execute();
         return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
     }
@@ -390,7 +414,7 @@ final class CMS_Beratung_Storage
             return [];
         }
         $limit = max(1, min(500, $limit));
-        $stmt = $this->pdo->prepare("SELECT s.*, l.public_title AS landingpage_title, l.slug AS landingpage_slug FROM {$this->prefix}beratung_form_submissions s LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id ORDER BY s.created_at DESC LIMIT {$limit}");
+        $stmt = $this->pdo->prepare('SELECT ' . self::SUBMISSION_COLUMNS . ", l.public_title AS landingpage_title, l.slug AS landingpage_slug FROM {$this->prefix}beratung_form_submissions s LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id ORDER BY s.created_at DESC LIMIT {$limit}");
         $stmt->execute();
         return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
     }
@@ -400,7 +424,7 @@ final class CMS_Beratung_Storage
         if ($this->pdo === null || $id <= 0) {
             return null;
         }
-        $stmt = $this->pdo->prepare("SELECT s.*, l.public_title AS landingpage_title, l.slug AS landingpage_slug FROM {$this->prefix}beratung_form_submissions s LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id WHERE s.id = ? LIMIT 1");
+        $stmt = $this->pdo->prepare('SELECT ' . self::SUBMISSION_COLUMNS . ", l.public_title AS landingpage_title, l.slug AS landingpage_slug FROM {$this->prefix}beratung_form_submissions s LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id WHERE s.id = ? LIMIT 1");
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return is_array($row) ? $row : null;
@@ -470,6 +494,220 @@ final class CMS_Beratung_Storage
     }
 
     /** @return array<string,string> */
+    /**
+     * Öffentlichen Slug auflösen: eigene Landingpage oder Standalone-Variante einer veröffentlichten Seite.
+     *
+     * @return array{slug:string,standalone:bool}|null
+     */
+    public function resolve_public_slug(string $slug): ?array
+    {
+        if ($this->pdo === null || preg_match('/^[a-z0-9_-]{1,160}$/', $slug) !== 1) {
+            return null;
+        }
+
+        $stmt = $this->pdo->prepare("SELECT slug FROM {$this->prefix}beratung_landingpages WHERE slug = ? AND status = 'published' LIMIT 1");
+        $stmt->execute([$slug]);
+        if ($stmt->fetchColumn() !== false) {
+            return ['slug' => $slug, 'standalone' => false];
+        }
+
+        $stmt = $this->pdo->prepare(
+            "SELECT slug FROM {$this->prefix}beratung_landingpages
+             WHERE status = 'published'
+               AND JSON_UNQUOTE(JSON_EXTRACT(hero_json, '$.standalone_header_slug')) = ?
+               AND JSON_EXTRACT(hero_json, '$.standalone_header_enabled') IN (1, true, '1')
+             LIMIT 1"
+        );
+        $stmt->execute([$slug]);
+        $parent = $stmt->fetchColumn();
+
+        return is_string($parent) && $parent !== '' && $parent !== $slug ? ['slug' => $parent, 'standalone' => true] : null;
+    }
+
+    /**
+     * Veröffentlichte Landingpages (leichtgewichtig) für Sitemap und Suche.
+     *
+     * @return list<array{id:int,slug:string,public_title:string,meta_description:string,updated_at:string}>
+     */
+    public function published_index(int $limit = 500): array
+    {
+        if ($this->pdo === null) {
+            return [];
+        }
+        $limit = max(1, min(1000, $limit));
+        $stmt = $this->pdo->prepare("SELECT id, slug, public_title, meta_description, updated_at FROM {$this->prefix}beratung_landingpages WHERE status = 'published' AND noindex = 0 ORDER BY updated_at DESC LIMIT {$limit}");
+        $stmt->execute();
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Veröffentlichte Landingpages, die alle Suchwörter in Titel, Meta-Beschreibung oder Fokus-Keyword enthalten.
+     *
+     * @param list<string> $words
+     * @return list<array<string,mixed>>
+     */
+    public function search_published(array $words, int $limit = 10): array
+    {
+        $words = array_slice(array_values(array_filter(array_map('trim', $words), static fn (string $w): bool => $w !== '')), 0, 8);
+        if ($this->pdo === null || $words === []) {
+            return [];
+        }
+        $where = ["status = 'published'", 'noindex = 0'];
+        $params = [];
+        foreach ($words as $word) {
+            $like = '%' . addcslashes(mb_substr($word, 0, 60), '%_\\') . '%';
+            $where[] = '(public_title LIKE ? OR meta_description LIKE ? OR focus_keyword LIKE ? OR sections_json LIKE ?)';
+            array_push($params, $like, $like, $like, $like);
+        }
+        $limit = max(1, min(50, $limit));
+        $stmt = $this->pdo->prepare("SELECT id, slug, public_title, meta_description, updated_at FROM {$this->prefix}beratung_landingpages WHERE " . implode(' AND ', $where) . " ORDER BY updated_at DESC LIMIT {$limit}");
+        $stmt->execute($params);
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /** @return array{total:int,published:int,draft:int} */
+    public function landingpage_counts(): array
+    {
+        if ($this->pdo === null) {
+            return ['total' => 0, 'published' => 0, 'draft' => 0];
+        }
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) AS total, SUM(status = 'published') AS published, SUM(status = 'draft') AS draft FROM {$this->prefix}beratung_landingpages");
+        $stmt->execute();
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+        return ['total' => (int) ($row['total'] ?? 0), 'published' => (int) ($row['published'] ?? 0), 'draft' => (int) ($row['draft'] ?? 0)];
+    }
+
+    /**
+     * Formular-Anfragen mit Filter (Status, Landingpage, Suche).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function find_submissions(string $status = '', int $landingpageId = 0, string $search = '', int $limit = 200, bool $includeSpam = false): array
+    {
+        if ($this->pdo === null) {
+            return [];
+        }
+        $where = [];
+        $params = [];
+        if ($status !== '' && array_key_exists($status, self::submission_statuses())) {
+            $where[] = 's.status = ?';
+            $params[] = $status;
+        }
+        if ($landingpageId > 0) {
+            $where[] = 's.landingpage_id = ?';
+            $params[] = $landingpageId;
+        }
+        if (!$includeSpam) {
+            $where[] = 's.is_spam = 0';
+        }
+        $search = trim($search);
+        if ($search !== '') {
+            $like = '%' . addcslashes(mb_substr($search, 0, 100), '%_\\') . '%';
+            $where[] = '(s.sender_name LIKE ? OR s.sender_email LIKE ? OR s.company LIKE ? OR s.topic LIKE ?)';
+            array_push($params, $like, $like, $like, $like);
+        }
+        $limit = max(1, min(5000, $limit));
+        $stmt = $this->pdo->prepare(
+            'SELECT ' . self::SUBMISSION_COLUMNS . ", l.public_title AS landingpage_title, l.slug AS landingpage_slug
+             FROM {$this->prefix}beratung_form_submissions s
+             LEFT JOIN {$this->prefix}beratung_landingpages l ON l.id = s.landingpage_id"
+            . ($where !== [] ? ' WHERE ' . implode(' AND ', $where) : '')
+            . " ORDER BY s.created_at DESC, s.id DESC LIMIT {$limit}"
+        );
+        $stmt->execute($params);
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /** @return array<string,int> Anzahl je Status (ohne Spam) */
+    public function submission_counts(): array
+    {
+        if ($this->pdo === null) {
+            return [];
+        }
+        $stmt = $this->pdo->prepare("SELECT status, COUNT(*) FROM {$this->prefix}beratung_form_submissions WHERE is_spam = 0 GROUP BY status");
+        $stmt->execute();
+
+        return array_map('intval', $stmt->fetchAll(\PDO::FETCH_KEY_PAIR) ?: []);
+    }
+
+    public function count_submissions_older_than(int $days): int
+    {
+        if ($this->pdo === null || $days <= 0) {
+            return 0;
+        }
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM {$this->prefix}beratung_form_submissions WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)");
+        $stmt->execute([$days]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Eigenes Design-Preset anlegen bzw. aktualisieren (System-Presets sind schreibgeschützt).
+     *
+     * @param array<string,string> $design
+     */
+    public function save_preset(int $id, string $name, string $description, array $design): int
+    {
+        if ($this->pdo === null) {
+            return 0;
+        }
+        $name = CMS_Beratung_Settings::text($name);
+        if ($name === '') {
+            throw new \InvalidArgumentException('Bitte einen Namen für das Preset angeben.');
+        }
+        $json = (string) json_encode($design, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($id > 0) {
+            $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_design_presets SET name = ?, description = ?, design_json = ? WHERE id = ? AND is_system = 0");
+            $stmt->execute([$name, CMS_Beratung_Settings::text($description), $json, $id]);
+            if ($stmt->rowCount() === 0 && $this->preset($id) === null) {
+                throw new \InvalidArgumentException('Preset nicht gefunden oder schreibgeschützt.');
+            }
+            return $id;
+        }
+
+        $base = CMS_Beratung_Settings::slug($name, 'preset');
+        $slug = $base;
+        $check = $this->pdo->prepare("SELECT id FROM {$this->prefix}beratung_design_presets WHERE tenant_id IS NULL AND slug = ? LIMIT 1");
+        for ($i = 2; $i < 100; $i++) {
+            $check->execute([$slug]);
+            if ($check->fetchColumn() === false) {
+                break;
+            }
+            $slug = $base . '-' . $i;
+        }
+        $stmt = $this->pdo->prepare("INSERT INTO {$this->prefix}beratung_design_presets (tenant_id, name, slug, description, design_json, is_system) VALUES (NULL, ?, ?, ?, ?, 0)");
+        $stmt->execute([$name, $slug, CMS_Beratung_Settings::text($description), $json]);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    public function preset(int $id): ?array
+    {
+        if ($this->pdo === null || $id <= 0) {
+            return null;
+        }
+        $stmt = $this->pdo->prepare('SELECT ' . self::PRESET_COLUMNS . " FROM {$this->prefix}beratung_design_presets WHERE id = ? LIMIT 1");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return is_array($row) ? $row : null;
+    }
+
+    public function delete_preset(int $id): bool
+    {
+        if ($this->pdo === null || $id <= 0) {
+            return false;
+        }
+        $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_design_presets WHERE id = ? AND is_system = 0");
+        $stmt->execute([$id]);
+
+        return $stmt->rowCount() > 0;
+    }
+
     public static function submission_statuses(): array
     {
         return [

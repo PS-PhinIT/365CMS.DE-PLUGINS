@@ -861,7 +861,8 @@ final class CMS_Projects_Service
 
     private function normalizeSlug(string $value): string
     {
-        $value = strtolower(trim($value));
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $value = strtr($value, ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss']);
         $value = preg_replace('/[^a-z0-9\-\_]+/', '-', $value) ?? '';
         $value = trim($value, '-_');
         $value = preg_replace('/[-_]{2,}/', '-', $value) ?? '';

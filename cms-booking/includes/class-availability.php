@@ -122,7 +122,7 @@ final class CMS_Booking_Availability
 
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
-            "SELECT * FROM {$db->getPrefix()}booking_availability
+            "SELECT id, provider_id, day_of_week, specific_date, start_time, end_time, is_blocked, created_at FROM {$db->getPrefix()}booking_availability
              WHERE provider_id = ? AND specific_date IS NULL AND is_blocked = 0
              ORDER BY day_of_week ASC, start_time ASC"
         );
@@ -144,7 +144,7 @@ final class CMS_Booking_Availability
 
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
-            "SELECT * FROM {$db->getPrefix()}booking_availability
+            "SELECT id, provider_id, day_of_week, specific_date, start_time, end_time, is_blocked, created_at FROM {$db->getPrefix()}booking_availability
              WHERE provider_id = ? AND specific_date BETWEEN ? AND ?
              ORDER BY specific_date ASC, start_time ASC"
         );

@@ -11,7 +11,7 @@
 | `member_dashboard_init` | Action | Member-Bereich `projects` über `PluginDashboardRegistry` (Capability `member`) |
 | `member_plugin_section_head` | Action | CSS im Member-Bereich „Projekte“ |
 | `content_render`, `cms_content` | Filter | Shortcodes `[cms_projects]`, `[cms_projects_widget]` |
-| `cms_sitemap_entries` | Filter | Archiv und öffentliche Projekte für `plugins.xml` |
+| `cms_sitemap_entries` | Filter | Archiv und öffentliche Projekte für `plugins.xml`; Speichern/Löschen eines Projekts verwirft das gespeicherte Sitemap-Bundle (`SEOService::invalidateSavedSitemaps()`) |
 | `search_results` | Filter | öffentliche Projekte in `/search` (`_type = projects`, `_type_label = Projekte`) |
 
 Registrierungen an Core-Diensten:

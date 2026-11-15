@@ -113,7 +113,7 @@ final class CMS_Booking_Services
     public function get(int $id): ?array
     {
         $db   = \CMS\Database::instance();
-        $stmt = $db->prepare("SELECT * FROM {$db->getPrefix()}booking_services WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, provider_id, title, slug, description, duration_min, buffer_min, max_bookings, price_cents, location_type, meeting_url, booking_type, contact_template, status, sort_order, settings_json, created_at, updated_at FROM {$db->getPrefix()}booking_services WHERE id = ?");
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return $row ?: null;
@@ -123,7 +123,7 @@ final class CMS_Booking_Services
     {
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
-            "SELECT * FROM {$db->getPrefix()}booking_services WHERE provider_id = ? AND slug = ?"
+            "SELECT id, provider_id, title, slug, description, duration_min, buffer_min, max_bookings, price_cents, location_type, meeting_url, booking_type, contact_template, status, sort_order, settings_json, created_at, updated_at FROM {$db->getPrefix()}booking_services WHERE provider_id = ? AND slug = ?"
         );
         $stmt->execute([$providerId, $slug]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -136,7 +136,7 @@ final class CMS_Booking_Services
     public function get_by_provider(int $providerId, string $status = 'active'): array
     {
         $db  = \CMS\Database::instance();
-        $sql = "SELECT * FROM {$db->getPrefix()}booking_services WHERE provider_id = ?";
+        $sql = "SELECT id, provider_id, title, slug, description, duration_min, buffer_min, max_bookings, price_cents, location_type, meeting_url, booking_type, contact_template, status, sort_order, settings_json, created_at, updated_at FROM {$db->getPrefix()}booking_services WHERE provider_id = ?";
         $params = [$providerId];
 
         if ($status !== '') {
@@ -157,7 +157,7 @@ final class CMS_Booking_Services
     {
         $db  = \CMS\Database::instance();
         $p   = $db->getPrefix();
-        $sql = "SELECT s.*, bp.display_name AS provider_name
+        $sql = "SELECT s.id, s.provider_id, s.title, s.slug, s.description, s.duration_min, s.buffer_min, s.max_bookings, s.price_cents, s.location_type, s.meeting_url, s.booking_type, s.contact_template, s.status, s.sort_order, s.settings_json, s.created_at, s.updated_at, bp.display_name AS provider_name
                 FROM {$p}booking_services s
                 LEFT JOIN {$p}booking_providers bp ON bp.id = s.provider_id
                 WHERE 1=1";

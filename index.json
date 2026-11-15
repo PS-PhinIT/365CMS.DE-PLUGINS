@@ -1,17 +1,7 @@
 {
   "version": "1",
-  "updated": "2026-09-30",
+  "updated": "2026-11-15",
   "plugins": [
-    {
-      "slug": "cms-contact",
-      "name": "CMS Contact",
-      "manifest": "PLUGINS/cms-contact/update.json"
-    },
-    {
-      "slug": "cms-downloads",
-      "name": "CMS Downloads",
-      "manifest": "PLUGINS/cms-downloads/update.json"
-    },
     {
       "slug": "cms-booking",
       "name": "CMS Booking",
@@ -23,21 +13,6 @@
       "manifest": "PLUGINS/cms-beratung/update.json"
     },
     {
-      "slug": "cms-feed",
-      "name": "CMS Feed",
-      "manifest": "PLUGINS/cms-feed/update.json"
-    },
-    {
-      "slug": "cms-forum",
-      "name": "CMS Forum",
-      "manifest": "PLUGINS/cms-forum/update.json"
-    },
-    {
-      "slug": "cms-newsletter",
-      "name": "CMS Newsletter",
-      "manifest": "PLUGINS/cms-newsletter/update.json"
-    },
-    {
       "slug": "cms-promos",
       "name": "CMS Promos",
       "manifest": "PLUGINS/cms-promos/update.json"
@@ -46,11 +21,6 @@
       "slug": "cms-projects",
       "name": "CMS Projects",
       "manifest": "PLUGINS/cms-projects/update.json"
-    },
-    {
-      "slug": "cms-knowledgebase",
-      "name": "CMS Knowledgebase",
-      "manifest": "PLUGINS/cms-knowledgebase/update.json"
     }
   ]
 }
