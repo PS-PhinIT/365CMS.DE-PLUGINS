@@ -3,9 +3,12 @@
  * Plugin Name: CMS Booking
  * Plugin URI:  https://365network.de/cms-booking
  * Description: Universelles Buchungs- und Terminverwaltungssystem – Experten, Speaker, Events, Unternehmen u. a. klinken sich ein.
- * Version:     3.0.8
+ * Version:     4.0.0
  * Author:      365 Network
  * Author URI:  https://365network.de
+ * Requires CMS: 4.0.0
+ * Requires at least: 4.0.0
+ * Requires PHP: 8.4.1
  *
  * @package CMS_Booking
  */
@@ -17,9 +20,9 @@ if (!defined('ABSPATH')) {
 }
 
 // ── Konstanten ────────────────────────────────────────────────────────────────
-defined('CMS_BOOKING_VERSION') || define('CMS_BOOKING_VERSION', '3.0.8');
-defined('CMS_BOOKING_DB_VERSION') || define('CMS_BOOKING_DB_VERSION', '2');
-defined('CMS_BOOKING_PLUGIN_DIR') || define('CMS_BOOKING_PLUGIN_DIR', dirname(__FILE__) . '/');
+defined('CMS_BOOKING_VERSION') || define('CMS_BOOKING_VERSION', '4.0.0');
+defined('CMS_BOOKING_DB_VERSION') || define('CMS_BOOKING_DB_VERSION', '3');
+defined('CMS_BOOKING_PLUGIN_DIR') || define('CMS_BOOKING_PLUGIN_DIR', __DIR__ . '/');
 defined('CMS_BOOKING_PLUGIN_URL') || define('CMS_BOOKING_PLUGIN_URL', '/plugins/cms-booking/');
 
 if (!class_exists('CMS_Booking', false)) {
@@ -44,43 +47,27 @@ final class CMS_Booking
 
     private function load_dependencies(): void
     {
-        $inc   = CMS_BOOKING_PLUGIN_DIR . 'includes/';
-        $admin = CMS_BOOKING_PLUGIN_DIR . 'admin/';
-        $sharedAdmin = dirname(CMS_BOOKING_PLUGIN_DIR) . '/shared/admin/';
-        $sharedPublic = dirname(CMS_BOOKING_PLUGIN_DIR) . '/shared/public/';
-        $allowedRoots = [
-            realpath(CMS_BOOKING_PLUGIN_DIR) ?: CMS_BOOKING_PLUGIN_DIR,
-            realpath(dirname(CMS_BOOKING_PLUGIN_DIR) . '/shared/') ?: dirname(CMS_BOOKING_PLUGIN_DIR) . '/shared/',
-        ];
-
         $files = [
-            $sharedAdmin . 'plugin-admin-contract.php',
-            $sharedPublic . 'plugin-public-i18n.php',
-            $inc   . 'class-installer.php',
-            $inc   . 'class-providers.php',
-            $inc   . 'class-services.php',
-            $inc   . 'class-availability.php',
-            $inc   . 'class-bookings.php',
-            $inc   . 'class-notifications.php',
-            $inc   . 'class-calendar-export.php',
-            $inc   . 'class-integration.php',
-            $inc   . 'class-frontend.php',
-            $admin . 'class-admin-menu.php',
-            $admin . 'class-admin-pages.php',
+            'includes/class-installer.php',
+            'includes/class-providers.php',
+            'includes/class-services.php',
+            'includes/class-availability.php',
+            'includes/class-bookings.php',
+            'includes/class-notifications.php',
+            'includes/class-calendar-export.php',
+            'includes/class-integration.php',
+            'includes/class-frontend.php',
+            'admin/class-admin-menu.php',
+            'admin/class-admin-pages.php',
         ];
 
-        foreach ($files as $f) {
-            $real = realpath($f);
-            if ($real === false || !is_file($real)) {
+        foreach ($files as $file) {
+            $path = CMS_BOOKING_PLUGIN_DIR . $file;
+            if (is_file($path)) {
+                require_once $path;
                 continue;
             }
-            foreach ($allowedRoots as $root) {
-                $rootPrefix = rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-                if (strpos($real, $rootPrefix) === 0) {
-                    require_once $real;
-                    break;
-                }
-            }
+            error_log('[cms-booking] Missing dependency file: ' . $file);
         }
     }
 
@@ -96,8 +83,6 @@ final class CMS_Booking
 
         // Kern
         \CMS\Hooks::addAction('cms_init',            [$this, 'init_plugin'],                     10);
-        \CMS\Hooks::addAction('plugin_activated',     [$this, 'on_activation'],                   10);
-        \CMS\Hooks::addAction('plugin_uninstalled',   [$this, 'on_uninstall'],                    10);
 
         // Admin
         \CMS\Hooks::addAction('cms_admin_menu',       [CMS_Booking_Admin_Menu::class, 'register'], 10);
@@ -114,6 +99,12 @@ final class CMS_Booking
         // Integration – gibt anderen Plugins die Möglichkeit, sich zu registrieren
         \CMS\Hooks::addAction('cms_init',             [CMS_Booking_Integration::class, 'init'],    50);
 
+        // Cron: Terminerinnerungen
+        \CMS\Hooks::addAction('cms_cron_hourly',      [$this, 'run_hourly_cron'],                  10);
+
+        // Sitemap: öffentliche Anbieter-Buchungsseiten
+        \CMS\Hooks::addFilter('cms_sitemap_entries',  [$this, 'sitemap_entries'],                  10);
+
         // DSGVO
         \CMS\Hooks::addAction('dsgvo_export_data',    [$this, 'export_user_data'],                 10);
         \CMS\Hooks::addAction('dsgvo_delete_data',    [$this, 'delete_user_data'],                 10);
@@ -123,33 +114,95 @@ final class CMS_Booking
     /*  Lifecycle                                                          */
     /* ------------------------------------------------------------------ */
 
-    public function on_activation(string $plugin): void
-    {
-        if ($plugin === 'cms-booking' && class_exists('CMS_Booking_Installer')) {
-            try {
-                CMS_Booking_Installer::install();
-            } catch (\Throwable $e) {
-                error_log('[cms-booking] activation skipped: ' . $e->getMessage());
-            }
-        }
-    }
-
-    public function on_uninstall(string $plugin): void
-    {
-        if ($plugin === 'cms-booking' && class_exists('CMS_Booking_Installer')) {
-            CMS_Booking_Installer::uninstall();
-        }
-    }
-
     public function init_plugin(): void
     {
         if (class_exists('CMS_Booking_Installer')) {
+            CMS_Booking_Installer::maybe_install();
+        }
+
+        // Benachrichtigungen hängen sich an booking_created/booking_status_* (vor 4.0.0 nie registriert).
+        CMS_Booking_Notifications::instance();
+        $this->register_core_integrations();
+    }
+
+    /**
+     * Aufbewahrungsregel (Anonymisierung alter Buchungen) und Systemhinweis.
+     */
+    private function register_core_integrations(): void
+    {
+        if (class_exists('CMS\\Services\\DataRetentionService') && class_exists('CMS\\Services\\Retention\\RetentionRule')) {
             try {
-                CMS_Booking_Installer::maybe_install();
+                \CMS\Services\DataRetentionService::registerRule(new \CMS\Services\Retention\RetentionRule(
+                    'cms_booking_customers',
+                    'Buchungen: Kundendaten',
+                    'Anonymisiert Name, E-Mail, Telefon und Notizen abgeschlossener, stornierter und nicht wahrgenommener Termine nach Ablauf der Frist.',
+                    static fn (): int => (int) (CMS_Booking_Installer::read_settings()['retention_days'] ?? 0),
+                    static fn (): int => CMS_Booking_Bookings::instance()->count_anonymizable((int) (CMS_Booking_Installer::read_settings()['retention_days'] ?? 0)),
+                    static fn (): int => CMS_Booking_Bookings::instance()->anonymize_older_than((int) (CMS_Booking_Installer::read_settings()['retention_days'] ?? 0)),
+                    '/admin/plugins/booking/settings',
+                    \CMS\Services\Retention\RetentionRule::ACTION_ANONYMIZE
+                ));
             } catch (\Throwable $e) {
-                error_log('[cms-booking] init install skipped: ' . $e->getMessage());
+                error_log('[cms-booking] Aufbewahrungsregel nicht registriert: ' . $e->getMessage());
             }
         }
+
+        if (class_exists('CMS\\Services\\AdminNoticeService')) {
+            \CMS\Services\AdminNoticeService::registerCheck('cms_booking_pending', static function (): ?array {
+                $stale = CMS_Booking_Bookings::instance()->count_stale_pending();
+                if ($stale <= 0) {
+                    return null;
+                }
+
+                return \CMS\Services\AdminNoticeService::makeNotice(
+                    'cms_booking_pending',
+                    'warning',
+                    'Unbearbeitete Buchungsanfragen',
+                    sprintf('%d Anfrage(n) wurden vor ihrem Termin weder bestätigt noch abgelehnt.', $stale),
+                    '/admin/plugins/booking/bookings?status=pending',
+                    'Anfragen prüfen'
+                );
+            });
+        }
+    }
+
+    public function run_hourly_cron(): void
+    {
+        try {
+            CMS_Booking_Notifications::instance()->send_due_reminders();
+        } catch (\Throwable $e) {
+            error_log('[cms-booking] reminder cron failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Aktive Anbieter mit mindestens einer aktiven Leistung für plugins.xml.
+     *
+     * @return array<int,mixed>
+     */
+    public function sitemap_entries(mixed $entries): array
+    {
+        $entries = is_array($entries) ? $entries : [];
+        try {
+            $db = \CMS\Database::instance();
+            $p = $db->getPrefix();
+            $stmt = $db->prepare(
+                "SELECT bp.slug, MAX(GREATEST(bp.updated_at, bs.updated_at)) AS lastmod
+                 FROM {$p}booking_providers bp
+                 INNER JOIN {$p}booking_services bs ON bs.provider_id = bp.id AND bs.status = 'active'
+                 WHERE bp.status = 'active'
+                 GROUP BY bp.id, bp.slug
+                 LIMIT 500"
+            );
+            $stmt->execute();
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [] as $row) {
+                $entries[] = ['url' => 'booking/' . rawurlencode((string) $row['slug']), 'lastmod' => (string) $row['lastmod'], 'changefreq' => 'weekly', 'priority' => 0.5];
+            }
+        } catch (\Throwable $e) {
+            error_log('[cms-booking] sitemap entries failed: ' . $e->getMessage());
+        }
+
+        return $entries;
     }
 
     /* ------------------------------------------------------------------ */
@@ -167,6 +220,12 @@ final class CMS_Booking
             echo '<link rel="stylesheet" href="'
                 . htmlspecialchars(CMS_BOOKING_PLUGIN_URL . 'assets/css/booking-public.css', ENT_QUOTES, 'UTF-8')
                 . '?v=' . filemtime($css) . '">' . "\n";
+        }
+
+        // Primärfarbe aus den Einstellungen (validiert) per nonce-geschütztem Style-Block statt style-Attributen.
+        $color = strtolower((string) (CMS_Booking_Installer::read_settings()['primary_color'] ?? ''));
+        if (preg_match('/^#[0-9a-f]{6}$/', $color) === 1 && $color !== '#3b82f6' && class_exists('CMS\\Security')) {
+            echo '<style ' . \CMS\Security::instance()->nonceAttr() . '>:root{--booking-primary:' . $color . '}</style>' . "\n";
         }
     }
 
@@ -223,8 +282,8 @@ final class CMS_Booking
             'plugin'          => 'cms-booking',
             'slug'            => 'booking',
             'label'           => 'Buchungen',
-            'icon'            => '🗓️',
-            'color'           => '#16a34a',
+            'icon'            => 'ti-calendar-event',
+            'capability'      => 'member',
             'category'        => 'plugins',
             'priority'        => 60,
             'admin_url'       => '/admin/plugins/booking/bookings',
@@ -243,7 +302,9 @@ final class CMS_Booking
             'confirmed' => 'active',
             'cancelled' => 'danger',
             'completed' => 'active',
+            'no_show'   => 'danger',
         ];
+        $statusLabels = class_exists('CMS_Booking_Bookings') ? CMS_Booking_Bookings::status_labels() : [];
         ?>
         <div class="cms-member-section">
             <?php if (empty($bookings)): ?>
@@ -266,12 +327,12 @@ final class CMS_Booking
                             <?php foreach ($bookings as $row): ?>
                             <?php $statusClass = $statusColors[$row['status'] ?? ''] ?? 'inactive'; ?>
                             <tr>
-                                <td><?php echo htmlspecialchars($row['service_name'] ?? '—'); ?></td>
-                                <td><?php echo htmlspecialchars($row['provider_name'] ?? '—'); ?></td>
-                                <td><?php echo htmlspecialchars($row['booking_date'] ?? '—'); ?></td>
+                                <td><?php echo htmlspecialchars((string) ($row['service_title'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?php echo htmlspecialchars((string) ($row['provider_name'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?php echo htmlspecialchars(trim(date('d.m.Y', (int) strtotime((string) ($row['booking_date'] ?? 'now'))) . ' ' . substr((string) ($row['start_time'] ?? ''), 0, 5)), ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td>
                                     <span class="status-badge <?php echo htmlspecialchars($statusClass, ENT_QUOTES, 'UTF-8'); ?>">
-                                        <?php echo htmlspecialchars($row['status'] ?? '—'); ?>
+                                        <?php echo htmlspecialchars((string) ($statusLabels[$row['status'] ?? ''] ?? ($row['status'] ?? '—')), ENT_QUOTES, 'UTF-8'); ?>
                                     </span>
                                 </td>
                             </tr>
@@ -302,6 +363,30 @@ final class CMS_Booking
         }
     }
 }
+}
+
+/*
+ * Lebenszyklus-Callbacks (PluginManager: <slug>_activate/_deactivate/_uninstall).
+ */
+if (!function_exists('cms_booking_activate')) {
+    function cms_booking_activate(): void
+    {
+        CMS_Booking_Installer::install();
+    }
+}
+
+if (!function_exists('cms_booking_deactivate')) {
+    function cms_booking_deactivate(): void
+    {
+        // Buchungsdaten bleiben erhalten.
+    }
+}
+
+if (!function_exists('cms_booking_uninstall')) {
+    function cms_booking_uninstall(): void
+    {
+        CMS_Booking_Installer::uninstall();
+    }
 }
 
 CMS_Booking::instance();

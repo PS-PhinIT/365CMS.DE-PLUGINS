@@ -1,288 +1,176 @@
-<?php declare(strict_types=1); if (!defined('ABSPATH')) exit; ?>
+<?php
+/**
+ * Leistungen: Liste mit Suche bzw. Formular (anlegen/bearbeiten).
+ *
+ * @var bool $showForm
+ * @var array<string,mixed>|null $editService
+ * @var list<array<string,mixed>> $items
+ * @var string $search
+ * @var int $paged
+ * @var int $pages
+ * @var int $total
+ * @var list<array<string,mixed>> $providers
+ * @var array<string,string> $settings
+ * @var string $csrfToken
+ *
+ * @package CMS_Booking
+ */
 
-<!-- Page Header -->
+declare(strict_types=1);
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+$e = static fn (mixed $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+$listUrl = CMS_Booking_Admin_Pages::url('services');
+$locations = ['online' => 'Online', 'onsite' => 'Vor Ort', 'hybrid' => 'Hybrid'];
+$bookingTypes = ['confirmation' => 'Mit Bestätigung', 'instant' => 'Sofort bestätigt', 'request' => 'Anfrage (ohne festen Slot)'];
+?>
+<?php if (!$showForm): ?>
 <div class="admin-page-header">
     <div>
-        <h2>Leistungen verwalten</h2>
-        <p>Buchbare Leistungen je Anbieter konfigurieren</p>
+        <h2>Leistungen</h2>
+        <p>Buchbare Angebote je Anbieter mit Dauer, Puffer, Kapazität, Preis und Buchungsart.</p>
     </div>
     <div class="header-actions">
-        <button type="button" class="btn btn-primary" data-booking-modal-open="serviceModal">Neue Leistung</button>
+        <a class="btn btn-primary" href="<?php echo $e(CMS_Booking_Admin_Pages::url('services', ['action' => 'new'])); ?>"><i class="ti ti-plus" aria-hidden="true"></i> Neue Leistung</a>
     </div>
 </div>
 
-<!-- Alerts -->
-<?php if (!empty($success)): ?>
-<div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div>
-<?php endif; ?>
-<?php if (!empty($error)): ?>
-<div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
-<?php endif; ?>
+<form method="get" action="<?php echo $e($listUrl); ?>" class="bk-toolbar" role="search" aria-label="Leistungen durchsuchen">
+    <div class="bk-toolbar__field">
+        <label class="form-label" for="bs-q">Suche</label>
+        <input id="bs-q" type="search" name="q" class="form-control" value="<?php echo $e($search); ?>" placeholder="Titel oder Anbieter">
+    </div>
+    <div class="bk-toolbar__actions">
+        <button type="submit" class="btn btn-secondary"><i class="ti ti-search" aria-hidden="true"></i> Suchen</button>
+        <?php if ($search !== ''): ?><a class="btn btn-link" href="<?php echo $e($listUrl); ?>">Zurücksetzen</a><?php endif; ?>
+    </div>
+</form>
 
-<?php
-$serviceDailyLimit = 0;
-if ($editService && !empty($editService['settings_json'])) {
-    $decodedSettings = json_decode((string) $editService['settings_json'], true);
-    if (is_array($decodedSettings) && isset($decodedSettings['daily_booking_limit'])) {
-        $serviceDailyLimit = max(0, (int) $decodedSettings['daily_booking_limit']);
-    }
-}
-?>
-
-<!-- Tabelle -->
 <div class="admin-card">
-    <?php if (empty($items)): ?>
-        <div class="empty-state">
-            <p style="font-size:2.5rem;margin:0;"></p>
-            <p><strong>Keine Leistungen vorhanden</strong></p>
-            <p class="text-muted">Erstellen Sie Ihre erste buchbare Leistung über den Button oben.</p>
-        </div>
+    <?php if ($items === []): ?>
+        <div class="empty-state"><p><strong>Keine Leistungen gefunden</strong></p><p class="bk-muted">Eine Leistung benötigt einen Anbieter mit Wochenplan.</p></div>
     <?php else: ?>
         <div class="users-table-container">
             <table class="users-table">
-                <thead>
-                    <tr>
-                        <th>Leistung</th>
-                        <th>Anbieter</th>
-                        <th>Dauer</th>
-                        <th>Preis</th>
-                        <th>Typ</th>
-                        <th>Status</th>
-                        <th>Aktionen</th>
-                    </tr>
-                </thead>
+                <thead><tr><th scope="col">Leistung</th><th scope="col">Anbieter</th><th scope="col">Dauer / Puffer</th><th scope="col" class="bk-num">Preis</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead>
                 <tbody>
-                    <?php foreach ($items as $item): ?>
+                <?php foreach ($items as $item): ?>
+                    <?php $id = (int) $item['id']; ?>
                     <tr>
+                        <td><a class="bk-link" href="<?php echo $e(CMS_Booking_Admin_Pages::url('services', ['edit' => $id])); ?>"><?php echo $e($item['title']); ?></a><div class="bk-muted"><?php echo $e($locations[$item['location_type']] ?? $item['location_type']); ?> · <?php echo $e($bookingTypes[$item['booking_type']] ?? $item['booking_type']); ?></div></td>
+                        <td><?php echo $e($item['provider_name'] ?? '–'); ?></td>
+                        <td class="bk-nowrap"><?php echo $e(CMS_Booking_Services::format_duration((int) $item['duration_min'])); ?> / <?php echo (int) $item['buffer_min']; ?> Min.</td>
+                        <td class="bk-num"><?php echo $e(CMS_Booking_Services::format_price((int) $item['price_cents'], (string) ($settings['default_currency'] ?? 'EUR'))); ?></td>
+                        <td><span class="bk-badge bk-badge--<?php echo $item['status'] === 'active' ? 'success' : 'muted'; ?>"><?php echo $item['status'] === 'active' ? 'Aktiv' : 'Inaktiv'; ?></span></td>
                         <td>
-                            <strong><?php echo htmlspecialchars($item['title']); ?></strong>
-                            <?php if (!empty($item['description'])): ?>
-                            <div style="color:#64748b;font-size:.8rem;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                <?php echo htmlspecialchars(strip_tags($item['description'])); ?>
-                            </div>
-                            <?php endif; ?>
-                        </td>
-                        <td><?php echo htmlspecialchars($item['provider_name'] ?? '—'); ?></td>
-                        <td><?php echo CMS_Booking_Services::format_duration((int) $item['duration_min']); ?></td>
-                        <td><?php echo CMS_Booking_Services::format_price((int) $item['price_cents']); ?></td>
-                        <td>
-                            <?php
-                            $typeLabels = [
-                                'online' => 'Online',
-                                'onsite' => 'Vor Ort',
-                                'hybrid' => 'Hybrid',
-                            ];
-                            echo htmlspecialchars((string) ($typeLabels[$item['location_type']] ?? $item['location_type']), ENT_QUOTES, 'UTF-8');
-                            ?>
-                        </td>
-                        <td>
-                            <span class="status-badge <?php echo htmlspecialchars($item['status'] === 'active' ? 'active' : 'inactive', ENT_QUOTES, 'UTF-8'); ?>">
-                                <?php echo $item['status'] === 'active' ? 'Aktiv' : 'Inaktiv'; ?>
-                            </span>
-                        </td>
-                        <td>
-                            <div style="display:flex;gap:.4rem;">
-                                <a href="<?php echo htmlspecialchars(CMS_Booking_Admin_Pages::admin_url('services', ['edit' => (int) $item['id']]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-sm btn-secondary" title="Bearbeiten"><i class="ti ti-pencil" aria-hidden="true"></i></a>
-                                <form method="POST" style="margin:0;">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
-                                    <input type="hidden" name="service_id" value="<?php echo (int) $item['id']; ?>">
-                                    <input type="hidden" name="service_action" value="delete">
-                                    <button type="submit" class="btn btn-sm btn-danger" title="Löschen"><i class="ti ti-trash" aria-hidden="true"></i></button>
+                            <div class="bk-actions">
+                                <a class="btn btn-sm btn-outline-secondary" href="<?php echo $e(CMS_Booking_Admin_Pages::url('services', ['edit' => $id])); ?>" title="Bearbeiten"><i class="ti ti-pencil" aria-hidden="true"></i><span class="visually-hidden">Bearbeiten</span></a>
+                                <form method="post" data-cms-confirm="Leistung „<?php echo $e($item['title']); ?>“ löschen? Bestehende Buchungen bleiben ohne Leistungszuordnung erhalten.">
+                                    <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+                                    <input type="hidden" name="booking_admin_action" value="service_delete">
+                                    <input type="hidden" name="service_id" value="<?php echo $id; ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Löschen"><i class="ti ti-trash" aria-hidden="true"></i><span class="visually-hidden">Löschen</span></button>
                                 </form>
                             </div>
                         </td>
                     </tr>
-                    <?php endforeach; ?>
+                <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
-
         <?php if ($pages > 1): ?>
-        <div class="pagination" style="display:flex;gap:.5rem;justify-content:center;margin-top:1.5rem;">
-            <?php if ($page > 1): ?>
-                <a href="<?php echo htmlspecialchars(CMS_Booking_Admin_Pages::admin_url('services', ['paged' => (int) ($page - 1), 'q' => $search]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-secondary btn-sm">← Zurück</a>
-            <?php endif; ?>
-            <span style="padding:.375rem .875rem;color:#64748b;font-size:.875rem;">Seite <?php echo (int) $page; ?> von <?php echo (int) $pages; ?></span>
-            <?php if ($page < $pages): ?>
-                <a href="<?php echo htmlspecialchars(CMS_Booking_Admin_Pages::admin_url('services', ['paged' => (int) ($page + 1), 'q' => $search]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-secondary btn-sm">Weiter →</a>
-            <?php endif; ?>
-        </div>
+            <nav class="bk-pagination" aria-label="Seiten">
+                <?php $base = array_filter(['q' => $search]); ?>
+                <?php if ($paged > 1): ?><a class="btn btn-sm btn-outline-secondary" href="<?php echo $e(CMS_Booking_Admin_Pages::url('services', $base + ['paged' => $paged - 1])); ?>">Zurück</a><?php endif; ?>
+                <span class="bk-muted">Seite <?php echo $paged; ?> von <?php echo $pages; ?></span>
+                <?php if ($paged < $pages): ?><a class="btn btn-sm btn-outline-secondary" href="<?php echo $e(CMS_Booking_Admin_Pages::url('services', $base + ['paged' => $paged + 1])); ?>">Weiter</a><?php endif; ?>
+            </nav>
         <?php endif; ?>
     <?php endif; ?>
 </div>
+<?php else: ?>
+<?php
+$s = $editService ?? [
+    'duration_min' => (int) ($settings['default_duration'] ?? 60),
+    'buffer_min' => (int) ($settings['default_buffer'] ?? 15),
+    'max_bookings' => 1, 'price_cents' => 0, 'location_type' => 'online', 'booking_type' => 'confirmation', 'status' => 'active',
+];
+$serviceSettings = json_decode((string) ($s['settings_json'] ?? ''), true);
+$dailyLimit = is_array($serviceSettings) ? (int) ($serviceSettings['daily_booking_limit'] ?? 0) : 0;
+?>
+<div class="admin-page-header">
+    <div>
+        <h2><?php echo $editService !== null ? 'Leistung bearbeiten' : 'Neue Leistung'; ?></h2>
+        <p>Öffentliche Buchungsseite: /booking/&lt;anbieter&gt;/&lt;leistung&gt;</p>
+    </div>
+    <div class="header-actions"><a class="btn btn-outline-secondary" href="<?php echo $e($listUrl); ?>"><i class="ti ti-arrow-left" aria-hidden="true"></i> Zur Liste</a></div>
+</div>
 
-<!-- Bearbeiten-Card -->
-<?php if ($editService): ?>
+<?php if ($providers === []): ?>
+    <div class="alert alert-info" role="status">Bitte zuerst einen Anbieter anlegen. <a href="<?php echo $e(CMS_Booking_Admin_Pages::url('providers', ['action' => 'new'])); ?>">Anbieter anlegen</a></div>
+<?php else: ?>
 <div class="admin-card">
-    <h3>Leistung bearbeiten: <?php echo htmlspecialchars($editService['title']); ?></h3>
-    <form method="POST" class="admin-form">
-        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
-        <input type="hidden" name="service_action" value="update">
-        <input type="hidden" name="service_id" value="<?php echo (int) $editService['id']; ?>">
-
-        <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
+    <form method="post" class="admin-form">
+        <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+        <input type="hidden" name="booking_admin_action" value="service_save">
+        <input type="hidden" name="service_id" value="<?php echo (int) ($s['id'] ?? 0); ?>">
+        <div class="bk-form-grid">
+            <div class="form-group"><label class="form-label required" for="bs-title">Titel</label><input id="bs-title" class="form-control" type="text" name="title" maxlength="255" required value="<?php echo $e($s['title'] ?? ''); ?>"></div>
             <div class="form-group">
-                <label class="form-label">Titel <span style="color:#ef4444;">*</span></label>
-                <input type="text" name="title" class="form-control"
-                       value="<?php echo htmlspecialchars($editService['title']); ?>" required>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Status</label>
-                <select name="status" class="form-control">
-                    <option value="active"   <?php echo $editService['status'] === 'active'   ? 'selected' : ''; ?>>Aktiv</option>
-                    <option value="inactive" <?php echo $editService['status'] === 'inactive' ? 'selected' : ''; ?>>Inaktiv</option>
+                <label class="form-label required" for="bs-provider">Anbieter</label>
+                <select id="bs-provider" class="form-select" name="provider_id" required <?php echo $editService !== null ? 'disabled' : ''; ?>>
+                    <?php foreach ($providers as $provider): ?>
+                        <option value="<?php echo (int) $provider['id']; ?>" <?php echo (int) ($s['provider_id'] ?? 0) === (int) $provider['id'] ? 'selected' : ''; ?>><?php echo $e($provider['display_name']); ?></option>
+                    <?php endforeach; ?>
                 </select>
+                <?php if ($editService !== null): ?><div class="form-hint">Der Anbieter einer bestehenden Leistung kann nicht geändert werden.</div><?php endif; ?>
             </div>
         </div>
-
-        <div class="form-group">
-            <label class="form-label">Beschreibung</label>
-            <textarea name="description" class="form-control" style="min-height:80px;"><?php echo htmlspecialchars($editService['description'] ?? ''); ?></textarea>
-        </div>
-
-        <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;">
+        <div class="form-group"><label class="form-label" for="bs-description">Beschreibung</label><textarea id="bs-description" class="form-control" name="description" rows="4" maxlength="10000"><?php echo $e($s['description'] ?? ''); ?></textarea><div class="form-hint">Erlaubt: p, a, strong, em, ul, ol, li, br.</div></div>
+        <div class="bk-form-grid">
+            <div class="form-group"><label class="form-label" for="bs-duration">Dauer (Min.)</label><input id="bs-duration" class="form-control" type="number" name="duration_min" min="5" max="1440" step="5" value="<?php echo (int) $s['duration_min']; ?>"></div>
+            <div class="form-group"><label class="form-label" for="bs-buffer">Puffer danach (Min.)</label><input id="bs-buffer" class="form-control" type="number" name="buffer_min" min="0" max="240" step="5" value="<?php echo (int) $s['buffer_min']; ?>"></div>
+            <div class="form-group"><label class="form-label" for="bs-max">Parallele Buchungen</label><input id="bs-max" class="form-control" type="number" name="max_bookings" min="1" max="500" value="<?php echo (int) $s['max_bookings']; ?>"></div>
+            <div class="form-group"><label class="form-label" for="bs-daily">Tageslimit</label><input id="bs-daily" class="form-control" type="number" name="daily_booking_limit" min="0" max="1000" value="<?php echo $dailyLimit; ?>"><div class="form-hint">0 = unbegrenzt</div></div>
+            <div class="form-group"><label class="form-label" for="bs-price">Preis</label><input id="bs-price" class="form-control" type="number" name="price" min="0" step="0.01" value="<?php echo $e(number_format(((int) $s['price_cents']) / 100, 2, '.', '')); ?>"></div>
             <div class="form-group">
-                <label class="form-label">Dauer (Min.)</label>
-                <input type="number" name="duration_min" class="form-control" min="5" step="5"
-                       value="<?php echo (int) $editService['duration_min']; ?>">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Puffer (Min.)</label>
-                <input type="number" name="buffer_min" class="form-control" min="0" step="5"
-                       value="<?php echo (int) $editService['buffer_min']; ?>">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Preis (€)</label>
-                <input type="number" name="price" class="form-control" min="0" step="0.01"
-                       value="<?php echo number_format(((int) $editService['price_cents']) / 100, 2, '.', ''); ?>">
-            </div>
-        </div>
-
-        <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
-            <div class="form-group">
-                <label class="form-label">Ort-Typ</label>
-                <select name="location_type" class="form-control">
-                    <option value="online" <?php echo ($editService['location_type'] ?? '') === 'online' ? 'selected' : ''; ?>>Online</option>
-                    <option value="onsite" <?php echo ($editService['location_type'] ?? '') === 'onsite' ? 'selected' : ''; ?>>Vor Ort</option>
-                    <option value="hybrid" <?php echo ($editService['location_type'] ?? '') === 'hybrid' ? 'selected' : ''; ?>>Hybrid</option>
+                <label class="form-label" for="bs-location">Ort</label>
+                <select id="bs-location" class="form-select" name="location_type">
+                    <?php foreach ($locations as $key => $label): ?>
+                        <option value="<?php echo $e($key); ?>" <?php echo $s['location_type'] === $key ? 'selected' : ''; ?>><?php echo $e($label); ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
             <div class="form-group">
-                <label class="form-label">Buchungstyp</label>
-                <select name="booking_type" class="form-control">
-                    <option value="confirmation" <?php echo ($editService['booking_type'] ?? '') === 'confirmation' ? 'selected' : ''; ?>>Bestätigung erforderlich</option>
-                    <option value="instant"      <?php echo ($editService['booking_type'] ?? '') === 'instant'      ? 'selected' : ''; ?>>Sofortbuchung</option>
-                    <option value="request"      <?php echo ($editService['booking_type'] ?? '') === 'request'      ? 'selected' : ''; ?>>Anfrage</option>
+                <label class="form-label" for="bs-type">Buchungsart</label>
+                <select id="bs-type" class="form-select" name="booking_type">
+                    <?php foreach ($bookingTypes as $key => $label): ?>
+                        <option value="<?php echo $e($key); ?>" <?php echo $s['booking_type'] === $key ? 'selected' : ''; ?>><?php echo $e($label); ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
+            <?php if ($editService !== null): ?>
+                <div class="form-group">
+                    <label class="form-label" for="bs-status">Status</label>
+                    <select id="bs-status" class="form-select" name="status">
+                        <option value="active" <?php echo $s['status'] === 'active' ? 'selected' : ''; ?>>Aktiv</option>
+                        <option value="inactive" <?php echo $s['status'] === 'inactive' ? 'selected' : ''; ?>>Inaktiv</option>
+                    </select>
+                </div>
+            <?php endif; ?>
         </div>
-
-        <div class="form-group">
-            <label class="form-label">Meeting-URL</label>
-            <input type="url" name="meeting_url" class="form-control"
-                   value="<?php echo htmlspecialchars($editService['meeting_url'] ?? ''); ?>"
-                   placeholder="https://zoom.us/j/...">
+        <div class="bk-form-grid">
+            <div class="form-group"><label class="form-label" for="bs-meeting">Meeting-Link</label><input id="bs-meeting" class="form-control" type="url" name="meeting_url" maxlength="500" placeholder="https://" value="<?php echo $e($s['meeting_url'] ?? ''); ?>"><div class="form-hint">Wird bestätigten Online-Terminen beigefügt.</div></div>
+            <div class="form-group"><label class="form-label" for="bs-template">Kontakt-Vorlage (optional)</label><input id="bs-template" class="form-control" type="text" name="contact_template" maxlength="50" value="<?php echo $e($s['contact_template'] ?? ''); ?>"></div>
         </div>
-
-        <div class="form-group">
-            <label class="form-label">Tageslimit (Leistung)</label>
-            <input type="number" name="daily_booking_limit" class="form-control" min="0"
-                   value="<?php echo (int) $serviceDailyLimit; ?>">
-            <small class="form-text">Max. aktive Buchungen pro Tag für diese Leistung (0 = unbegrenzt)</small>
-        </div>
-
-        <div class="admin-card form-actions-card">
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Speichern</button>
-                <a href="<?php echo htmlspecialchars(CMS_Booking_Admin_Pages::admin_url('services'), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-secondary">↩Abbrechen</a>
-            </div>
+        <div class="bk-form-actions">
+            <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Leistung speichern</button>
+            <a class="btn btn-link" href="<?php echo $e($listUrl); ?>">Abbrechen</a>
         </div>
     </form>
 </div>
 <?php endif; ?>
-
-<!-- Erstellen-Modal -->
-<div id="serviceModal" class="modal" data-booking-modal style="display:none;">
-    <div class="modal-content" style="max-width:700px;">
-        <div class="modal-header">
-            <h3>Neue Leistung</h3>
-            <button type="button" class="modal-close" data-booking-modal-close="serviceModal">&times;</button>
-        </div>
-        <div class="modal-body">
-            <form method="POST" id="createServiceForm" class="admin-form">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
-                <input type="hidden" name="service_action" value="create">
-
-                <div class="form-group">
-                    <label class="form-label">Anbieter <span style="color:#ef4444;">*</span></label>
-                    <select name="provider_id" class="form-control" required>
-                        <option value="">– Bitte wählen –</option>
-                        <?php foreach ($providers as $prov): ?>
-                        <option value="<?php echo (int) $prov['id']; ?>"><?php echo htmlspecialchars($prov['display_name']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Titel <span style="color:#ef4444;">*</span></label>
-                    <input type="text" name="title" class="form-control" required placeholder="z. B. Erstgespräch, Beratung 60 Min.">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Beschreibung</label>
-                    <textarea name="description" class="form-control" style="min-height:80px;" placeholder="Was beinhaltet diese Leistung?"></textarea>
-                </div>
-
-                <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;">
-                    <div class="form-group">
-                        <label class="form-label">Dauer (Min.)</label>
-                        <input type="number" name="duration_min" class="form-control" min="5" step="5" value="60">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Puffer (Min.)</label>
-                        <input type="number" name="buffer_min" class="form-control" min="0" step="5" value="15">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Preis (€)</label>
-                        <input type="number" name="price" class="form-control" min="0" step="0.01" value="0">
-                        <small class="form-text">0 = Kostenlos</small>
-                    </div>
-                </div>
-
-                <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
-                    <div class="form-group">
-                        <label class="form-label">Ort-Typ</label>
-                        <select name="location_type" class="form-control">
-                            <option value="online">Online</option>
-                            <option value="onsite">Vor Ort</option>
-                            <option value="hybrid">Hybrid</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Buchungstyp</label>
-                        <select name="booking_type" class="form-control">
-                            <option value="confirmation">Bestätigung erforderlich</option>
-                            <option value="instant">Sofortbuchung</option>
-                            <option value="request">Anfrage</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Meeting-URL</label>
-                    <input type="url" name="meeting_url" class="form-control" placeholder="https://zoom.us/j/...">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Tageslimit (Leistung)</label>
-                    <input type="number" name="daily_booking_limit" class="form-control" min="0" value="0">
-                    <small class="form-text">0 = unbegrenzt</small>
-                </div>
-            </form>
-        </div>
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-booking-modal-close="serviceModal">Abbrechen</button>
-            <button type="submit" form="createServiceForm" class="btn btn-primary">Erstellen</button>
-        </div>
-    </div>
-</div>
-
+<?php endif; ?>

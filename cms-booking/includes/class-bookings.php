@@ -34,6 +34,17 @@ final class CMS_Booking_Bookings
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_NO_SHOW   = 'no_show';
 
+    /** Platzhalter-Adresse anonymisierter Buchungen. */
+    public const ANONYMIZED_EMAIL = 'anonymisiert@invalid';
+
+    /** Spalten einer Buchung (statt b.*). */
+    private const COLUMNS = 'b.id, b.provider_id, b.service_id, b.user_id, b.contact_submission_id, b.customer_name, b.customer_email, b.customer_phone, b.booking_date, b.start_time, b.end_time, b.duration_min, b.location_type, b.meeting_url, b.price_cents, b.currency, b.status, b.notes, b.internal_notes, b.ical_uid, b.reminder_sent, b.cancelled_at, b.confirmed_at, b.completed_at, b.created_at, b.updated_at';
+
+    private function columns(): string
+    {
+        return self::COLUMNS;
+    }
+
     public static function status_labels(): array
     {
         return [
@@ -150,7 +161,7 @@ final class CMS_Booking_Bookings
         $db   = \CMS\Database::instance();
         $p    = $db->getPrefix();
         $stmt = $db->prepare(
-            "SELECT b.*, bp.display_name AS provider_name, bp.slug AS provider_slug,
+            "SELECT {$this->columns()}, bp.display_name AS provider_name, bp.slug AS provider_slug,
                     bp.email AS provider_email, bp.source_plugin,
                     bs.title AS service_title
              FROM {$p}bookings b
@@ -177,7 +188,7 @@ final class CMS_Booking_Bookings
     ): array {
         $db  = \CMS\Database::instance();
         $p   = $db->getPrefix();
-        $sql = "SELECT b.*, bp.display_name AS provider_name, bp.slug AS provider_slug,
+        $sql = "SELECT {$this->columns()}, bp.display_name AS provider_name, bp.slug AS provider_slug,
                        bs.title AS service_title
                 FROM {$p}bookings b
                 LEFT JOIN {$p}booking_providers bp ON bp.id = b.provider_id
@@ -203,7 +214,7 @@ final class CMS_Booking_Bookings
         }
         if ($search !== '') {
             $sql    .= ' AND (b.customer_name LIKE ? OR b.customer_email LIKE ? OR bp.display_name LIKE ?)';
-            $like     = "%{$search}%";
+            $like     = '%' . addcslashes($search, '%_\\') . '%';
             $params[] = $like;
             $params[] = $like;
             $params[] = $like;
@@ -222,7 +233,7 @@ final class CMS_Booking_Bookings
     {
         $db  = \CMS\Database::instance();
         $p   = $db->getPrefix();
-        $sql = "SELECT COUNT(*) FROM {$p}bookings b WHERE 1=1";
+        $sql = "SELECT COUNT(*) FROM {$p}bookings b LEFT JOIN {$p}booking_providers bp ON bp.id = b.provider_id WHERE 1=1";
         $params = [];
 
         if ($status !== '') {
@@ -234,8 +245,9 @@ final class CMS_Booking_Bookings
             $params[] = $providerId;
         }
         if ($search !== '') {
-            $sql    .= ' AND (b.customer_name LIKE ? OR b.customer_email LIKE ?)';
-            $like     = "%{$search}%";
+            $sql    .= ' AND (b.customer_name LIKE ? OR b.customer_email LIKE ? OR bp.display_name LIKE ?)';
+            $like     = '%' . addcslashes($search, '%_\\') . '%';
+            $params[] = $like;
             $params[] = $like;
             $params[] = $like;
         }
@@ -385,6 +397,138 @@ final class CMS_Booking_Bookings
     /*  Statistiken                                                        */
     /* ================================================================== */
 
+    /* ================================================================== */
+    /*  Erinnerungen, Aufbewahrung, Export (4.0.0)                         */
+    /* ================================================================== */
+
+    /**
+     * Bestätigte Termine, die innerhalb der nächsten $hours Stunden beginnen und noch keine Erinnerung erhalten haben.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function get_due_reminders(int $hours, int $limit = 100): array
+    {
+        $hours = max(1, min(336, $hours));
+        $limit = max(1, min(500, $limit));
+        $db = \CMS\Database::instance();
+        $p  = $db->getPrefix();
+        $stmt = $db->prepare(
+            "SELECT {$this->columns()}, bp.display_name AS provider_name, bp.email AS provider_email, bs.title AS service_title
+             FROM {$p}bookings b
+             LEFT JOIN {$p}booking_providers bp ON bp.id = b.provider_id
+             LEFT JOIN {$p}booking_services  bs ON bs.id = b.service_id
+             WHERE b.status = ? AND b.reminder_sent = 0
+               AND TIMESTAMP(b.booking_date, b.start_time) > NOW()
+               AND TIMESTAMP(b.booking_date, b.start_time) <= (NOW() + INTERVAL ? HOUR)
+             ORDER BY b.booking_date ASC, b.start_time ASC
+             LIMIT {$limit}"
+        );
+        $stmt->execute([self::STATUS_CONFIRMED, $hours]);
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function mark_reminder_sent(int $id): void
+    {
+        $db = \CMS\Database::instance();
+        $db->prepare("UPDATE {$db->getPrefix()}bookings SET reminder_sent = 1 WHERE id = ?")->execute([$id]);
+    }
+
+    /** Anstehende bestätigte bzw. offene Termine (Dashboard). */
+    public function get_upcoming(int $limit = 8): array
+    {
+        $limit = max(1, min(50, $limit));
+        $db = \CMS\Database::instance();
+        $p  = $db->getPrefix();
+        $stmt = $db->prepare(
+            "SELECT {$this->columns()}, bp.display_name AS provider_name, bs.title AS service_title
+             FROM {$p}bookings b
+             LEFT JOIN {$p}booking_providers bp ON bp.id = b.provider_id
+             LEFT JOIN {$p}booking_services  bs ON bs.id = b.service_id
+             WHERE b.status IN (?, ?) AND b.booking_date >= CURDATE()
+             ORDER BY b.booking_date ASC, b.start_time ASC
+             LIMIT {$limit}"
+        );
+        $stmt->execute([self::STATUS_PENDING, self::STATUS_CONFIRMED]);
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /** Offene Anfragen, deren Termin bereits begonnen hat (Systemhinweis). */
+    public function count_stale_pending(): int
+    {
+        $db = \CMS\Database::instance();
+        $stmt = $db->prepare("SELECT COUNT(*) FROM {$db->getPrefix()}bookings WHERE status = ? AND booking_date < CURDATE()");
+        $stmt->execute([self::STATUS_PENDING]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    /** Abgeschlossene/stornierte Buchungen älter als $days Tage, die noch Kundendaten enthalten. */
+    public function count_anonymizable(int $days): int
+    {
+        if ($days <= 0) {
+            return 0;
+        }
+        $db = \CMS\Database::instance();
+        $stmt = $db->prepare(
+            "SELECT COUNT(*) FROM {$db->getPrefix()}bookings
+             WHERE booking_date < (CURDATE() - INTERVAL ? DAY) AND status IN (?, ?, ?) AND customer_email <> ?"
+        );
+        $stmt->execute([$days, self::STATUS_CANCELLED, self::STATUS_COMPLETED, self::STATUS_NO_SHOW, self::ANONYMIZED_EMAIL]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Anonymisiert Kundendaten alter, abgeschlossener Buchungen (Statistik bleibt erhalten).
+     * Liefert die Anzahl anonymisierter Buchungen.
+     */
+    public function anonymize_older_than(int $days, int $batch = 500): int
+    {
+        if ($days <= 0) {
+            return 0;
+        }
+        $db = \CMS\Database::instance();
+        $p  = $db->getPrefix();
+        $batch = max(50, min(2000, $batch));
+        $total = 0;
+        for ($i = 0; $i < 40; $i++) {
+            $select = $db->prepare(
+                "SELECT id FROM {$p}bookings
+                 WHERE booking_date < (CURDATE() - INTERVAL ? DAY) AND status IN (?, ?, ?) AND customer_email <> ?
+                 LIMIT {$batch}"
+            );
+            $select->execute([$days, self::STATUS_CANCELLED, self::STATUS_COMPLETED, self::STATUS_NO_SHOW, self::ANONYMIZED_EMAIL]);
+            $ids = array_map('intval', $select->fetchAll(\PDO::FETCH_COLUMN) ?: []);
+            if ($ids === []) {
+                break;
+            }
+            $in = implode(', ', array_fill(0, count($ids), '?'));
+            $db->prepare(
+                "UPDATE {$p}bookings SET customer_name = ?, customer_email = ?, customer_phone = NULL, notes = NULL, user_id = NULL
+                 WHERE id IN ({$in})"
+            )->execute(array_merge(['Anonymisiert', self::ANONYMIZED_EMAIL], $ids));
+            $db->prepare("DELETE FROM {$p}booking_meta WHERE booking_id IN ({$in})")->execute($ids);
+            $total += count($ids);
+            if (count($ids) < $batch) {
+                break;
+            }
+        }
+
+        return $total;
+    }
+
+    /**
+     * Export-Zeilen (gefiltert) für CSV.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function export_rows(string $status = '', string $search = '', int $providerId = 0, int $limit = 5000): array
+    {
+        return $this->get_all(0, max(1, min(20000, $limit)), $status, $search, $providerId);
+    }
+
     public function get_stats(): array
     {
         $db = \CMS\Database::instance();
@@ -418,7 +562,7 @@ final class CMS_Booking_Bookings
         $db   = \CMS\Database::instance();
         $p    = $db->getPrefix();
         $stmt = $db->prepare(
-            "SELECT b.*, bp.display_name AS provider_name, bs.title AS service_title
+            "SELECT {$this->columns()}, bp.display_name AS provider_name, bs.title AS service_title
              FROM {$p}bookings b
              LEFT JOIN {$p}booking_providers bp ON bp.id = b.provider_id
              LEFT JOIN {$p}booking_services  bs ON bs.id = b.service_id
@@ -437,7 +581,7 @@ final class CMS_Booking_Bookings
     {
         $db  = \CMS\Database::instance();
         $p   = $db->getPrefix();
-        $sql = "SELECT b.*, bp.display_name AS provider_name, bs.title AS service_title
+        $sql = "SELECT {$this->columns()}, bp.display_name AS provider_name, bs.title AS service_title
                 FROM {$p}bookings b
                 INNER JOIN {$p}booking_providers bp ON bp.id = b.provider_id AND bp.user_id = ?
                 LEFT JOIN {$p}booking_services bs ON bs.id = b.service_id

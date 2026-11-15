@@ -1,152 +1,118 @@
-<?php declare(strict_types=1); if (!defined('ABSPATH')) exit; ?>
+<?php
+/**
+ * Buchungen: Filter-Toolbar, Tabelle, Statusaktionen, CSV-Export.
+ *
+ * @var list<array<string,mixed>> $items
+ * @var array{status:string,q:string,provider_id:int} $filters
+ * @var int $paged
+ * @var int $pages
+ * @var int $total
+ * @var array<string,string> $statusLabels
+ * @var list<array<string,mixed>> $providers
+ * @var string $csrfToken
+ *
+ * @package CMS_Booking
+ */
 
-<!-- Page Header -->
+declare(strict_types=1);
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+$e = static fn (mixed $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+$listUrl = CMS_Booking_Admin_Pages::url('bookings');
+$filtered = $filters['status'] !== '' || $filters['q'] !== '' || $filters['provider_id'] > 0;
+$actionsFor = static fn (string $status): array => match ($status) {
+    'pending' => ['confirm' => ['Bestätigen', 'ti ti-check', 'btn-outline-success'], 'cancel' => ['Ablehnen', 'ti ti-x', 'btn-outline-danger']],
+    'confirmed' => ['complete' => ['Abschließen', 'ti ti-circle-check', 'btn-outline-success'], 'no_show' => ['Nicht erschienen', 'ti ti-user-off', 'btn-outline-secondary'], 'cancel' => ['Stornieren', 'ti ti-x', 'btn-outline-danger']],
+    default => [],
+};
+?>
 <div class="admin-page-header">
     <div>
-        <h2>Buchungen verwalten</h2>
-        <p>Alle Buchungsanfragen und Termine in der Übersicht</p>
+        <h2>Buchungen</h2>
+        <p><?php echo (int) $total; ?> Buchung(en)<?php echo $filtered ? ' im aktuellen Filter' : ''; ?>. Bestätigen, abschließen oder stornieren – Kunden werden per E-Mail informiert.</p>
+    </div>
+    <div class="header-actions">
+        <a class="btn btn-outline-secondary" href="<?php echo $e(CMS_Booking_Admin_Pages::export_url(['status' => $filters['status'], 'q' => $filters['q'], 'provider_id' => $filters['provider_id']])); ?>"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> CSV-Export</a>
     </div>
 </div>
 
-<!-- Alerts -->
-<?php if (!empty($success)): ?>
-<div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div>
-<?php endif; ?>
-<?php if (!empty($error)): ?>
-<div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
-<?php endif; ?>
+<form method="get" action="<?php echo $e($listUrl); ?>" class="bk-toolbar" role="search" aria-label="Buchungen filtern">
+    <div class="bk-toolbar__field">
+        <label class="form-label" for="bk-q">Suche</label>
+        <input id="bk-q" type="search" name="q" class="form-control" value="<?php echo $e($filters['q']); ?>" placeholder="Name, E-Mail, Anbieter">
+    </div>
+    <div class="bk-toolbar__field">
+        <label class="form-label" for="bk-status">Status</label>
+        <select id="bk-status" name="status" class="form-select">
+            <option value="">Alle</option>
+            <?php foreach ($statusLabels as $key => $label): ?>
+                <option value="<?php echo $e($key); ?>" <?php echo $filters['status'] === $key ? 'selected' : ''; ?>><?php echo $e($label); ?></option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <div class="bk-toolbar__field">
+        <label class="form-label" for="bk-provider">Anbieter</label>
+        <select id="bk-provider" name="provider_id" class="form-select">
+            <option value="0">Alle</option>
+            <?php foreach ($providers as $provider): ?>
+                <option value="<?php echo (int) $provider['id']; ?>" <?php echo $filters['provider_id'] === (int) $provider['id'] ? 'selected' : ''; ?>><?php echo $e($provider['display_name']); ?></option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <div class="bk-toolbar__actions">
+        <button type="submit" class="btn btn-secondary"><i class="ti ti-filter" aria-hidden="true"></i> Filtern</button>
+        <?php if ($filtered): ?><a class="btn btn-link" href="<?php echo $e($listUrl); ?>">Zurücksetzen</a><?php endif; ?>
+    </div>
+</form>
 
-<!-- Filter-Bar -->
 <div class="admin-card">
-    <form method="GET" class="booking-admin-filter-form">
-        <div class="form-group booking-admin-filter-group booking-admin-filter-group--status">
-            <label class="form-label">Status</label>
-            <select name="status" class="form-control" data-booking-autosubmit>
-                <option value="">Alle</option>
-                <?php foreach ($statusLabels as $key => $label): ?>
-                <option value="<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" <?php echo $status === $key ? 'selected' : ''; ?>>
-                    <?php echo htmlspecialchars($label); ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-        <div class="form-group booking-admin-filter-group booking-admin-filter-group--provider">
-            <label class="form-label">Anbieter</label>
-            <select name="provider_id" class="form-control" data-booking-autosubmit>
-                <option value="">Alle Anbieter</option>
-                <?php foreach ($providers as $prov): ?>
-                <option value="<?php echo (int) $prov['id']; ?>" <?php echo $providerId === (int) $prov['id'] ? 'selected' : ''; ?>>
-                    <?php echo htmlspecialchars($prov['display_name']); ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-        <div class="form-group booking-admin-filter-group booking-admin-filter-group--search">
-            <label class="form-label">Suche</label>
-            <input type="text" name="q" class="form-control" placeholder="Name, E-Mail …"
-                   value="<?php echo htmlspecialchars($search); ?>">
-        </div>
-
-        <button type="submit" class="btn btn-secondary btn-sm">Filtern</button>
-    </form>
-</div>
-
-<!-- Tabelle -->
-<div class="admin-card">
-    <?php if (empty($items)): ?>
-        <div class="empty-state">
-            <p><strong>Keine Buchungen gefunden</strong></p>
-            <p class="text-muted">Passen Sie die Filter an oder warten Sie auf neue Buchungen.</p>
-        </div>
+    <?php if ($items === []): ?>
+        <div class="empty-state"><p><strong>Keine Buchungen gefunden</strong></p><p class="bk-muted"><?php echo $filtered ? 'Passen Sie die Filter an.' : 'Neue Buchungen erscheinen hier automatisch.'; ?></p></div>
     <?php else: ?>
         <div class="users-table-container">
             <table class="users-table">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Kunde</th>
-                        <th>Anbieter</th>
-                        <th>Leistung</th>
-                        <th>Datum / Zeit</th>
-                        <th>Status</th>
-                        <th>Aktionen</th>
-                    </tr>
-                </thead>
+                <thead><tr><th scope="col">#</th><th scope="col">Termin</th><th scope="col">Kunde</th><th scope="col">Anbieter / Leistung</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Aktionen</span></th></tr></thead>
                 <tbody>
-                    <?php foreach ($items as $item): ?>
+                <?php foreach ($items as $item): ?>
+                    <?php $id = (int) $item['id']; $status = (string) $item['status']; ?>
                     <tr>
-                        <td><?php echo (int) $item['id']; ?></td>
+                        <td><a class="bk-link" href="<?php echo $e(CMS_Booking_Admin_Pages::url('bookings', ['view' => $id])); ?>"><?php echo $id; ?></a></td>
+                        <td class="bk-nowrap"><?php echo $e(CMS_Booking_Admin_Pages::format_date((string) $item['booking_date'])); ?><div class="bk-muted"><?php echo $e(substr((string) $item['start_time'], 0, 5) . '–' . substr((string) $item['end_time'], 0, 5)); ?></div></td>
+                        <td><?php echo $e($item['customer_name']); ?><div class="bk-muted"><?php echo $e($item['customer_email']); ?></div></td>
+                        <td><?php echo $e($item['provider_name'] ?? '–'); ?><div class="bk-muted"><?php echo $e($item['service_title'] ?? '–'); ?></div></td>
+                        <td><span class="bk-badge bk-badge--<?php echo $e(CMS_Booking_Admin_Pages::status_tone($status)); ?>"><?php echo $e($statusLabels[$status] ?? $status); ?></span></td>
                         <td>
-                            <strong><?php echo htmlspecialchars($item['customer_name']); ?></strong>
-                            <div class="booking-admin-muted"><?php echo htmlspecialchars($item['customer_email']); ?></div>
-                            <?php if (!empty($item['customer_phone'])): ?>
-                            <div class="booking-admin-muted booking-admin-muted--subtle"><?php echo htmlspecialchars($item['customer_phone']); ?></div>
-                            <?php endif; ?>
-                        </td>
-                        <td><?php echo htmlspecialchars($item['provider_name'] ?? '—'); ?></td>
-                        <td><?php echo htmlspecialchars($item['service_title'] ?? '—'); ?></td>
-                        <td>
-                            <?php echo htmlspecialchars((string) date('d.m.Y', strtotime((string) $item['booking_date'])), ENT_QUOTES, 'UTF-8'); ?>
-                            <div class="booking-admin-muted">
-                                <?php echo htmlspecialchars((string) substr((string) $item['start_time'], 0, 5), ENT_QUOTES, 'UTF-8'); ?> – <?php echo htmlspecialchars((string) substr((string) $item['end_time'], 0, 5), ENT_QUOTES, 'UTF-8'); ?>
-                            </div>
-                        </td>
-                        <td>
-                            <span class="status-badge <?php echo htmlspecialchars(CMS_Booking_Bookings::status_badge_class((string) $item['status']), ENT_QUOTES, 'UTF-8'); ?>">
-                                <?php echo htmlspecialchars($statusLabels[$item['status']] ?? $item['status']); ?>
-                            </span>
-                        </td>
-                        <td>
-                            <div class="booking-admin-actions">
-                                <?php if ($item['status'] === 'pending'): ?>
-                                <form method="POST" class="booking-admin-inline-form">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
-                                    <input type="hidden" name="booking_id" value="<?php echo (int) $item['id']; ?>">
-                                    <input type="hidden" name="booking_action" value="confirm">
-                                    <button type="submit" class="btn btn-sm btn-primary" title="Bestätigen"><i class="ti ti-check" aria-hidden="true"></i></button>
-                                </form>
-                                <?php endif; ?>
-
-                                <?php if (in_array($item['status'], ['pending', 'confirmed'], true)): ?>
-                                <form method="POST" class="booking-admin-inline-form">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
-                                    <input type="hidden" name="booking_id" value="<?php echo (int) $item['id']; ?>">
-                                    <input type="hidden" name="booking_action" value="cancel">
-                                    <button type="submit" class="btn btn-sm btn-danger" title="Stornieren"><i class="ti ti-x" aria-hidden="true"></i></button>
-                                </form>
-                                <?php endif; ?>
-
-                                <?php if ($item['status'] === 'confirmed'): ?>
-                                <form method="POST" class="booking-admin-inline-form">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
-                                    <input type="hidden" name="booking_id" value="<?php echo (int) $item['id']; ?>">
-                                    <input type="hidden" name="booking_action" value="complete">
-                                    <button type="submit" class="btn btn-sm btn-secondary" title="Abschließen">✔</button>
-                                </form>
-                                <?php endif; ?>
+                            <div class="bk-actions">
+                                <?php foreach ($actionsFor($status) as $action => [$label, $icon, $class]): ?>
+                                    <form method="post"<?php echo $action === 'cancel' ? ' data-cms-confirm="Buchung #' . $id . ' wirklich ' . ($status === 'pending' ? 'ablehnen' : 'stornieren') . '? Der Kunde wird benachrichtigt."' : ''; ?>>
+                                        <input type="hidden" name="csrf_token" value="<?php echo $e($csrfToken); ?>">
+                                        <input type="hidden" name="booking_admin_action" value="booking_status">
+                                        <input type="hidden" name="booking_id" value="<?php echo $id; ?>">
+                                        <input type="hidden" name="status" value="<?php echo $e($action); ?>">
+                                        <?php foreach (['status' => $filters['status'], 'q' => $filters['q'], 'provider_id' => $filters['provider_id'], 'paged' => $paged] as $k => $v): ?>
+                                            <input type="hidden" name="return_<?php echo $e($k); ?>" value="<?php echo $e($v); ?>">
+                                        <?php endforeach; ?>
+                                        <button type="submit" class="btn btn-sm <?php echo $e($class); ?>" title="<?php echo $e($label); ?>"><i class="<?php echo $e($icon); ?>" aria-hidden="true"></i><span class="visually-hidden"><?php echo $e($label); ?></span></button>
+                                    </form>
+                                <?php endforeach; ?>
+                                <a class="btn btn-sm btn-outline-secondary" href="<?php echo $e(CMS_Booking_Admin_Pages::url('bookings', ['view' => $id])); ?>" title="Details"><i class="ti ti-eye" aria-hidden="true"></i><span class="visually-hidden">Details</span></a>
                             </div>
                         </td>
                     </tr>
-                    <?php endforeach; ?>
+                <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
-
-        <!-- Paginierung -->
         <?php if ($pages > 1): ?>
-        <div class="pagination booking-admin-pagination">
-            <?php if ($page > 1): ?>
-                <a href="<?php echo htmlspecialchars(CMS_Booking_Admin_Pages::admin_url('bookings', ['paged' => (int) ($page - 1), 'status' => $status, 'q' => $search, 'provider_id' => $providerId]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-secondary btn-sm">← Zurück</a>
-            <?php endif; ?>
-            <span class="booking-admin-pagination-info">
-                Seite <?php echo (int) $page; ?> von <?php echo (int) $pages; ?>
-            </span>
-            <?php if ($page < $pages): ?>
-                <a href="<?php echo htmlspecialchars(CMS_Booking_Admin_Pages::admin_url('bookings', ['paged' => (int) ($page + 1), 'status' => $status, 'q' => $search, 'provider_id' => $providerId]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-secondary btn-sm">Weiter →</a>
-            <?php endif; ?>
-        </div>
+            <nav class="bk-pagination" aria-label="Seiten">
+                <?php $base = array_filter(['status' => $filters['status'], 'q' => $filters['q'], 'provider_id' => $filters['provider_id']]); ?>
+                <?php if ($paged > 1): ?><a class="btn btn-sm btn-outline-secondary" href="<?php echo $e(CMS_Booking_Admin_Pages::url('bookings', $base + ['paged' => $paged - 1])); ?>">Zurück</a><?php endif; ?>
+                <span class="bk-muted">Seite <?php echo $paged; ?> von <?php echo $pages; ?></span>
+                <?php if ($paged < $pages): ?><a class="btn btn-sm btn-outline-secondary" href="<?php echo $e(CMS_Booking_Admin_Pages::url('bookings', $base + ['paged' => $paged + 1])); ?>">Weiter</a><?php endif; ?>
+            </nav>
         <?php endif; ?>
     <?php endif; ?>
 </div>

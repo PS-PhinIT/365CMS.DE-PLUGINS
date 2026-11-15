@@ -311,7 +311,9 @@ HTML;
 
         $db   = \CMS\Database::instance();
         $p    = $db->getPrefix();
-        $stmt = $db->prepare("SELECT * FROM {$p}{$sourceTable} WHERE id = ?");
+        // Nur die konfigurierten (validierten) Spalten lesen.
+        $columns = array_values(array_unique(array_filter([$nameColumn, $emailColumn, $userIdColumn], static fn (string $c): bool => $c !== '')));
+        $stmt = $db->prepare('SELECT `' . implode('`, `', $columns) . "` FROM {$p}{$sourceTable} WHERE id = ?");
         $stmt->execute([$sourceId]);
         $source = $stmt->fetch(\PDO::FETCH_ASSOC);
 

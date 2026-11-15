@@ -15,7 +15,7 @@
 | Plugin | Ordner | Familie / Menütitel | Version alt → neu | PHP-Zeilen | JS/CSS-Zeilen | Eigene Tabellen | Status |
 |---|---|---|---|---:|---:|---|---|
 | CMS Beratung | `cms-beratung/` | `365CMS \| Beratung` | 2.9.794 → 3.0.0 | 5.030 | 1.771 / 4.852 | `beratung_landingpages`, `beratung_presets`, `beratung_settings`, `beratung_form_submissions` | [ ] |
-| CMS Booking | `cms-booking/` | `365CMS \| Booking` | 3.0.8 → 4.0.0 | 6.484 | 430 / 773 | `bookings`, `booking_providers`, `booking_services`, `booking_availability`, `booking_meta`, `booking_settings` | [ ] |
+| CMS Booking | `cms-booking/` | `365CMS \| Buchungen` | 3.0.8 → 4.0.0 | 6.484 | 430 / 773 | `bookings`, `booking_providers`, `booking_services`, `booking_availability`, `booking_meta`, `booking_settings` | [x] |
 | CMS Projects | `cms-projects/` | `365CMS \| Projekte` | 3.0.4 → 4.0.0 | 3.788 | 171 / 626 | `projects_projects`, `projects_boards`, `projects_widgets`, `projects_tasks`, `projects_audit_logs` | [x] |
 | CMS Promos | `cms-promos/` | `365CMS \| Promos` | 3.0.4 → 4.0.0 | 2.456 | 40 / 531 | `promos`, `promo_placements`, `promo_settings` | [x] |
 
@@ -104,3 +104,34 @@ _(wird je Plugin während der Umsetzung ergänzt)_
 **Dokumentation:** `cms-projects/DOC/README.md`, `DATABASE.md`, `HOOKS.md`, `API.md` (neu, Aufbau gemäß `.github/copilot-instructions.md` §11), `README.md`, `CHANGELOG.md`, `update.json`.
 
 **Prüfung:** `php -l` für alle PHP-Dateien fehlerfrei; Render-Smoke-Test aller 9 Admin-Ansichten (inkl. aller Projekt-Reiter) mit Core-Partial ohne Notices, ohne `style=`-Attribute, genau ein `aria-current` je Seite.
+
+### 3.3 CMS Booking (`cms-booking`, 3.0.8 → 4.0.0) – [x] abgeschlossen
+
+**Befunde**
+
+| # | Bereich | Befund | Schwere |
+|---|---|---|---|
+| B-1 | Funktion | `CMS_Booking_Notifications` wurde **nie instanziiert** – keine einzige Buchungs-, Status- oder Admin-Mail wurde versendet | hoch |
+| B-2 | Funktion | Nach erfolgreicher Buchung Aufruf der nicht existierenden Methode `send_booking_created()` → Exception → Kunde sieht „Speichern fehlgeschlagen“, Buchung ist trotzdem angelegt | hoch |
+| B-3 | Unfertig | Keine Admin-Oberfläche für Verfügbarkeiten (Wochenplan/Abwesenheiten); Anbieter nur über Quell-Plugins anlegbar → Plugin ohne weitere Plugins nicht nutzbar | hoch |
+| B-4 | Unfertig | Einstellung „Erinnerungen versenden“ und Spalte `reminder_sent` ohne Versandlogik; Einstellung „Primärfarbe“ ohne Wirkung; kein Export, kein Buchungsdetail, keine interne Notiz | mittel |
+| B-5 | Design | Eigene Shell mit Fallback auf Core-Header/Sidebar, Traits mit Inline-POST ohne Redirect, 51 `style`-Attribute, hartkodierte Farben, Service-Formular als JS-Modal | mittel |
+| B-6 | 4.0.0 | `shared/admin/plugin-admin-contract.php`, `cms_plugin_admin_layout_start()`, `plugin_activated`/`plugin_uninstalled`-Listener statt Lebenszyklus-Funktionen; Member-Bereich mit Emoji-Icon und ohne Capability | mittel |
+| B-7 | 4.0.0 | Versand per `mail()` statt Core-`MailService` (kein SMTP/Graph, kein Mail-Log) | mittel |
+| B-8 | Sicherheit | Token-Secret `CMS_SECRET_KEY` existiert in 4.0.0 nicht → Fallback aus `ABSPATH`/`SITE_URL` (Unvorhersagbarkeit hing allein an der iCal-UID) | mittel |
+| B-9 | Sicherheit | `LIKE`-Suche ohne Maskierung von `%`/`_`; `SELECT *` auf Quell-Plugin-Tabellen | niedrig |
+| B-10 | Datenschutz | Kundendaten (Name, E-Mail, Telefon, Notizen) ohne Löschfrist | mittel |
+| B-11 | Bug | Member-Liste zeigte die Leistung nie (`service_name` statt `service_title`); Status unübersetzt | niedrig |
+| B-12 | Performance | 13 `SELECT *`, Einstellungen mehrfach je Request gelesen, kein Index für Erinnerungs-/Kalenderabfragen | niedrig |
+
+**Umsetzung (Phasen 1–5)**
+
+1. **Design:** Neue `CMS_Booking_Admin_Pages` auf dem Layout-Vertrag: Kopfzeile `365CMS | Buchungen` mit 4 KPIs (offene Anfragen, heute, 7 Tage, aktive Anbieter); Menü Übersicht · Buchungen · Anbieter · **Verfügbarkeit** · Leistungen · Einstellungen mit Badge für offene Anfragen; Übersicht mit Schnellaktionen, 7 System-Checks und anstehenden Terminen; alle Unterseiten Header → Toolbar → Inhalt. Traits, `dashboard.php` und `booking-admin.js` entfernt; `booking-admin.css` neu nur mit Tokens.
+2. **4.0.0:** `manage_options`, Tabler-Icons, Router-Shell (Slugs unverändert, AdminRouter-Fallback `render_*()` bleibt), `safeLocalPath()`; Lebenszyklus-Callbacks; Member-Capability `member`; `MailService`; `cms_cron_hourly`; `DataRetentionService::registerRule('cms_booking_customers')` (anonymisieren); `AdminNoticeService::registerCheck('cms_booking_pending')`; `cms_sitemap_entries`.
+3. **Ausbau:** Anbieter manuell anlegen/bearbeiten, Wochenplan mit zwei Zeitfenstern je Tag, Abwesenheiten über Zeiträume, Buchungsdetail mit Meta und interner Notiz, kontextabhängige Statusaktionen, CSV-Export, Erinnerungs-Cron inkl. Mailvorlage, Primärfarbe, Einstellungen zurücksetzen, Wartungsaktionen; B-1, B-2 und B-11 behoben.
+4. **Sicherheit:** CSRF auf allen POSTs, persistentes Export-Token, CSV-Formel-Schutz, Aktions-Whitelist, Zeit-/Datumsvalidierung, `https`-Pflicht für Meeting-Links; Zugangs-Token mit `SECURE_AUTH_KEY`/`AUTH_KEY` (alte Links bleiben gültig); `LIKE`-Maskierung; Quelltabellen nur über validierte Spalten.
+5. **Speed:** Explizite Spaltenlisten, Einstellungen einmal je Request (`read_settings()`), `booking_db_version` über `OptionStore`, neue Indizes `idx_reminder` und `idx_provider_date`, Anonymisierung in Blöcken.
+
+**Dokumentation:** `cms-booking/DOC/README.md`, `DATABASE.md`, `HOOKS.md`, `API.md` (neu), `README.md`, `CHANGELOG.md`, `update.json`.
+
+**Prüfung:** `php -l` für alle PHP-Dateien fehlerfrei; Render-Smoke-Test aller 11 Admin-Ansichten (inkl. Detail-, Formular- und Verfügbarkeitsansicht) mit Core-Partial ohne Notices, ohne `style=`-/`on*=`-Attribute, genau ein `aria-current`.

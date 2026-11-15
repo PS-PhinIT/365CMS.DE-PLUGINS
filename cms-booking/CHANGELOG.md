@@ -1,5 +1,37 @@
 # Changelog – CMS Booking
 
+## 4.0.0 – 2026-11-15
+
+### Behoben
+
+- **E-Mail-Benachrichtigungen:** `CMS_Booking_Notifications` wurde nie instanziiert – Kunden-, Anbieter- und Admin-Mails wurden nicht versendet. Die Klasse wird jetzt bei `cms_init` registriert.
+- **Buchungsabschluss:** Nach dem Speichern rief das Frontend die nicht existierende Methode `send_booking_created()` auf; Kunden sahen „Speichern fehlgeschlagen“, obwohl die Buchung angelegt war.
+- **Member-Bereich:** Die Spalte „Service“ zeigte immer „—“ (falscher Schlüssel `service_name`); Status jetzt mit deutschen Bezeichnungen.
+- **Suche:** `%`/`_` in Suchbegriffen werden maskiert; Zählung und Liste nutzen dieselben Suchfelder.
+- **Primärfarbe:** Die Einstellung wird auf den Buchungsseiten angewendet (nonce-geschützter Style-Block).
+
+### Neu
+
+- Einheitliches 365CMS-Plugin-Layout: Kopfzeile mit Version, Status und KPIs (offene Anfragen, heute, 7 Tage, aktive Anbieter), linkes Menü **Übersicht · Buchungen · Anbieter · Verfügbarkeit · Leistungen · Einstellungen**, Übersicht mit Schnellaktionen, System-Check und anstehenden Terminen.
+- Anbieter manuell anlegen und bearbeiten (bisher nur über Quell-Plugins); synchronisierte Anbieter: Kontaktdaten, Zeitzone, Währung und Status bearbeitbar.
+- Seite **Verfügbarkeit**: Wochenplan mit bis zu zwei Zeitfenstern je Tag, Abwesenheiten für Zeiträume (bisher ohne Admin-Oberfläche).
+- Buchungsdetail mit allen Angaben, Meta-Daten und interner Notiz; Statusaktionen kontextabhängig.
+- CSV-Export der (gefilterten) Buchungen; Einstellungen zurücksetzen; Erinnerungen und Anonymisierung manuell auslösen.
+- Terminerinnerungen über `cms_cron_hourly` (Einstellung „Erinnerungen versenden“ existierte bereits, wurde aber nie ausgeführt).
+- Datenaufbewahrung: Regel `cms_booking_customers` anonymisiert Kundendaten alter, abgeschlossener Termine (Standard 730 Tage).
+- Systemhinweis `cms_booking_pending` für Anfragen, deren Termin unbearbeitet verstrichen ist; Sitemap-Einträge `/booking/<anbieter>`.
+- Lebenszyklus-Callbacks `cms_booking_activate()`, `cms_booking_deactivate()`, `cms_booking_uninstall()`.
+
+### Geändert
+
+- Voraussetzung 365CMS 4.0.0 und PHP 8.4.1; Schema-Version 3 (Indizes `idx_reminder`, `idx_provider_date`).
+- Versand über den Core-`MailService` statt `mail()`; die Absenderadresse der Einstellungen wird als Reply-To verwendet.
+- Zugangs-Token für Bestätigungsseite und iCal nutzen `SECURE_AUTH_KEY`/`AUTH_KEY`; bereits versendete Links bleiben gültig.
+- Alle Admin-Formulare nach dem PRG-Muster mit Flash-Meldungen; Capability `manage_options`; Redirects über `Security::safeLocalPath()`.
+- Keine `SELECT *` mehr (auch nicht beim Lesen aus Quell-Plugin-Tabellen); Einstellungen einmal je Request gelesen.
+- Admin-Views ohne `style`-Attribute, Admin-CSS nur mit Core-Tokens; `booking-admin.js` und die Admin-Traits entfernt (nicht mehr benötigt); Member-Icon Tabler statt Emoji, Capability `member`.
+
+
 Alle nennenswerten Änderungen an diesem Plugin werden hier dokumentiert.
 
 ## [3.0.8] – 2026-09-30
