@@ -1,5 +1,16 @@
 # Changelog – CMS Booking
 
+## 4.1.0 – 2026-11-16
+
+Plugin-Audit gegen 365CMS 4.1.8 (getestet auf 4.1.8, weiterhin lauffähig ab 4.0.0).
+
+- Medien-Verwendungsnachweis (365CMS 4.1): Anbieterbilder und -texte erscheinen in der Mediathek unter „verwendet in …“.
+- Sicherheit: Doppelbuchungen bei gleichzeitigen Anfragen verhindert (Sperre je Anbieter).
+- Fix: Puffer nach bestehenden Buchungen wird reserviert; ungültige Kalenderdaten und vergangene Zeitfenster werden abgewiesen; Formular nach Validierungsfehler wieder benutzbar; Array-Eingaben führen nicht mehr zu HTTP 500.
+- Fix: „Anbieter synchronisieren“ setzt Status, Einstellungen und Slug nicht mehr zurück.
+- Fix: Mitgliederbereich zeigt das Icon 📅 statt des Textes „TI-CALENDAR-EVENT“.
+- Speed: Öffentliche Buchungsseite 217 → 37 SQL-Abfragen.
+
 ## 4.0.2 – 2026-11-15
 
 Funktions-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft auf der 365CMS-Testinstallation (Core-`main`).

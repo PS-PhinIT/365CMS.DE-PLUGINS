@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.1.0 - 2026-11-16
+
+Plugin-Audit gegen 365CMS 4.1.8 (getestet auf 4.1.8, weiterhin lauffähig ab 4.0.0).
+
+- Medien-Verwendungsnachweis (365CMS 4.1) für Promo-Bilder und -Inhalte.
+- Fix: Lokale Bildpfade (/uploads/…) werden gespeichert statt still verworfen; ungültige Bild-/Ziel-URLs werden gemeldet.
+- Fix: Promos deaktivierter Platzierungen erscheinen nicht mehr; unbekannte Platzierungen liefern 404.
+- Sicherheit: HTML-Filter entfernt Event-Handler und href ohne vorangehendes Leerzeichen.
+- Speed: Zähler leeren keine Lese-Caches mehr; Hook-Platzierungen einmal je Anfrage.
+
 ## 4.0.3 - 2026-11-15
 
 Funktions-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft auf der 365CMS-Testinstallation (Core-`main`).
