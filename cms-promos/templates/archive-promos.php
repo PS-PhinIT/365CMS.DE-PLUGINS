@@ -73,10 +73,10 @@ $sanitizePromoUrl = static function (string $url): string {
 
 $sanitizePromoHtml = static function (string $html) use ($sanitizePromoUrl): string {
     $html = trim(strip_tags($html, '<p><a><strong><em><ul><ol><li><br><h2><h3><h4><span>'));
-    $html = preg_replace('/\s+on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html) ?? '';
+    $html = preg_replace_callback('/<[a-z][^>]*>/i', static fn (array $tag): string => preg_replace('/(?<=[\s"\'\/])on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $tag[0]) ?? '', $html) ?? ''; // Event-Handler auch ohne Leerzeichen davor
     $html = preg_replace('/\s+style\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html) ?? '';
-    return preg_replace_callback('/\s+href\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', static function (array $matches) use ($sanitizePromoUrl): string {
-        $href = html_entity_decode((string) ($matches[2] ?? $matches[3] ?? $matches[4] ?? ''), ENT_QUOTES, 'UTF-8');
+    return preg_replace_callback('/(?:\s+|(?<=["\'])|(?<=\/))href\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', static function (array $matches) use ($sanitizePromoUrl): string {
+        $href = html_entity_decode((string) (($matches[2] ?? '') . ($matches[3] ?? '') . ($matches[4] ?? '')), ENT_QUOTES, 'UTF-8');
         $safeHref = $sanitizePromoUrl($href);
         return $safeHref !== '' ? ' href="' . htmlspecialchars($safeHref, ENT_QUOTES, 'UTF-8') . '"' : '';
     }, $html) ?? '';

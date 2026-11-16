@@ -186,7 +186,7 @@ $listUrl = CMS_Promos_Admin_Pages::page_url('promos-items');
             <div class="form-group"><label class="form-label" for="pr-content">Zusatztext</label><textarea id="pr-content" name="content_html" class="form-control" rows="5"><?php echo $e($promo['content_html'] ?? ''); ?></textarea><div class="form-hint">Erlaubt: p, a, strong, em, ul, ol, li, br, h2–h4, span.</div></div>
             <div class="form-group"><label class="form-label" for="pr-content-en">Zusatztext (EN)</label><textarea id="pr-content-en" name="content_html_en" class="form-control" rows="5"><?php echo $e($promo['content_html_en'] ?? ''); ?></textarea></div>
         </div>
-        <div class="form-group"><label class="form-label" for="pr-image">Bild-URL</label><input id="pr-image" type="url" name="image_url" class="form-control" value="<?php echo $e($promo['image_url'] ?? ''); ?>" placeholder="https://"></div>
+        <div class="form-group"><label class="form-label" for="pr-image">Bild-URL</label><input id="pr-image" type="text" inputmode="url" name="image_url" class="form-control" maxlength="2048" value="<?php echo $e($promo['image_url'] ?? ''); ?>" placeholder="/uploads/… oder https://"><div class="form-hint">Am besten ein Bild aus der Mediathek (Pfad /uploads/…): Die Content-Security-Policy lädt öffentlich nur Bilder der eigenen Website.</div></div>
     </div>
 
     <div class="admin-card">

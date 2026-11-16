@@ -239,7 +239,7 @@ final class CMS_Booking_Frontend
                 $error = $this->t('error_name_required', $lang, 'Bitte geben Sie Ihren Namen an.');
             } elseif (!$customerEmail) {
                 $error = $this->t('error_valid_email_required', $lang, 'Bitte geben Sie eine gültige E-Mail-Adresse an.');
-            } elseif ($bookingDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $bookingDate)) {
+            } elseif (!$this->is_valid_date($bookingDate)) {
                 $error = $this->t('error_valid_date_required', $lang, 'Bitte wählen Sie ein gültiges Datum.');
             } elseif ($startTime === '' || !$this->is_valid_time($startTime)) {
                 $error = $this->t('error_valid_time_required', $lang, 'Bitte wählen Sie eine Uhrzeit.');
@@ -271,18 +271,26 @@ final class CMS_Booking_Frontend
                 );
             }
 
-            if ($error === '' && $noticeHours > 0) {
+            if ($error === '') {
                 $providerTimezone = $this->provider_timezone($provider);
                 $tz = new \DateTimeZone($providerTimezone);
-                $bookingStart = \DateTimeImmutable::createFromFormat('Y-m-d H:i', $bookingDate . ' ' . $startTime, $tz);
+                $bookingStart = \DateTimeImmutable::createFromFormat('!Y-m-d H:i', $bookingDate . ' ' . $startTime, $tz);
                 $now = new \DateTimeImmutable('now', $tz);
-                $minAllowed = $now->modify('+' . $noticeHours . ' hours');
-                if (!$bookingStart || $bookingStart < $minAllowed) {
+                if (!$bookingStart || $bookingStart <= $now) {
+                    // Auch ohne Mindestvorlauf: bereits vergangene Zeitfenster des heutigen Tages nicht annehmen.
+                    $error = $this->t('error_slot_unavailable', $lang, 'Der gewählte Zeitpunkt ist leider nicht mehr verfügbar.');
+                } elseif ($noticeHours > 0 && $bookingStart < $now->modify('+' . $noticeHours . ' hours')) {
                     $error = sprintf(
                         $this->t('error_min_notice_hours', $lang, 'Buchungen müssen mindestens %d Stunde(n) im Voraus erfolgen.'),
                         $noticeHours
                     );
                 }
+            }
+
+            // Prüfung und Anlage serialisieren: ohne Sperre konnten zwei gleichzeitige Anfragen
+            // denselben Termin belegen (Prüfen und INSERT liefen ohne Transaktion/Lock).
+            if ($error === '' && !$this->acquire_slot_lock((int) $provider['id'])) {
+                $error = $this->t('error_slot_unavailable', $lang, 'Der gewählte Zeitpunkt ist leider nicht mehr verfügbar.');
             }
 
             if ($error === '' && $this->is_daily_limit_reached((int) $provider['id'], (int) $service['id'], $bookingDate, $provider, $service)) {
@@ -301,6 +309,9 @@ final class CMS_Booking_Frontend
                 if (!$isAvailable) {
                     $error = $this->t('error_slot_unavailable', $lang, 'Der gewählte Zeitpunkt ist leider nicht mehr verfügbar.');
                 }
+            }
+            if ($error !== '') {
+                $this->release_slot_lock();
             }
         }
 
@@ -327,6 +338,7 @@ final class CMS_Booking_Frontend
                     'currency'       => $provider['currency'] ?? 'EUR',
                     'notes'          => $notes,
                 ]);
+                $this->release_slot_lock();
 
                 // booking_type / auto_confirm auswerten
                 $bookingType = $service['booking_type'] ?? 'confirmation';
@@ -356,6 +368,7 @@ final class CMS_Booking_Frontend
                 header('Location: ' . $confirmUrl, true, 303);
                 exit;
             } catch (\Throwable $e) {
+                $this->release_slot_lock();
                 error_log('[cms-booking] Buchung konnte nicht gespeichert werden: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
                 $error = $this->t('error_save_failed', $lang, 'Beim Speichern der Buchung ist ein Fehler aufgetreten.');
             }
@@ -598,6 +611,53 @@ final class CMS_Booking_Frontend
         $legacySecret = hash('sha256', (defined('ABSPATH') ? (string) ABSPATH : __DIR__) . '|' . (defined('SITE_URL') ? (string) SITE_URL : ''));
 
         return hash_equals(hash_hmac('sha256', $bookingId . ':' . $icalUid, $legacySecret), $token);
+    }
+
+    private string $slotLockName = '';
+
+    /** Datenbank-Sperre je Anbieter für Verfügbarkeitsprüfung + Anlage (höchstens 5 s warten). */
+    private function acquire_slot_lock(int $providerId): bool
+    {
+        try {
+            $db = \CMS\Database::instance();
+            $name = 'cms_booking_' . hash('crc32b', (string) $db->getPrefix()) . '_' . $providerId;
+            $stmt = $db->getPdo()->prepare('SELECT GET_LOCK(?, 5)');
+            $stmt->execute([$name]);
+            if ((int) $stmt->fetchColumn() !== 1) {
+                return false;
+            }
+            $this->slotLockName = $name;
+
+            return true;
+        } catch (\Throwable) {
+            // Ohne Sperrfunktion (z. B. anderer DB-Treiber) wie bisher fortfahren.
+            return true;
+        }
+    }
+
+    private function release_slot_lock(): void
+    {
+        if ($this->slotLockName === '') {
+            return;
+        }
+        try {
+            $stmt = \CMS\Database::instance()->getPdo()->prepare('SELECT RELEASE_LOCK(?)');
+            $stmt->execute([$this->slotLockName]);
+        } catch (\Throwable) {
+            // Die Sperre endet spätestens mit der Verbindung.
+        }
+        $this->slotLockName = '';
+    }
+
+    /** Kalenderdatum exakt prüfen (2026-02-31 wird nicht zum 3. März). */
+    private function is_valid_date(string $date): bool
+    {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
+            return false;
+        }
+        $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+
+        return $parsed !== false && $parsed->format('Y-m-d') === $date;
     }
 
     private function is_valid_time(string $time): bool

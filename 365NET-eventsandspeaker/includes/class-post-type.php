@@ -231,6 +231,12 @@ final class CMS_365NET_Events_Post_Type
             }
         }
 
+        // Öffentlich nur veröffentlichte Speaker und aktive Firmen/Experts zeigen (Entwürfe nicht preisgeben).
+        $speakers = array_values(array_filter($speakers, static fn (mixed $speaker): bool => is_object($speaker)
+            && (!isset($speaker->status) || (string) $speaker->status === 'published')));
+        $linkedCompany = $this->publicLink($linkedCompany);
+        $linkedExpert = $this->publicLink($linkedExpert);
+
         $this->setSeoMeta([
             'title' => (string) (($event->seo_title ?? '') ?: ($event->title ?? '')),
             'description' => $this->plainText((string) (($event->seo_description ?? '') ?: ($event->excerpt ?? '') ?: ($event->description ?? '')), 300),
@@ -335,6 +341,9 @@ final class CMS_365NET_Events_Post_Type
                 $linkedExpert = $db->getLinkedExpert($companyLinkedExpertId);
             }
         }
+
+        $linkedCompany = $this->publicLink($linkedCompany);
+        $linkedExpert = $this->publicLink($linkedExpert);
 
         $this->setSeoMeta([
             'title' => (string) (($speaker->seo_title ?? '') ?: ($speaker->display_name ?? '')),
@@ -512,6 +521,17 @@ final class CMS_365NET_Events_Post_Type
         $theme->getHeader();
         CMS_365NET_Events_Template_Loader::instance()->render($template, $context);
         $theme->getFooter();
+    }
+
+    /** Verknüpfte Firma/Expert nur öffentlich zeigen, wenn sie in Experts & Companies aktiv ist. */
+    private function publicLink(?object $row): ?object
+    {
+        if ($row === null) {
+            return null;
+        }
+        $status = isset($row->status) ? (string) $row->status : 'active';
+
+        return in_array($status, ['active', 'published', ''], true) ? $row : null;
     }
 
     private function render404(string $message, string $backUrl): void

@@ -1897,7 +1897,8 @@ final class CMS_Beratung_Admin_Pages
 
     private static function svg_upload_is_safe(string $tmpName): bool
     {
-        $content = (string) @file_get_contents($tmpName, false, null, 0, 1024 * 1024);
+        // Ganze Datei prüfen (Uploads bis 10 MB): bisher wurde nur das erste MiB gelesen.
+        $content = (string) @file_get_contents($tmpName);
         if ($content === '' || stripos($content, '<svg') === false) {
             return false;
         }
@@ -1906,11 +1907,12 @@ final class CMS_Beratung_Admin_Pages
             return false;
         }
 
-        if (preg_match('/\s+on[a-z]+\s*=/i', $content) === 1) {
+        // Auch ohne Leerzeichen vor dem Attribut (<svg/onload=…>, title="x"onclick=…).
+        if (preg_match('/[\s"\'\/]on[a-z]+\s*=/i', $content) === 1) {
             return false;
         }
 
-        if (preg_match('/(?:href|xlink:href|src)\s*=\s*(["\'])\s*(?:javascript:|data:text\/html)/i', $content) === 1) {
+        if (preg_match('/(?:href|xlink:href|src)\s*=\s*["\']?\s*(?:javascript:|vbscript:|data:text\/html|&#)/i', $content) === 1) {
             return false;
         }
 

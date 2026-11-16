@@ -407,6 +407,7 @@ final class CMS_Promos_Repository
                 FROM {$this->prefix}promos pr
                 LEFT JOIN {$this->prefix}promo_placements p ON p.id = pr.placement_id
                 WHERE pr.status = 'active'
+                  AND (pr.placement_id IS NULL OR p.status = 'active')
                   AND (pr.start_at IS NULL OR pr.start_at <= NOW())
                   AND (pr.end_at IS NULL OR pr.end_at >= NOW())";
         $params = [];
@@ -526,6 +527,16 @@ final class CMS_Promos_Repository
                 return ['success' => false, 'error' => 'Das Enddatum darf nicht vor dem Startdatum liegen.'];
             }
 
+            // Ungültige Adressen nicht still verwerfen, sondern melden (sonst fehlen Link/Bild ohne Hinweis).
+            $targetUrl = $this->clean_url((string) ($post['target_url'] ?? ''));
+            if ($targetUrl === '' && trim((string) ($post['target_url'] ?? '')) !== '') {
+                return ['success' => false, 'error' => 'Die Ziel-URL ist ungültig. Erlaubt sind öffentliche http(s)-Adressen.'];
+            }
+            $imageUrl = $this->clean_image_url((string) ($post['image_url'] ?? ''));
+            if ($imageUrl === '' && trim((string) ($post['image_url'] ?? '')) !== '') {
+                return ['success' => false, 'error' => 'Die Bild-URL ist ungültig. Erlaubt sind Pfade der eigenen Website (z. B. /uploads/…) oder öffentliche http(s)-Adressen.'];
+            }
+
             $values = [
                 $placementId,
                 $title,
@@ -535,10 +546,10 @@ final class CMS_Promos_Repository
                 $this->clean_text($post['teaser_en'] ?? ''),
                 $this->clean_html($post['content_html'] ?? ''),
                 $this->clean_html($post['content_html_en'] ?? ''),
-                $this->clean_url($post['target_url'] ?? ''),
+                $targetUrl,
                 $this->clean_text($post['button_label'] ?? 'Mehr erfahren'),
                 $this->clean_text($post['button_label_en'] ?? ''),
-                $this->clean_url($post['image_url'] ?? ''),
+                $imageUrl,
                 $status,
                 $startAt,
                 $endAt,
@@ -922,15 +933,30 @@ final class CMS_Promos_Repository
     private function clean_html(string $value): string
     {
         $html = trim(strip_tags($value, '<p><a><strong><em><ul><ol><li><br><h2><h3><h4><span>'));
-        $html = preg_replace('/\s+on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html) ?? '';
+        $html = preg_replace_callback('/<[a-z][^>]*>/i', static fn (array $tag): string => preg_replace('/(?<=[\s"\'\/])on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $tag[0]) ?? '', $html) ?? ''; // Event-Handler auch ohne Leerzeichen davor
         $html = preg_replace('/\s+style\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html) ?? '';
-        $html = preg_replace_callback('/\s+href\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', function (array $matches): string {
-            $href = html_entity_decode((string) ($matches[2] ?? $matches[3] ?? $matches[4] ?? ''), ENT_QUOTES, 'UTF-8');
+        $html = preg_replace_callback('/(?:\s+|(?<=["\'])|(?<=\/))href\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', function (array $matches): string {
+            $href = html_entity_decode((string) (($matches[2] ?? '') . ($matches[3] ?? '') . ($matches[4] ?? '')), ENT_QUOTES, 'UTF-8');
             $safeHref = $this->clean_url($href);
             return $safeHref !== '' ? ' href="' . htmlspecialchars($safeHref, ENT_QUOTES, 'UTF-8') . '"' : '';
         }, $html) ?? '';
 
         return mb_substr($html, 0, 20000);
+    }
+
+    /**
+     * Bild-URL: Pfad der eigenen Website (Mediathek, z. B. /uploads/2026/11/bild.webp) oder öffentliche http(s)-Adresse.
+     * Lokale Pfade sind der Normalfall, weil die Produktiv-CSP Bilder nur von 'self' lädt.
+     */
+    private function clean_image_url(string $value): string
+    {
+        $url = trim($value);
+        if ($url !== '' && strlen($url) <= 2048 && str_starts_with($url, '/') && !str_starts_with($url, '//')
+            && preg_match('#^/[A-Za-z0-9._~!$&()*+,;=:@%/?-]*$#', $url) === 1 && !str_contains($url, '/../')) {
+            return $url;
+        }
+
+        return $this->clean_url($url);
     }
 
     private function clean_url(string $value): string

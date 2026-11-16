@@ -157,10 +157,20 @@ final class CMS_365NET_Events_Admin
                     $admin->redirect(self::PAGE_EVENTS, ['error' => 'not_found']);
                 }
             }
+            // Die Auswahl zeigt höchstens 300 Speaker. Zugeordnete Speaker müssen immer enthalten sein,
+            // sonst entfernt das nächste Speichern ihre Zuordnung (saveEventSpeakers ersetzt alle Relationen).
+            $assignedSpeakers = $event !== null ? $db->getSpeakersForEvent((int) $event->id) : [];
+            $allSpeakers = $db->getSpeakers(['limit' => 300]);
+            $listedIds = array_map(static fn (object $speaker): int => (int) ($speaker->id ?? 0), $allSpeakers);
+            foreach ($assignedSpeakers as $assigned) {
+                if (is_object($assigned) && !in_array((int) ($assigned->id ?? 0), $listedIds, true)) {
+                    $allSpeakers[] = $assigned;
+                }
+            }
             $context = [
                 'event' => $event,
-                'allSpeakers' => $db->getSpeakers(['limit' => 300]),
-                'assignedSpeakers' => $event !== null ? $db->getSpeakersForEvent((int) $event->id) : [],
+                'allSpeakers' => $allSpeakers,
+                'assignedSpeakers' => $assignedSpeakers,
                 'companies' => $db->getAvailableCompanies(300),
                 'experts' => $db->getAvailableExperts(300),
                 'taxonomies' => $db->getTaxonomyOptions(),

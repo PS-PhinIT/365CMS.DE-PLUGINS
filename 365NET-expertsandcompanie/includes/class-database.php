@@ -612,6 +612,29 @@ final class CMS_365NET_Experts_And_Companie_Database
         return $row ?: null;
     }
 
+    /** Wie getLinkedSpeaker(), aber nur veröffentlichte Speaker (öffentliche Seiten). */
+    public function getPublishedLinkedSpeaker(?int $speakerId): ?object
+    {
+        $row = $this->getLinkedSpeaker($speakerId);
+
+        return $row !== null && $this->isPublicRow($row) ? $row : null;
+    }
+
+    /** Öffentlich sichtbar: Speaker „published“, Experts/Companies „active“; Zeilen ohne Status gelten als sichtbar. */
+    private function isPublicRow(object $row): bool
+    {
+        return !isset($row->status) || in_array((string) $row->status, ['published', 'active'], true);
+    }
+
+    /**
+     * @param array<int|string, object> $rows
+     * @return array<int|string, object>
+     */
+    private function publicRowsOnly(array $rows): array
+    {
+        return array_filter($rows, fn (mixed $row): bool => is_object($row) && $this->isPublicRow($row));
+    }
+
     public function getSpeakerByLinkedExpert(int $expertId): ?object
     {
         if ($expertId <= 0 || !$this->tableExists('365net_event_speakers')) {
@@ -624,7 +647,7 @@ final class CMS_365NET_Experts_And_Companie_Database
         }
 
         $db = CMS\Database::instance();
-        $stmt = $db->prepare('SELECT id, display_name, slug, topic, linked_expert_id, linked_company_id, status FROM ' . $db->prefix() . '365net_event_speakers WHERE linked_expert_id = ? LIMIT 1');
+        $stmt = $db->prepare('SELECT id, display_name, slug, topic, linked_expert_id, linked_company_id, status FROM ' . $db->prefix() . '365net_event_speakers WHERE linked_expert_id = ? AND status = \'published\' ORDER BY id ASC LIMIT 1');
         $stmt->execute([$expertId]);
         $row = $stmt->fetch();
 
@@ -899,7 +922,7 @@ final class CMS_365NET_Experts_And_Companie_Database
      */
     public function getCompaniesByIds(array $ids): array
     {
-        return $this->fetchByIds(self::TABLE_COMPANIES, $ids, ['id', 'name', 'logo_url', 'website', 'industry', 'location_city', 'city', 'is_partner', 'is_top_partner', 'is_sponsor', 'linked_speaker_id', 'status']);
+        return $this->publicRowsOnly($this->fetchByIds(self::TABLE_COMPANIES, $ids, ['id', 'name', 'logo_url', 'website', 'industry', 'location_city', 'city', 'is_partner', 'is_top_partner', 'is_sponsor', 'linked_speaker_id', 'status']));
     }
 
     /**
@@ -908,7 +931,7 @@ final class CMS_365NET_Experts_And_Companie_Database
      */
     public function getExpertsByIds(array $ids): array
     {
-        return $this->fetchByIds(self::TABLE_EXPERTS, $ids, ['id', 'first_name', 'last_name', 'position', 'company', 'photo_url', 'linked_company_id', 'linked_speaker_id', 'status']);
+        return $this->publicRowsOnly($this->fetchByIds(self::TABLE_EXPERTS, $ids, ['id', 'first_name', 'last_name', 'position', 'company', 'photo_url', 'linked_company_id', 'linked_speaker_id', 'status']));
     }
 
     /**
@@ -921,7 +944,7 @@ final class CMS_365NET_Experts_And_Companie_Database
             return [];
         }
 
-        return $this->fetchByIds('365net_event_speakers', $ids, ['id', 'display_name', 'slug', 'topic', 'linked_expert_id', 'linked_company_id', 'status']);
+        return $this->publicRowsOnly($this->fetchByIds('365net_event_speakers', $ids, ['id', 'display_name', 'slug', 'topic', 'linked_expert_id', 'linked_company_id', 'status']));
     }
 
     /**
@@ -948,7 +971,7 @@ final class CMS_365NET_Experts_And_Companie_Database
         $map = [];
         foreach ($stmt->fetchAll() ?: [] as $row) {
             $key = (int) ($row->linked_expert_id ?? 0);
-            if ($key > 0 && !isset($map[$key])) {
+            if ($key > 0 && !isset($map[$key]) && $this->isPublicRow($row)) {
                 $map[$key] = $row;
             }
         }
@@ -1710,7 +1733,7 @@ final class CMS_365NET_Experts_And_Companie_Database
                 $searchSql = [];
                 foreach ($searchable as $field) {
                     $searchSql[] = $field . ' LIKE ?';
-                    $params[] = '%' . $search . '%';
+                    $params[] = '%' . $this->escapeLike($search) . '%';
                 }
                 $where[] = '(' . implode(' OR ', $searchSql) . ')';
             }
@@ -1720,7 +1743,7 @@ final class CMS_365NET_Experts_And_Companie_Database
             $cityColumn = in_array('location_city', $columns, true) ? 'location_city' : (in_array('city', $columns, true) ? 'city' : '');
             if ($cityColumn !== '') {
                 $where[] = $cityColumn . ' LIKE ?';
-                $params[] = '%' . $city . '%';
+                $params[] = '%' . $this->escapeLike($city) . '%';
             }
         }
 
@@ -1841,7 +1864,7 @@ final class CMS_365NET_Experts_And_Companie_Database
                 $searchSql = [];
                 foreach ($searchable as $field) {
                     $searchSql[] = $field . ' LIKE ?';
-                    $params[] = '%' . $search . '%';
+                    $params[] = '%' . $this->escapeLike($search) . '%';
                 }
                 $where[] = '(' . implode(' OR ', $searchSql) . ')';
             }
@@ -1851,7 +1874,7 @@ final class CMS_365NET_Experts_And_Companie_Database
             $cityColumn = in_array('location_city', $columns, true) ? 'location_city' : (in_array('city', $columns, true) ? 'city' : '');
             if ($cityColumn !== '') {
                 $where[] = $cityColumn . ' LIKE ?';
-                $params[] = '%' . $city . '%';
+                $params[] = '%' . $this->escapeLike($city) . '%';
             }
         }
 
@@ -1956,7 +1979,7 @@ final class CMS_365NET_Experts_And_Companie_Database
                     continue;
                 }
                 $searchSql[] = $field . ' LIKE ?';
-                $params[] = '%' . $search . '%';
+                $params[] = '%' . $this->escapeLike($search) . '%';
             }
 
             if ($searchSql !== []) {
@@ -1968,7 +1991,7 @@ final class CMS_365NET_Experts_And_Companie_Database
             $cityColumn = in_array('location_city', $columns, true) ? 'location_city' : (in_array('city', $columns, true) ? 'city' : '');
             if ($cityColumn !== '') {
                 $where[] = $cityColumn . ' LIKE ?';
-                $params[] = '%' . $city . '%';
+                $params[] = '%' . $this->escapeLike($city) . '%';
             }
         }
 

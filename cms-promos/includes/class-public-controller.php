@@ -58,6 +58,11 @@ final class CMS_Promos_Public_Controller
         $settings = $repository->get_settings();
         $placements = $repository->get_placements();
         $currentPlacement = $slug !== '' ? $repository->get_placement_by_slug($slug) : null;
+        if ($slug !== '' && ($currentPlacement === null || (string) ($currentPlacement['status'] ?? 'active') !== 'active')) {
+            // Unbekannte oder deaktivierte Platzierung: 404 statt indexierbarer leerer Seite.
+            $this->render_not_found($lang);
+            return;
+        }
         $promos = $this->apply_frequency_cap($repository->get_active_promos($slug !== '' ? $slug : null));
         $repository->increment_impressions(array_map(static fn (array $promo): int => (int) ($promo['id'] ?? 0), $promos));
 
@@ -87,13 +92,7 @@ final class CMS_Promos_Public_Controller
         $promo = CMS_Promos_Repository::instance()->get_promo_by_slug($slug);
         $targetUrl = $promo !== null ? $this->build_target_url($promo) : '';
         if ($promo === null || $targetUrl === '' || !$this->is_promo_live($promo)) {
-            http_response_code(404);
-            header('X-Robots-Tag: noindex, nofollow', true);
-            $theme = class_exists('CMS\\ThemeManager') ? \CMS\ThemeManager::instance() : null;
-            $theme?->getHeader();
-            echo '<main class="promos-shell promos-shell--404"><h1>' . $this->escape_html($this->public_label('not_found_title', $lang)) . '</h1>'
-                . '<p><a href="' . $this->escape_attr($this->localized_path('promos', $lang)) . '">' . $this->escape_html($this->public_label('back_to_archive', $lang)) . '</a></p></main>';
-            $theme?->getFooter();
+            $this->render_not_found($lang);
             return;
         }
 
@@ -609,14 +608,25 @@ final class CMS_Promos_Public_Controller
     private function sanitize_public_html(string $html): string
     {
         $html = trim(strip_tags($html, '<p><a><strong><em><ul><ol><li><br><h2><h3><h4><span>'));
-        $html = preg_replace('/\s+on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html) ?? '';
+        $html = preg_replace_callback('/<[a-z][^>]*>/i', static fn (array $tag): string => preg_replace('/(?<=[\s"\'\/])on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $tag[0]) ?? '', $html) ?? ''; // Event-Handler auch ohne Leerzeichen davor
         $html = preg_replace('/\s+style\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html) ?? '';
 
-        return preg_replace_callback('/\s+href\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', function (array $matches): string {
-            $href = html_entity_decode((string) ($matches[2] ?? $matches[3] ?? $matches[4] ?? ''), ENT_QUOTES, 'UTF-8');
+        return preg_replace_callback('/(?:\s+|(?<=["\'])|(?<=\/))href\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', function (array $matches): string {
+            $href = html_entity_decode((string) (($matches[2] ?? '') . ($matches[3] ?? '') . ($matches[4] ?? '')), ENT_QUOTES, 'UTF-8');
             $safeHref = $this->sanitize_redirect_url($href);
             return $safeHref !== '' ? ' href="' . $this->escape_attr($safeHref) . '"' : '';
         }, $html) ?? '';
+    }
+
+    private function render_not_found(string $lang): void
+    {
+        http_response_code(404);
+        header('X-Robots-Tag: noindex, nofollow', true);
+        $theme = class_exists('CMS\\ThemeManager') ? \CMS\ThemeManager::instance() : null;
+        $theme?->getHeader();
+        echo '<main class="promos-shell promos-shell--404"><h1>' . $this->escape_html($this->public_label('not_found_title', $lang)) . '</h1>'
+            . '<p><a href="' . $this->escape_attr($this->localized_path('promos', $lang)) . '">' . $this->escape_html($this->public_label('back_to_archive', $lang)) . '</a></p></main>';
+        $theme?->getFooter();
     }
 
     private function log_error(string $message): void
