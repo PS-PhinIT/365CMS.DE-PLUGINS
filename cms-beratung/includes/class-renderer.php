@@ -303,8 +303,21 @@ final class CMS_Beratung_Renderer
     public static function safe_html(string $value): string
     {
         $value = preg_replace('#<(script|style|iframe|object|embed|form|input|button|textarea|select)\\b[^>]*>.*?</\\1>#is', '', $value) ?? '';
-        $value = preg_replace('/\\s+on[a-z]+\\s*=\\s*("[^"]*"|\'[^\']*\'|[^\\s>]+)/i', '', $value) ?? '';
-        $value = preg_replace('/(href|src)\\s*=\\s*("|\')\\s*javascript:[^"\']*\\2/i', '$1="#"', $value) ?? '';
+        // Attribute nur innerhalb von Tags prüfen; Event-Handler auch ohne vorangehendes Leerzeichen
+        // (title="x"onmouseover=…) und Skript-URLs auch ohne Anführungszeichen oder mit Entities entfernen.
+        $value = preg_replace_callback('/<[a-z][^>]*>/i', static function (array $tag): string {
+            $html = preg_replace('/(?<=[\\s"\'\/])on[a-z]+\\s*=\\s*("[^"]*"|\'[^\']*\'|[^\\s>]+)/i', '', $tag[0]) ?? '';
+
+            return preg_replace_callback('/\\b(href|src)\\s*=\\s*("([^"]*)"|\'([^\']*)\'|([^\\s>]+))/i', static function (array $m): string {
+                $url = html_entity_decode((string) ($m[3] ?? '') . (string) ($m[4] ?? '') . (string) ($m[5] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $scheme = strtolower((string) preg_replace('/[\\x00-\\x20]+/', '', $url));
+                if (str_starts_with($scheme, 'javascript:') || str_starts_with($scheme, 'vbscript:') || str_starts_with($scheme, 'data:text/html')) {
+                    return $m[1] . '="#"';
+                }
+
+                return $m[0];
+            }, $html) ?? '';
+        }, $value) ?? '';
         $allowed = '<p><br><strong><b><em><i><u><span><small><mark><ul><ol><li><a><blockquote><code><pre><h2><h3><h4><h5><h6><div><section><article><figure><figcaption><img><table><thead><tbody><tr><th><td><hr>';
         return strip_tags($value, $allowed);
     }

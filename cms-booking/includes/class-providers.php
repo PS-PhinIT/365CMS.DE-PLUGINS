@@ -72,6 +72,19 @@ final class CMS_Booking_Providers
         ];
 
         if ($existing) {
+            // Synchronisieren aktualisiert nur die Felder, die das Quell-Plugin liefert. Status, Zeitzone,
+            // Währung, Einstellungen (Tageslimit) und der Slug bleiben in der Hand des Booking-Admins:
+            // bisher aktivierte jeder Sync deaktivierte Anbieter wieder, leerte die Einstellungen und
+            // änderte den Slug (öffentliche Buchungs-URL).
+            $sourceOwned = ['user_id', 'display_name', 'email', 'phone', 'avatar_url', 'bio'];
+            $fields = array_filter(
+                $fields,
+                static fn (string $col): bool => in_array($col, $sourceOwned, true) && array_key_exists($col, $data),
+                ARRAY_FILTER_USE_KEY
+            );
+            if ($fields === []) {
+                return (int) $existing['id'];
+            }
             $sets   = [];
             $params = [];
             foreach ($fields as $col => $val) {

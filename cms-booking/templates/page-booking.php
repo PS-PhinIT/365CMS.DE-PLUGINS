@@ -14,7 +14,8 @@ if (!defined('ABSPATH')) exit;
 $e = fn(?string $v): string => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
 $siteName = $siteName ?? (defined('SITE_NAME') ? SITE_NAME : '365CMS');
 $old      = $old ?? [];
-$val      = fn(string $key, string $default = ''): string => $e($old[$key] ?? $default);
+// Nur Zeichenketten übernehmen: customer_name[]=x führte sonst zu einem TypeError (HTTP 500).
+$val      = fn(string $key, string $default = ''): string => $e(is_string($old[$key] ?? null) ? $old[$key] : $default);
 $lang = is_array($i18n ?? null) ? (string) ($i18n['lang'] ?? 'de') : 'de';
 $providerTitle = (string) ($provider['display_name'] ?? '');
 $serviceTitle = (string) ($service['title'] ?? '');

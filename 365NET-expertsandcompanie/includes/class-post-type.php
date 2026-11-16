@@ -186,7 +186,7 @@ final class CMS_365NET_Experts_And_Companie_Post_Type
         $linkedSpeaker = null;
         $linkedSpeakerId = (int) ($expert->linked_speaker_id ?? 0);
         if ($linkedSpeakerId > 0) {
-            $linkedSpeaker = $db->getLinkedSpeaker($linkedSpeakerId);
+            $linkedSpeaker = $db->getPublishedLinkedSpeaker($linkedSpeakerId);
         }
         if ($linkedSpeaker === null) {
             $linkedSpeaker = $db->getSpeakerByLinkedExpert($expertId);
@@ -200,7 +200,7 @@ final class CMS_365NET_Experts_And_Companie_Post_Type
         if ($linkedSpeaker === null && $linkedCompany !== null) {
             $companyLinkedSpeakerId = (int) ($linkedCompany->linked_speaker_id ?? 0);
             if ($companyLinkedSpeakerId > 0) {
-                $linkedSpeaker = $db->getLinkedSpeaker($companyLinkedSpeakerId);
+                $linkedSpeaker = $db->getPublishedLinkedSpeaker($companyLinkedSpeakerId);
             }
         }
 
@@ -248,7 +248,7 @@ final class CMS_365NET_Experts_And_Companie_Post_Type
         $linkedSpeaker = null;
         $linkedSpeakerId = (int) ($company->linked_speaker_id ?? 0);
         if ($linkedSpeakerId > 0) {
-            $linkedSpeaker = $db->getLinkedSpeaker($linkedSpeakerId);
+            $linkedSpeaker = $db->getPublishedLinkedSpeaker($linkedSpeakerId);
         }
 
         if ($linkedSpeaker === null && $linkedExpertId > 0) {

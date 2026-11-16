@@ -912,11 +912,12 @@ final class CMS_365NET_Events_Database
             array_push($params, $monthStart, $monthEnd);
         } elseif (($args['date_mode'] ?? '') === 'future') {
             $from = (string) ($args['from'] ?? date('Y-m-d'));
-            $where[] = 'e.start_date IS NOT NULL AND e.start_date >= ?';
+            // Laufende mehrtägige Events zählen bis zum letzten Tag als kommend.
+            $where[] = 'e.start_date IS NOT NULL AND COALESCE(e.end_date, e.start_date) >= ?';
             $params[] = $from;
         } elseif (($args['date_mode'] ?? '') === 'past') {
             $before = (string) ($args['before'] ?? date('Y-m-d'));
-            $where[] = 'e.start_date IS NOT NULL AND e.start_date < ?';
+            $where[] = 'e.start_date IS NOT NULL AND COALESCE(e.end_date, e.start_date) < ?';
             $params[] = $before;
         } elseif (($args['date_mode'] ?? '') === 'undated') {
             $where[] = 'e.start_date IS NULL';
@@ -1531,16 +1532,31 @@ final class CMS_365NET_Events_Database
     {
         $db = CMS\Database::instance();
         $p = $db->prefix();
-        $db->prepare("DELETE FROM {$p}365net_event_speaker_rel WHERE event_id = ?")->execute([$eventId]);
-        $stmt = $db->prepare("INSERT IGNORE INTO {$p}365net_event_speaker_rel (event_id, speaker_id, speaker_nr, sort_order) VALUES (?, ?, ?, ?)");
-        $order = 0;
-        foreach ($speakerIds as $speakerId) {
-            $speakerId = (int) $speakerId;
-            if ($speakerId <= 0) {
-                continue;
+        $pdo = $db->getPdo();
+        $ownTransaction = !$pdo->inTransaction();
+        if ($ownTransaction) {
+            $pdo->beginTransaction();
+        }
+        try {
+            $db->prepare("DELETE FROM {$p}365net_event_speaker_rel WHERE event_id = ?")->execute([$eventId]);
+            $stmt = $db->prepare("INSERT IGNORE INTO {$p}365net_event_speaker_rel (event_id, speaker_id, speaker_nr, sort_order) VALUES (?, ?, ?, ?)");
+            $order = 0;
+            foreach ($speakerIds as $speakerId) {
+                $speakerId = (int) $speakerId;
+                if ($speakerId <= 0) {
+                    continue;
+                }
+                $order++;
+                $stmt->execute([$eventId, $speakerId, $order, $order]);
             }
-            $order++;
-            $stmt->execute([$eventId, $speakerId, $order, $order]);
+            if ($ownTransaction) {
+                $pdo->commit();
+            }
+        } catch (Throwable $e) {
+            if ($ownTransaction && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
         }
     }
 
@@ -2229,7 +2245,10 @@ final class CMS_365NET_Events_Database
 
             $db = CMS\Database::instance();
             $p = $db->prefix();
-            $stmt = $db->prepare("SELECT id, first_name, last_name, display_name FROM {$p}365net_event_speakers LIMIT 1000");
+            // Nur importierte Seed-Datensätze (unique_id "speaker-…") bereinigen. Im Admin angelegte Speaker
+            // ("manual-speaker-…") dürfen nur einen Anzeigenamen haben und wurden bisher bei jedem
+            // Schema-Update und jeder Synchronisierung samt Event-Zuordnungen gelöscht.
+            $stmt = $db->prepare("SELECT id, first_name, last_name, display_name FROM {$p}365net_event_speakers WHERE unique_id LIKE 'speaker-%' LIMIT 1000");
             $stmt->execute([]);
             $delete = $db->prepare("DELETE FROM {$p}365net_event_speakers WHERE id = ?");
             foreach ($stmt->fetchAll() as $speaker) {
@@ -3580,15 +3599,27 @@ final class CMS_365NET_Events_Database
             return null;
         }
 
-        return [
-            'bio' => $bio,
-            'seo_description' => $this->seedSeoDescription($bio),
-            'website' => $website,
-            'linkedin_url' => $linkedin,
-            'x_url' => $x,
-            'youtube_url' => $youtube,
-            'github_url' => $github,
+        // Nur leere Felder ergänzen: gepflegte Biografien, SEO-Texte und Profil-Links bleiben unangetastet
+        // (bisher wurden sie bei jedem Backfill durch den Snippet-Text bzw. den ersten Treffer ersetzt).
+        $keep = fn (string $field, ?string $suggested): string => trim((string) ($speaker->{$field} ?? '')) !== ''
+            ? (string) $speaker->{$field}
+            : (string) $suggested;
+        $payload = [
+            'bio' => $keep('bio', $bio),
+            'seo_description' => $keep('seo_description', $this->seedSeoDescription($bio)),
+            'website' => $keep('website', $website),
+            'linkedin_url' => $keep('linkedin_url', $linkedin),
+            'x_url' => $keep('x_url', $x),
+            'youtube_url' => $keep('youtube_url', $youtube),
+            'github_url' => $keep('github_url', $github),
         ];
+        foreach ($payload as $field => $value) {
+            if ($value !== (string) ($speaker->{$field} ?? '')) {
+                return $payload;
+            }
+        }
+
+        return null;
     }
 
     private function detectSocialPlatform(string $url): ?string

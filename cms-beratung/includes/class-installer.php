@@ -53,10 +53,22 @@ final class CMS_Beratung_Installer
         return self::get_stored_version();
     }
 
+    private static bool $ensuring = false;
+
     public static function ensure_for_admin_save(): void
     {
-        self::create_tables();
-        self::seed_defaults();
+        // seed_defaults() → seed_m365_faqs_if_missing() → save_m365_faq_config() ruft diese Methode erneut auf.
+        // Ohne Sperre endet das in einer Endlosrekursion, solange m365_faq_items_json noch fehlt.
+        if (self::$ensuring) {
+            return;
+        }
+        self::$ensuring = true;
+        try {
+            self::create_tables();
+            self::seed_defaults();
+        } finally {
+            self::$ensuring = false;
+        }
     }
 
     private static function create_tables(): void

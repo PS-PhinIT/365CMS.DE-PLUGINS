@@ -270,7 +270,9 @@ final class CMS_Booking
     private function is_booking_public_route(): bool
     {
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
-        if ($method !== 'GET') {
+        // POST auf das Buchungsformular rendert bei Fehlern dieselbe Seite neu: ohne CSS/JS fehlte dann
+        // der Kalender und der Absende-Schritt blieb verborgen (Buchung unmöglich).
+        if ($method !== 'GET' && $method !== 'POST') {
             return false;
         }
 

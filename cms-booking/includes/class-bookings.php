@@ -384,17 +384,25 @@ final class CMS_Booking_Bookings
     {
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
-            "SELECT start_time, end_time
-             FROM {$db->getPrefix()}bookings
-             WHERE provider_id = ? AND booking_date = ? AND status IN ('pending', 'confirmed')"
+            "SELECT b.start_time, b.end_time, COALESCE(s.buffer_min, 0) AS buffer_min
+             FROM {$db->getPrefix()}bookings b
+             LEFT JOIN {$db->getPrefix()}booking_services s ON s.id = b.service_id
+             WHERE b.provider_id = ? AND b.booking_date = ? AND b.status IN ('pending', 'confirmed')"
         );
         $stmt->execute([$providerId, $date]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        return array_map(static fn($r) => [
-            'start' => substr($r['start_time'], 0, 5),
-            'end'   => substr($r['end_time'], 0, 5),
-        ], $rows);
+        // Der Puffer nach einer Buchung gehört zum belegten Zeitraum (sonst wird 10:00 nach 9–10 Uhr angeboten).
+        return array_map(static function (array $r): array {
+            $end = substr((string) $r['end_time'], 0, 5);
+            $buffer = max(0, (int) ($r['buffer_min'] ?? 0));
+            if ($buffer > 0) {
+                $endMinutes = min(24 * 60 - 1, ((int) substr($end, 0, 2)) * 60 + (int) substr($end, 3, 2) + $buffer);
+                $end = sprintf('%02d:%02d', intdiv($endMinutes, 60), $endMinutes % 60);
+            }
+
+            return ['start' => substr((string) $r['start_time'], 0, 5), 'end' => $end];
+        }, $rows);
     }
 
     public function count_active_for_date(int $providerId, string $date, int $serviceId = 0): int
