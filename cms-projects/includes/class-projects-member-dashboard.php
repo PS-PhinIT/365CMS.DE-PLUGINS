@@ -22,7 +22,7 @@ final class CMS_Projects_Member_Dashboard
             'plugin' => 'cms-projects',
             'slug' => 'projects',
             'label' => 'Projekte',
-            'icon' => 'ti-layout-kanban',
+            'icon' => '📋', // Mitgliederbereich erwartet ein Emoji, keine Tabler-Klasse
             'category' => 'plugins',
             'priority' => 30,
             // Alle angemeldeten Mitglieder (4.0.0: nur 'member', 'admin', Rollen oder echte Capabilities).

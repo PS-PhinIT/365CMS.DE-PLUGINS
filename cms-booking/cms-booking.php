@@ -306,7 +306,7 @@ final class CMS_Booking
             'plugin'          => 'cms-booking',
             'slug'            => 'booking',
             'label'           => 'Buchungen',
-            'icon'            => 'ti-calendar-event',
+            'icon'            => '📅', // Mitgliederbereich erwartet ein Emoji, keine Tabler-Klasse
             'capability'      => 'member',
             'category'        => 'plugins',
             'priority'        => 60,
