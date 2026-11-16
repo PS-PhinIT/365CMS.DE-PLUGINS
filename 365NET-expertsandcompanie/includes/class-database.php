@@ -1118,6 +1118,9 @@ final class CMS_365NET_Experts_And_Companie_Database
 
         $stmt = $db->prepare('DELETE FROM ' . $db->prefix() . self::TABLE_EXPERTS . ' WHERE id IN (' . $in . ')');
         $stmt->execute($ids);
+        foreach ($ids as $deletedId) {
+            $this->touchMediaUsage(self::TABLE_EXPERTS, (int) $deletedId, true);
+        }
 
         return max(0, (int) $stmt->rowCount());
     }
@@ -1152,6 +1155,9 @@ final class CMS_365NET_Experts_And_Companie_Database
 
         $stmt = $db->prepare('DELETE FROM ' . $db->prefix() . self::TABLE_COMPANIES . ' WHERE id IN (' . $in . ')');
         $stmt->execute($ids);
+        foreach ($ids as $deletedId) {
+            $this->touchMediaUsage(self::TABLE_COMPANIES, (int) $deletedId, true);
+        }
 
         return max(0, (int) $stmt->rowCount());
     }
@@ -2066,6 +2072,9 @@ final class CMS_365NET_Experts_And_Companie_Database
             $sets = implode(', ', array_map(static fn(string $key): string => $key . ' = ?', array_keys($payload)));
             $stmt = $db->prepare('UPDATE ' . $db->prefix() . $table . ' SET ' . $sets . ' WHERE id = ?');
             $ok = $stmt->execute([...array_values($payload), $id]);
+            if ($ok) {
+                $this->touchMediaUsage($table, $id);
+            }
             return $ok ? $id : false;
         }
 
@@ -2077,7 +2086,24 @@ final class CMS_365NET_Experts_And_Companie_Database
             return false;
         }
 
-        return (int) $db->getPdo()->lastInsertId();
+        $newId = (int) $db->getPdo()->lastInsertId();
+        $this->touchMediaUsage($table, $newId);
+
+        return $newId;
+    }
+
+    /** Verwendungsnachweis der Mediathek (365CMS ab 4.1.0) aktualisieren. */
+    private function touchMediaUsage(string $table, int $id, bool $deleted = false): void
+    {
+        $type = match ($table) {
+            self::TABLE_EXPERTS => 'net365_expert',
+            self::TABLE_COMPANIES => 'net365_company',
+            default => '',
+        };
+        if ($type === '' || !class_exists('CMS_365NET_ExCo_Media_Usage')) {
+            return;
+        }
+        $deleted ? CMS_365NET_ExCo_Media_Usage::forget($type, $id) : CMS_365NET_ExCo_Media_Usage::touch($type, $id);
     }
 
     /** @param array<string, mixed> $payload */

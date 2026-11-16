@@ -557,13 +557,16 @@ final class CMS_Promos_Repository
                 $stmt = $this->db->prepare("UPDATE {$this->prefix}promos SET placement_id = ?, title = ?, title_en = ?, slug = ?, teaser = ?, teaser_en = ?, content_html = ?, content_html_en = ?, target_url = ?, button_label = ?, button_label_en = ?, image_url = ?, status = ?, start_at = ?, end_at = ?, priority = ?, is_featured = ?, frequency_cap = ?, frequency_window_hours = ?, utm_source = ?, utm_medium = ?, utm_campaign = ?, utm_term = ?, utm_content = ? WHERE id = ?");
                 $stmt->execute([...$values, $id]);
                 $this->invalidate_read_caches();
+                \CMS_Promos_Media_Usage::touch('promo', $id);
                 return ['success' => true, 'message' => 'Promo aktualisiert.'];
             }
 
             $stmt = $this->db->prepare("INSERT INTO {$this->prefix}promos (placement_id, title, title_en, slug, teaser, teaser_en, content_html, content_html_en, target_url, button_label, button_label_en, image_url, status, start_at, end_at, priority, is_featured, frequency_cap, frequency_window_hours, utm_source, utm_medium, utm_campaign, utm_term, utm_content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute($values);
+            $newId = (int) $this->db->lastInsertId();
             $this->invalidate_read_caches();
-            return ['success' => true, 'message' => 'Promo angelegt.'];
+            \CMS_Promos_Media_Usage::touch('promo', $newId);
+            return ['success' => true, 'message' => 'Promo angelegt.', 'id' => $newId];
         } catch (\Throwable $e) {
             $this->log_error('Failed to save promo', $e);
             return ['success' => false, 'error' => 'Die Promo konnte nicht gespeichert werden.'];
@@ -580,6 +583,7 @@ final class CMS_Promos_Repository
             $stmt = $this->db->prepare("DELETE FROM {$this->prefix}promos WHERE id = ?");
             $stmt->execute([$id]);
             $this->invalidate_read_caches();
+            \CMS_Promos_Media_Usage::forget('promo', $id);
             return ['success' => true, 'message' => 'Promo gelöscht.'];
         } catch (\Throwable $e) {
             $this->log_error('Failed to delete promo', $e);
@@ -611,6 +615,9 @@ final class CMS_Promos_Repository
                 $stmt = $this->db->prepare("DELETE FROM {$this->prefix}promos WHERE id IN ({$placeholders})");
                 $stmt->execute($ids);
                 $message = sprintf('%d Promo(s) gelöscht.', $stmt->rowCount());
+                foreach ($ids as $deletedId) {
+                    \CMS_Promos_Media_Usage::forget('promo', $deletedId);
+                }
             } else {
                 $stmt = $this->db->prepare("UPDATE {$this->prefix}promos SET status = ?, updated_at = NOW() WHERE id IN ({$placeholders})");
                 $stmt->execute(array_merge([$statusMap[$operation]], $ids));
@@ -823,7 +830,7 @@ final class CMS_Promos_Repository
         $result = $this->save_promo($copy);
         if (!empty($result['success'])) {
             $result['message'] = 'Promo als Entwurf dupliziert.';
-            $result['id'] = (int) $this->db->lastInsertId();
+            $result['id'] = (int) ($result['id'] ?? 0);
         }
 
         return $result;

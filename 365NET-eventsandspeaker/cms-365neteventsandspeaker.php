@@ -78,6 +78,7 @@ if (!class_exists('CMS_365NET_Events', false)) {
 
             foreach ([
                 'class-database.php',
+                'class-media-usage.php',
                 'class-template-loader.php',
                 'class-admin.php',
                 'class-post-type.php',

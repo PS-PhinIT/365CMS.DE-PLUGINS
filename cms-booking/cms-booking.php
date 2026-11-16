@@ -50,6 +50,7 @@ final class CMS_Booking
         $files = [
             'includes/class-installer.php',
             'includes/class-providers.php',
+            'includes/class-media-usage.php',
             'includes/class-services.php',
             'includes/class-availability.php',
             'includes/class-bookings.php',

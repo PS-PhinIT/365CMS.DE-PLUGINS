@@ -46,6 +46,7 @@ final class CMS_Beratung
             'includes/class-installer.php',
             'includes/class-settings.php',
             'includes/class-storage.php',
+            'includes/class-media-usage.php',
             'includes/class-renderer.php',
             'includes/class-forms.php',
             'includes/class-privacy.php',

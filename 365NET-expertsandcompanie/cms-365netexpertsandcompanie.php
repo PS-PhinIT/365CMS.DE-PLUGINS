@@ -114,6 +114,7 @@ if (!class_exists('CMS_365NET_Experts_And_Companie', false)) {
 
             foreach ([
                 'class-database.php',
+                'class-media-usage.php',
                 'class-transfer.php',
                 'class-template-loader.php',
                 'class-integrations.php',
