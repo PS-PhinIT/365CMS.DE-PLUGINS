@@ -1,5 +1,12 @@
 # Changelog – CMS Projects
 
+## 4.0.2 – 2026-11-16
+
+Plugin-Audit gegen 365CMS 4.1.8 (getestet auf 4.1.8, weiterhin lauffähig ab 4.0.0).
+
+- Fix: Mitgliederbereich zeigt das Icon 📋 statt des Textes „TI-LAYOUT-KANBAN“.
+- Design: Projektformulare nutzen die Core-Felder (Pflichtfeld-Sternchen in der Zeile, Feldgrößen, Abstände).
+
 ## 4.0.1 – 2026-11-15
 
 Fixes aus dem Integrationstest gegen eine echte 365CMS-4.0.0-Installation (MariaDB, Router, CSP).

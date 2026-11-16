@@ -1,9 +1,9 @@
 {
   "slug": "cms-beratung",
   "name": "CMS Beratung",
-  "version": "3.0.3",
+  "version": "3.1.0",
   "requires": "4.0.0",
-  "tested": "4.0.0",
+  "tested": "4.1.8",
   "author": "365 Network",
   "description": "Spezialisierter 365CMS Landingpage Builder für Microsoft 365, Copilot, KI, Security, Compliance und IT Consulting Beratungsleistungen.",
   "download_url": "PLUGINS/cms-beratung/cms-beratung.zip",
@@ -111,5 +111,5 @@
   "requires_cms": "4.0.0",
   "min_php": "8.4.1",
   "requires_php": "8.4.1",
-  "last_updated": "2026-11-15"
+  "last_updated": "2026-11-16"
 }

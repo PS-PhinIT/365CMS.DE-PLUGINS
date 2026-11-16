@@ -3,7 +3,7 @@
  * Plugin Name: CMS Projects
  * Plugin URI: https://365network.de/cms-projects
  * Description: Projektmanagement mit Projekt-Dashboards, Boards, Tickets und Widgets für Member- und Public-Bereiche.
- * Version: 4.0.1
+ * Version: 4.0.2
  * Author: 365 Network
  * Author URI: https://365network.de
  * Requires CMS: 4.0.0
@@ -24,7 +24,7 @@ if (defined('CMS_PROJECTS_BOOTSTRAPPED')) {
 }
 
 define('CMS_PROJECTS_BOOTSTRAPPED', true);
-defined('CMS_PROJECTS_VERSION') || define('CMS_PROJECTS_VERSION', '4.0.1');
+defined('CMS_PROJECTS_VERSION') || define('CMS_PROJECTS_VERSION', '4.0.2');
 defined('CMS_PROJECTS_PLUGIN_DIR') || define('CMS_PROJECTS_PLUGIN_DIR', __DIR__ . DIRECTORY_SEPARATOR);
 defined('CMS_PROJECTS_PLUGIN_URL') || define('CMS_PROJECTS_PLUGIN_URL', '/plugins/cms-projects/');
 

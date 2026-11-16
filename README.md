@@ -1,6 +1,6 @@
 # 365CMS – Plugin-Repository
 
-Offizielle Plugins für **365CMS 4.0.0**
+Offizielle Plugins für **365CMS 4.0.0 bis 4.1.x** (getestet mit 4.1.8)
 
 | | |
 |---|---|
@@ -28,12 +28,12 @@ Offizielle Plugins für **365CMS 4.0.0**
 
 | Plugin | Ordner | Slug | Version | Admin | Zweck |
 |---|---|---|---|---|---|
-| **365CMS \| Buchungen** | [`cms-booking`](cms-booking/) | `cms-booking` | 4.0.1 | `/admin/plugins/booking` | Termin- und Buchungssystem mit Anbietern, Leistungen, Verfügbarkeiten, Mails und iCal |
-| **365CMS \| Beratung** | [`cms-beratung`](cms-beratung/) | `cms-beratung` | 3.0.2 | `/admin/plugins/cms-beratung` | Landingpage-Builder für M365-, Copilot-, KI-, Security- und Compliance-Beratung mit Anfrageformular |
-| **365CMS \| Promos** | [`cms-promos`](cms-promos/) | `cms-promos` | 4.0.2 | `/admin/plugins/promos-dashboard` | Banner, Teaserflächen, Platzierungen und Klick-/Impression-Statistik |
-| **365CMS \| Projekte** | [`cms-projects`](cms-projects/) | `cms-projects` | 4.0.1 | `/admin/plugins/cms-projects` | Projekte, Boards, Tickets und Widgets für Admin-, Member- und Public-Bereich |
-| **365CMS \| Events & Speaker** | [`365NET-eventsandspeaker`](365NET-eventsandspeaker/) | `cms-365neteventsandspeaker` | 4.0.1 | `/admin/plugins/365netevents` | Event- und Speaker-Verzeichnis mit Seed-Daten |
-| **365CMS \| Experts & Companies** | [`365NET-expertsandcompanie`](365NET-expertsandcompanie/) | `cms-365netexpertsandcompanie` | 2.0.2 | `/admin/plugins/experts-companie` | Experten- und Firmenverzeichnis mit Public Hub und CSV-Import/-Export |
+| **365CMS \| Buchungen** | [`cms-booking`](cms-booking/) | `cms-booking` | 4.1.0 | `/admin/plugins/booking` | Termin- und Buchungssystem mit Anbietern, Leistungen, Verfügbarkeiten, Mails und iCal |
+| **365CMS \| Beratung** | [`cms-beratung`](cms-beratung/) | `cms-beratung` | 3.1.0 | `/admin/plugins/cms-beratung` | Landingpage-Builder für M365-, Copilot-, KI-, Security- und Compliance-Beratung mit Anfrageformular |
+| **365CMS \| Promos** | [`cms-promos`](cms-promos/) | `cms-promos` | 4.1.0 | `/admin/plugins/promos-dashboard` | Banner, Teaserflächen, Platzierungen und Klick-/Impression-Statistik |
+| **365CMS \| Projekte** | [`cms-projects`](cms-projects/) | `cms-projects` | 4.0.2 | `/admin/plugins/cms-projects` | Projekte, Boards, Tickets und Widgets für Admin-, Member- und Public-Bereich |
+| **365CMS \| Events & Speaker** | [`365NET-eventsandspeaker`](365NET-eventsandspeaker/) | `cms-365neteventsandspeaker` | 4.1.0 | `/admin/plugins/365netevents` | Event- und Speaker-Verzeichnis mit Seed-Daten |
+| **365CMS \| Experts & Companies** | [`365NET-expertsandcompanie`](365NET-expertsandcompanie/) | `cms-365netexpertsandcompanie` | 2.1.0 | `/admin/plugins/experts-companie` | Experten- und Firmenverzeichnis mit Public Hub und CSV-Import/-Export |
 
 > Bei den beiden `365NET-*`-Plugins weicht der **Ordnername** vom **Installations-Slug** ab. Maßgeblich für Core, Katalog und Updater ist der Slug.
 

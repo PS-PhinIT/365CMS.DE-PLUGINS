@@ -1,5 +1,13 @@
 # Changelog – 365CMS | Experts & Companies
 
+## 2.1.0 – 2026-11-16
+
+Plugin-Audit gegen 365CMS 4.1.8 (getestet auf 4.1.8, weiterhin lauffähig ab 4.0.0).
+
+- Medien-Verwendungsnachweis (365CMS 4.1) für Experts und Companies.
+- Fix: Öffentliche Karten und Detailseiten zeigen keine Speaker im Entwurf und keine inaktiven Einträge.
+- Fix: Suche maskiert LIKE-Platzhalter.
+
 ## 2.0.2 – 2026-11-15
 
 Kompatibilitäts-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft gegen den aktuellen Core-`main`.

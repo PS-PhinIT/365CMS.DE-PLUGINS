@@ -2,6 +2,16 @@
 
 Ältere Versionen (bis 2.9.794) sind in `update.json` dokumentiert.
 
+## 3.1.0 – 2026-11-16
+
+Plugin-Audit gegen 365CMS 4.1.8 (getestet auf 4.1.8, weiterhin lauffähig ab 4.0.0).
+
+- Medien-Verwendungsnachweis (365CMS 4.1) für Landingpages.
+- Sicherheit: SVG-Upload prüft die ganze Datei und erkennt <svg/onload=…>; HTML-Filter entfernt Event-Handler ohne Leerzeichen und kodierte javascript:-Links.
+- Fix: mögliche Endlosrekursion bei der Erstinstallation.
+- Design: flache Core-Flächen statt Verläufe im Editor.
+- Speed: Editor und Presets prüfen das Schema nur noch bei Versionswechsel.
+
 ## 3.0.3 – 2026-11-15
 
 Funktions-Audit (`DOC/audit/AUDIT-365CMS-PLUGINS-2026-11-15.md`), geprüft auf der 365CMS-Testinstallation (Core-`main`).
