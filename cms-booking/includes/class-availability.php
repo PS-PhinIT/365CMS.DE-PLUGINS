@@ -276,6 +276,22 @@ final class CMS_Booking_Availability
         $start = new \DateTime('today');
         $end   = (new \DateTime('today'))->modify("+{$days} days");
 
+        // Abwesenheiten und Buchungen des ganzen Zeitraums mit je einer Abfrage vorladen (statt 2 × je Tag).
+        $from = $start->format('Y-m-d');
+        $to   = $end->format('Y-m-d');
+        $overrideRows = $this->get_date_overrides($providerId, $from, $to);
+        $overridesByDate = [];
+        foreach ($overrideRows as $row) {
+            $overridesByDate[(string) $row['specific_date']][] = $row;
+        }
+        for ($day = clone $start; $day <= $end; $day->modify('+1 day')) {
+            $date = $day->format('Y-m-d');
+            $this->overrideCache[$providerId . '|' . $date . '|' . $date] = $overridesByDate[$date] ?? [];
+        }
+        if (class_exists('CMS_Booking_Bookings')) {
+            CMS_Booking_Bookings::instance()->prime_booked_ranges($providerId, $from, $to);
+        }
+
         while ($start <= $end) {
             $date  = $start->format('Y-m-d');
             $slots = $this->get_available_slots($providerId, $date, $durationMin, 0);
@@ -351,6 +367,15 @@ final class CMS_Booking_Availability
         $stmt->execute([$id]);
 
         return (int) ($stmt->fetchColumn() ?: 0);
+    }
+
+    /** Vor der Prüfung unter Sperre: keine vorab geladenen Belegungen verwenden. */
+    public function refresh_provider(int $providerId): void
+    {
+        $this->clear_provider_cache($providerId);
+        if (class_exists('CMS_Booking_Bookings')) {
+            CMS_Booking_Bookings::instance()->forget_booked_ranges();
+        }
     }
 
     private function clear_provider_cache(int $providerId): void
