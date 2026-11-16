@@ -45,6 +45,7 @@ if (!class_exists('CMS_Promos', false)) {
             $files = [
                 'includes/class-installer.php',
                 'includes/class-repository.php',
+                'includes/class-media-usage.php',
                 'includes/class-public-controller.php',
                 'admin/class-admin-menu.php',
                 'admin/class-admin-pages.php',

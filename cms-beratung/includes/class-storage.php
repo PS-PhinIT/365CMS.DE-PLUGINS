@@ -133,6 +133,7 @@ final class CMS_Beratung_Storage
             $stmt = $this->pdo->prepare("UPDATE {$this->prefix}beratung_landingpages SET {$assignments} WHERE id = ?");
             $stmt->execute($values);
             $this->invalidate_sitemaps();
+            \CMS_Beratung_Media_Usage::touch('beratung_landingpage', $id);
             return $id;
         }
 
@@ -145,6 +146,7 @@ final class CMS_Beratung_Storage
         $stmt->execute($values);
         $newId = (int) $this->pdo->lastInsertId();
         $this->invalidate_sitemaps();
+        \CMS_Beratung_Media_Usage::touch('beratung_landingpage', $newId);
         return $newId;
     }
 
@@ -186,6 +188,7 @@ final class CMS_Beratung_Storage
         $stmt = $this->pdo->prepare("DELETE FROM {$this->prefix}beratung_landingpages WHERE id = ?");
         $ok = $stmt->execute([$id]);
         $this->invalidate_sitemaps();
+        \CMS_Beratung_Media_Usage::forget('beratung_landingpage', $id);
         return $ok;
     }
 

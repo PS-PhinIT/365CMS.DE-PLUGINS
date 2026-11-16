@@ -240,6 +240,7 @@ final class CMS_Booking_Providers
             "DELETE FROM {$db->getPrefix()}booking_providers WHERE id = ?"
         );
         $stmt->execute([$id]);
+        \CMS_Booking_Media_Usage::forget('booking_provider', $id);
         return $stmt->rowCount() > 0;
     }
 
@@ -294,6 +295,7 @@ final class CMS_Booking_Providers
             }
             $sets = implode(', ', array_map(static fn (string $col): string => "{$col} = ?", array_keys($fields)));
             $db->prepare("UPDATE {$p}booking_providers SET {$sets} WHERE id = ?")->execute([...array_values($fields), $id]);
+            \CMS_Booking_Media_Usage::touch('booking_provider', $id);
 
             return $id;
         }
@@ -307,8 +309,10 @@ final class CMS_Booking_Providers
         $cols = implode(', ', array_keys($fields));
         $ph   = implode(', ', array_fill(0, count($fields), '?'));
         $db->prepare("INSERT INTO {$p}booking_providers ({$cols}) VALUES ({$ph})")->execute(array_values($fields));
+        $newId = (int) $db->getPdo()->lastInsertId();
+        \CMS_Booking_Media_Usage::touch('booking_provider', $newId);
 
-        return (int) $db->getPdo()->lastInsertId();
+        return $newId;
     }
 
     /** Anzahl Anbieter je Status (Kennzahlen). */
