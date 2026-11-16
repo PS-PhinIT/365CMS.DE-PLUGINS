@@ -292,6 +292,9 @@ final class CMS_Booking_Frontend
             if ($error === '' && !$this->acquire_slot_lock((int) $provider['id'])) {
                 $error = $this->t('error_slot_unavailable', $lang, 'Der gewählte Zeitpunkt ist leider nicht mehr verfügbar.');
             }
+            if ($error === '') {
+                CMS_Booking_Availability::instance()->refresh_provider((int) $provider['id']);
+            }
 
             if ($error === '' && $this->is_daily_limit_reached((int) $provider['id'], (int) $service['id'], $bookingDate, $provider, $service)) {
                 $error = $this->daily_limit_error($lang, $bookingDate, $provider, $service);

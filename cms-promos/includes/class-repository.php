@@ -437,15 +437,21 @@ final class CMS_Promos_Repository
             return $this->hookPlacementsCache[$themeHook];
         }
 
+        // Alle aktiven Hook-Platzierungen einmal je Anfrage laden (bisher eine Abfrage je Theme-Hook).
         $sql = 'SELECT ' . self::PLACEMENT_COLUMNS . "
                 FROM {$this->prefix}promo_placements p
-                WHERE p.status = 'active' AND p.theme_hook = ?
+                WHERE p.status = 'active' AND p.theme_hook <> 'manual'
                 ORDER BY p.hook_priority ASC, p.name ASC";
         try {
             $stmt = $this->db->prepare($sql);
-            $stmt->execute([$themeHook]);
-            $this->hookPlacementsCache[$themeHook] = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-            return $this->hookPlacementsCache[$themeHook];
+            $stmt->execute();
+            foreach (array_keys(self::THEME_HOOK_OPTIONS) as $hook) {
+                $this->hookPlacementsCache[$hook] = [];
+            }
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [] as $row) {
+                $this->hookPlacementsCache[(string) $row['theme_hook']][] = $row;
+            }
+            return $this->hookPlacementsCache[$themeHook] ?? [];
         } catch (\Throwable $e) {
             $this->log_error('Failed to load hook placements', $e);
             return [];
@@ -641,7 +647,8 @@ final class CMS_Promos_Repository
         try {
             $stmt = $this->db->prepare("UPDATE {$this->prefix}promos SET click_count = click_count + 1 WHERE id = ?");
             $stmt->execute([$id]);
-            $this->invalidate_read_caches();
+            // Zähler ändern weder Auswahl noch Reihenfolge: Lese-Caches behalten (sonst lud jeder
+            // weitere Theme-Hook derselben Seite Einstellungen, Platzierungen und Promos erneut).
         } catch (\Throwable $e) {
             $this->log_error('Failed to increment click count', $e);
         }
@@ -652,7 +659,8 @@ final class CMS_Promos_Repository
         try {
             $stmt = $this->db->prepare("UPDATE {$this->prefix}promos SET impression_count = impression_count + 1 WHERE id = ?");
             $stmt->execute([$id]);
-            $this->invalidate_read_caches();
+            // Zähler ändern weder Auswahl noch Reihenfolge: Lese-Caches behalten (sonst lud jeder
+            // weitere Theme-Hook derselben Seite Einstellungen, Platzierungen und Promos erneut).
         } catch (\Throwable $e) {
             $this->log_error('Failed to increment impression count', $e);
         }
@@ -672,7 +680,8 @@ final class CMS_Promos_Repository
             $placeholders = implode(', ', array_fill(0, count($ids), '?'));
             $stmt = $this->db->prepare("UPDATE {$this->prefix}promos SET impression_count = impression_count + 1 WHERE id IN ({$placeholders})");
             $stmt->execute($ids);
-            $this->invalidate_read_caches();
+            // Zähler ändern weder Auswahl noch Reihenfolge: Lese-Caches behalten (sonst lud jeder
+            // weitere Theme-Hook derselben Seite Einstellungen, Platzierungen und Promos erneut).
         } catch (\Throwable $e) {
             $this->log_error('Failed to increment impressions', $e);
         }

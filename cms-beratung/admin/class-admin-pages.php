@@ -445,7 +445,7 @@ final class CMS_Beratung_Admin_Pages
         }
 
         self::render_with_layout('cms-beratung-presets', function () use ($storage): void {
-            CMS_Beratung_Installer::ensure_for_admin_save();
+            CMS_Beratung_Installer::maybe_install(); // nur bei Versionswechsel; bisher Tabellen-/Spaltenprüfung + Seeding bei jedem Aufruf
             $presets = $storage->all_presets();
             $editId = max(0, (int) ($_GET['edit'] ?? 0));
             $edit = $editId > 0 ? $storage->preset($editId) : null;
@@ -911,7 +911,7 @@ final class CMS_Beratung_Admin_Pages
     {
         $statuses = CMS_Beratung_Settings::statuses();
         $templates = CMS_Beratung_Settings::templates();
-        CMS_Beratung_Installer::ensure_for_admin_save();
+        CMS_Beratung_Installer::maybe_install(); // nur bei Versionswechsel; bisher Tabellen-/Spaltenprüfung + Seeding bei jedem Aufruf
         $presets = CMS_Beratung_Storage::instance()->all_presets();
         $heroJson = json_encode($page['hero'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
         $heroSettings = is_array($page['hero'] ?? null) ? $page['hero'] : [];

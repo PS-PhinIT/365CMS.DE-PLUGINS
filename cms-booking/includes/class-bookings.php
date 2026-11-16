@@ -73,6 +73,7 @@ final class CMS_Booking_Bookings
 
     public function create(array $data): int
     {
+        $this->bookedRangesCache = [];
         $db = \CMS\Database::instance();
         $p  = $db->getPrefix();
 
@@ -380,8 +381,16 @@ final class CMS_Booking_Bookings
      *
      * @return array  [['start' => 'HH:MM', 'end' => 'HH:MM'], …]
      */
+    /** @var array<string, list<array{start:string,end:string}>> Belegte Zeiträume je "Anbieter|Datum" (vorab geladen). */
+    private array $bookedRangesCache = [];
+
     public function get_booked_ranges(int $providerId, string $date): array
     {
+        $cacheKey = $providerId . '|' . $date;
+        if (isset($this->bookedRangesCache[$cacheKey])) {
+            return $this->bookedRangesCache[$cacheKey];
+        }
+
         $db   = \CMS\Database::instance();
         $stmt = $db->prepare(
             "SELECT b.start_time, b.end_time, COALESCE(s.buffer_min, 0) AS buffer_min
@@ -390,10 +399,49 @@ final class CMS_Booking_Bookings
              WHERE b.provider_id = ? AND b.booking_date = ? AND b.status IN ('pending', 'confirmed')"
         );
         $stmt->execute([$providerId, $date]);
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+        return array_map([self::class, 'booked_range'], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+    }
+
+    /**
+     * Belegte Zeiträume eines Zeitraums mit einer Abfrage laden (Kalender der Buchungsseite: bisher eine
+     * Abfrage je Tag, also 91 für 90 Tage). Nur für die Anzeige; die Anlage prüft weiter frisch.
+     */
+    public function prime_booked_ranges(int $providerId, string $from, string $to): void
+    {
+        $db   = \CMS\Database::instance();
+        $stmt = $db->prepare(
+            "SELECT b.booking_date, b.start_time, b.end_time, COALESCE(s.buffer_min, 0) AS buffer_min
+             FROM {$db->getPrefix()}bookings b
+             LEFT JOIN {$db->getPrefix()}booking_services s ON s.id = b.service_id
+             WHERE b.provider_id = ? AND b.booking_date BETWEEN ? AND ? AND b.status IN ('pending', 'confirmed')"
+        );
+        $stmt->execute([$providerId, $from, $to]);
+        $byDate = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $byDate[(string) $row['booking_date']][] = self::booked_range($row);
+        }
+        $day = new \DateTimeImmutable($from);
+        $last = new \DateTimeImmutable($to);
+        for (; $day <= $last; $day = $day->modify('+1 day')) {
+            $date = $day->format('Y-m-d');
+            $this->bookedRangesCache[$providerId . '|' . $date] = $byDate[$date] ?? [];
+        }
+    }
+
+    public function forget_booked_ranges(): void
+    {
+        $this->bookedRangesCache = [];
+    }
+
+    /**
+     * @param array<string, mixed> $r
+     * @return array{start:string,end:string}
+     */
+    private static function booked_range(array $r): array
+    {
         // Der Puffer nach einer Buchung gehört zum belegten Zeitraum (sonst wird 10:00 nach 9–10 Uhr angeboten).
-        return array_map(static function (array $r): array {
+        return (static function (array $r): array {
             $end = substr((string) $r['end_time'], 0, 5);
             $buffer = max(0, (int) ($r['buffer_min'] ?? 0));
             if ($buffer > 0) {
@@ -402,7 +450,7 @@ final class CMS_Booking_Bookings
             }
 
             return ['start' => substr((string) $r['start_time'], 0, 5), 'end' => $end];
-        }, $rows);
+        })($r);
     }
 
     public function count_active_for_date(int $providerId, string $date, int $serviceId = 0): int
