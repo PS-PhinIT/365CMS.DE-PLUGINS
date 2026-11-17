@@ -3,7 +3,7 @@
  * Plugin Name: CMS Booking
  * Plugin URI:  https://365network.de/cms-booking
  * Description: Universelles Buchungs- und Terminverwaltungssystem – Experten, Speaker, Events, Unternehmen u. a. klinken sich ein.
- * Version:     4.1.0
+ * Version:     4.1.1
  * Author:      365 Network
  * Author URI:  https://365network.de
  * Requires CMS: 4.0.0
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // ── Konstanten ────────────────────────────────────────────────────────────────
-defined('CMS_BOOKING_VERSION') || define('CMS_BOOKING_VERSION', '4.1.0');
+defined('CMS_BOOKING_VERSION') || define('CMS_BOOKING_VERSION', '4.1.1');
 defined('CMS_BOOKING_DB_VERSION') || define('CMS_BOOKING_DB_VERSION', '3');
 defined('CMS_BOOKING_PLUGIN_DIR') || define('CMS_BOOKING_PLUGIN_DIR', __DIR__ . '/');
 defined('CMS_BOOKING_PLUGIN_URL') || define('CMS_BOOKING_PLUGIN_URL', '/plugins/cms-booking/');
@@ -247,10 +247,20 @@ final class CMS_Booking
                 . '?v=' . filemtime($css) . '">' . "\n";
         }
 
-        // Primärfarbe aus den Einstellungen (validiert) per nonce-geschütztem Style-Block statt style-Attributen.
-        $color = strtolower((string) (CMS_Booking_Installer::read_settings()['primary_color'] ?? ''));
-        if (preg_match('/^#[0-9a-f]{6}$/', $color) === 1 && $color !== '#3b82f6' && class_exists('CMS\\Security')) {
-            echo '<style ' . \CMS\Security::instance()->nonceAttr() . '>:root{--booking-primary:' . $color . '}</style>' . "\n";
+        // Primärfarbe und Fallback-Breite aus den Einstellungen (validiert) per nonce-geschütztem Style-Block
+        // statt style-Attributen.
+        $settings = CMS_Booking_Installer::read_settings();
+        $vars = [];
+        $color = strtolower((string) ($settings['primary_color'] ?? ''));
+        if (preg_match('/^#[0-9a-f]{6}$/', $color) === 1 && $color !== '#3b82f6') {
+            $vars[] = '--booking-primary:' . $color;
+        }
+        $fallbackWidth = (int) ($settings['content_width_fallback'] ?? 0);
+        if ($fallbackWidth > 0 && $fallbackWidth !== 1100) {
+            $vars[] = '--booking-width-fallback:' . max(600, min(1920, $fallbackWidth)) . 'px';
+        }
+        if ($vars !== [] && class_exists('CMS\\Security')) {
+            echo '<style ' . \CMS\Security::instance()->nonceAttr() . '>:root{' . implode(';', $vars) . '}</style>' . "\n";
         }
     }
 

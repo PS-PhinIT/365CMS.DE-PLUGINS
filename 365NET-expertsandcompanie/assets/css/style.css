@@ -1,7 +1,8 @@
 :root {
     --cms-excomp-page-pt: 24px;
     --cms-excomp-page-pb: 40px;
-    --cms-excomp-content-max: 1160px;
+    --cms-excomp-content-fallback: 1160px; /* Einstellung „Fallback-Breite“: nur ohne Breite vom Theme */
+    --cms-excomp-content-max: var(--tv4-max, var(--container-max-width, var(--container-max, var(--cms-excomp-content-fallback)))); /* leer gelassene Einstellung = Breite des Themes */
     --cms-excomp-grid-gap: 18px;
     --cms-excomp-grid-gap-x: var(--cms-excomp-grid-gap);
     --cms-excomp-grid-gap-y: var(--cms-excomp-grid-gap);
@@ -38,8 +39,9 @@
 }
 
 .cms-excomp-container {
+    /* Ohne eigene Content-Breite gilt die Inhaltsbreite des Themes (--tv4-max, Core-Theme --container-max-width). */
     width: min(100%, var(--cms-excomp-content-max));
-    max-width: 1160px;
+    max-width: none;
     margin: 0 auto;
 }
 

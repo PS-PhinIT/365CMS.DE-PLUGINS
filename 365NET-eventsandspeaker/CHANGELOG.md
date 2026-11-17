@@ -1,5 +1,10 @@
 # 365CMS | Events & Speaker – Changelog
 
+## 4.1.1 – 2026-11-17
+
+- Containerbreite folgt dem Theme: 0 = Breite des aktiven Themes (bisher fest 1160 px). Der alte Standard 1160 wird beim Update einmalig auf 0 gesetzt; eigene Werte bis 1920 px.
+- Neue Einstellung „Fallback-Breite px“ (Standard 1160): gilt nur, wenn das Theme keine Breite liefert.
+
 ## 4.1.0 – 2026-11-16
 
 Plugin-Audit gegen 365CMS 4.1.8 (getestet auf 4.1.8, weiterhin lauffähig ab 4.0.0).

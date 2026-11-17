@@ -92,7 +92,8 @@ $this->flash();
         <?= $this->field('layout_gap_y', 'Grid-Abstand vertikal px', $settings['layout_gap_y'] ?? ($settings['layout_gap'] ?? '18'), false, 'number') ?>
         <?= $this->field('layout_top_spacing', 'Abstand zum Header px', $settings['layout_top_spacing'] ?? '32', false, 'number') ?>
         <?= $this->field('layout_bottom_spacing', 'Abstand zum Footer px', $settings['layout_bottom_spacing'] ?? '56', false, 'number') ?>
-        <?= $this->field('layout_container_width', 'Containerbreite px', $settings['layout_container_width'] ?? '1160', false, 'number') ?>
+        <?= $this->field('layout_container_width', 'Containerbreite px (0 = Breite des Themes)', $settings['layout_container_width'] ?? '0', false, 'number') ?>
+        <?= $this->field('layout_container_width_fallback', 'Fallback-Breite px (wenn das Theme keine Breite liefert)', $settings['layout_container_width_fallback'] ?? '1160', false, 'number') ?>
     </div></section>
 
     <section class="admin-card cms365-section"><h3>6. Google-Suche für den Speaker-Backfill (optional)</h3>

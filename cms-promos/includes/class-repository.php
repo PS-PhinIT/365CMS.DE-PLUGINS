@@ -61,6 +61,7 @@ final class CMS_Promos_Repository
         'default_target_behavior' => 'same_tab',
         'click_export_enabled' => '0',
         'click_export_webhook_url' => '',
+        'content_width_fallback' => '1160', // px, nur wenn das Theme keine Inhaltsbreite liefert
     ];
 
     public static function instance(): self
@@ -179,6 +180,7 @@ final class CMS_Promos_Repository
                 'default_target_behavior' => in_array(($post['default_target_behavior'] ?? 'same_tab'), ['same_tab', 'new_tab'], true) ? (string) $post['default_target_behavior'] : 'same_tab',
                 'click_export_enabled' => !empty($post['click_export_enabled']) ? '1' : '0',
                 'click_export_webhook_url' => $webhook,
+                'content_width_fallback' => (string) max(600, min(1920, (int) ($post['content_width_fallback'] ?? 0) ?: 1160)),
             ];
 
             if ($settings['default_button_label'] === '') {

@@ -129,7 +129,8 @@ $lengthAttrs = 'pattern="(0|[0-9]{1,4}(\.[0-9]{1,3})?(px|rem|em|%|vw|vh|ch))" pl
         <h3>Layout &amp; Abstände</h3>
         <p class="cms-excomp-muted">Erlaubt sind Längen mit px, rem, em, %, vw, vh oder ch (z. B. <code>24px</code>, <code>1.5rem</code>).</p>
         <div class="cms-excomp-form-grid">
-            <?= $field('layout_content_max_width', 'Content-Breite', 'text', $lengthAttrs) ?>
+            <?= $field('layout_content_max_width', 'Content-Breite (leer = Breite des Themes)', 'text', str_replace('z. B. 24px', 'leer = Theme', $lengthAttrs)) ?>
+            <?= $field('layout_content_max_width_fallback', 'Fallback-Breite (wenn das Theme keine Breite liefert)', 'text', str_replace('z. B. 24px', 'z. B. 1160px', $lengthAttrs)) ?>
             <?= $field('layout_page_padding_top', 'Abstand Header → Content', 'text', $lengthAttrs) ?>
             <?= $field('layout_page_padding_bottom', 'Abstand Content → Footer', 'text', $lengthAttrs) ?>
             <?= $field('layout_grid_gap_x', 'Grid-Abstand horizontal', 'text', $lengthAttrs) ?>

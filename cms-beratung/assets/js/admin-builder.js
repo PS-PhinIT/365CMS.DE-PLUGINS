@@ -778,7 +778,7 @@
     text_color: type === 'cta' ? '#ffffff' : '#111827',
     padding_top: 56,
     padding_bottom: 56,
-    max_width: 1200,
+    max_width: 0,
     text_align: 'left',
     columns: type === 'technology' ? 4 : 3,
     card_type: type === 'steps' ? 'step' : type === 'comparison' ? 'problem_solution' : 'text',
@@ -1413,7 +1413,7 @@
       <label>Hintergrundbild <input data-field="background_image_url"></label>
       <label>Innenabstand oben <input data-field="padding_top" type="number" min="0" max="180"></label>
       <label>Innenabstand unten <input data-field="padding_bottom" type="number" min="0" max="180"></label>
-      <label>Maximale Inhaltsbreite <input data-field="max_width" type="number" min="720" max="1800"></label>
+      <label>Maximale Inhaltsbreite <input data-field="max_width" type="number" min="0" max="1920" title="0 = Seitenbreite"></label>
       <label>Textausrichtung <select data-field="text_align"><option value="left">links</option><option value="center">zentriert</option><option value="right">rechts</option></select></label>
       <label class="field-services field-trust">Optionaler Hinweistext <textarea data-field="note_text" rows="2"></textarea></label>
       <label class="field-collaboration beratung-expert-select-label">Experts auswählen <select data-expert-ids multiple size="8">${expertOptionHtml(section.expert_ids)}</select><small>Mehrfachauswahl mit Strg/⌘ oder Shift. Quelle: CMS-Expertsandcompanie.</small></label>

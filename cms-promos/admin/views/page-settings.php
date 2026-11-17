@@ -50,6 +50,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
                     <option value="new_tab" <?php echo (($settings['default_target_behavior'] ?? '') === 'new_tab') ? 'selected' : ''; ?>>In neuem Tab öffnen</option>
                 </select>
             </div>
+            <div class="form-group"><label class="form-label" for="ps-width-fallback">Fallback-Inhaltsbreite (px)</label><input id="ps-width-fallback" type="number" name="content_width_fallback" class="form-control" min="600" max="1920" value="<?php echo $e($settings['content_width_fallback'] ?? '1160'); ?>"><div class="form-hint">Archiv und Theme-Hook-Zonen übernehmen die Inhaltsbreite des Themes. Dieser Wert gilt nur, wenn das Theme keine Breite liefert (weder <code>--tv4-max</code> noch <code>--container-max-width</code>).</div></div>
         </div>
     </div>
 

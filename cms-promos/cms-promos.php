@@ -3,7 +3,7 @@
  * Plugin Name: CMS Promos
  * Plugin URI: https://365network.de/cms-promos
  * Description: Promo- und Kampagnenverwaltung für Banner, Teaserflächen, Platzierungen und klickbare Aktionsboxen im 365CMS.
- * Version: 4.1.0
+ * Version: 4.1.1
  * Author: 365 Network
  * Author URI: https://365network.de
  * Requires CMS: 4.0.0
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-defined('CMS_PROMOS_VERSION') || define('CMS_PROMOS_VERSION', '4.1.0');
+defined('CMS_PROMOS_VERSION') || define('CMS_PROMOS_VERSION', '4.1.1');
 defined('CMS_PROMOS_DB_VERSION') || define('CMS_PROMOS_DB_VERSION', '1.2.0');
 defined('CMS_PROMOS_PLUGIN_DIR') || define('CMS_PROMOS_PLUGIN_DIR', __DIR__ . '/');
 defined('CMS_PROMOS_PLUGIN_URL') || define('CMS_PROMOS_PLUGIN_URL', '/plugins/cms-promos/');
@@ -150,6 +150,12 @@ if (!class_exists('CMS_Promos', false)) {
             echo '<link rel="stylesheet" href="'
                 . htmlspecialchars(CMS_PROMOS_PLUGIN_URL . 'assets/css/promos-public.css?v=' . (string) filemtime($css), ENT_QUOTES, 'UTF-8')
                 . '">' . "\n";
+
+            // Fallback-Breite aus den Einstellungen, nur wenn sie vom Standard abweicht (nonce-geschützter Style-Block).
+            $fallbackWidth = (int) (CMS_Promos_Repository::instance()->get_settings()['content_width_fallback'] ?? 0);
+            if ($fallbackWidth > 0 && $fallbackWidth !== 1160 && class_exists('CMS\\Security')) {
+                echo '<style ' . \CMS\Security::instance()->nonceAttr() . '>:root{--promos-width-fallback:' . max(600, min(1920, $fallbackWidth)) . 'px}</style>' . "\n";
+            }
         }
 
         private function is_promos_public_route(): bool

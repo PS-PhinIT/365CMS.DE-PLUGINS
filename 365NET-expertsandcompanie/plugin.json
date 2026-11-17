@@ -1,7 +1,7 @@
 {
   "name": "365CMS | Experts & Companies",
   "slug": "cms-365netexpertsandcompanie",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Experts und Companies mit gemeinsamem Public Hub (/experts-companie), Verzeichnissen /experts und /companies, Detailseiten, CSV-Import/-Export und Admin-Zentrale.",
   "author": "365 Network",
   "homepage": "https://365network.de/cms-365NETexpertsandcompanie",
@@ -29,5 +29,5 @@
   ],
   "schema_version": "2.0.0",
   "license": "proprietary",
-  "last_updated": "2026-11-16"
+  "last_updated": "2026-11-17"
 }

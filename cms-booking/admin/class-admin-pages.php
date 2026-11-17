@@ -568,6 +568,7 @@ final class CMS_Booking_Admin_Pages
             'auto_confirm' => !empty($_POST['auto_confirm']) ? '1' : '0',
             'send_reminders' => !empty($_POST['send_reminders']) ? '1' : '0',
             'reminder_hours' => (string) max(1, min(336, self::post_int('reminder_hours') ?: 24)),
+            'content_width_fallback' => (string) max(600, min(1920, self::post_int('content_width_fallback') ?: 1100)),
             'primary_color' => preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($_POST['primary_color'] ?? '')) === 1 ? strtolower((string) $_POST['primary_color']) : '',
             'retention_days' => (string) max(0, min(3650, self::post_int('retention_days'))),
         ];

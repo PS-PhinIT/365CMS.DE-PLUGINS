@@ -3,7 +3,7 @@
  * Plugin Name: 365CMS | Experts & Companies
  * Plugin URI: https://365network.de/cms-365NETexpertsandcompanie
  * Description: Vereint Experten und Firmen in einem eigenständigen Plugin mit gemeinsamer Übersicht, Detailseiten, CSV-Import/-Export und Admin-Zentrale.
- * Version: 2.1.0
+ * Version: 2.1.1
  * Author: 365 Network
  * Author URI: https://365network.de
  * Requires CMS: 4.0.0
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 $pluginDirPath = str_replace('\\', '/', dirname(__FILE__));
 $pluginFolderName = basename($pluginDirPath);
 
-defined('CMS_365NET_EXCOMP_VERSION') || define('CMS_365NET_EXCOMP_VERSION', '2.1.0');
+defined('CMS_365NET_EXCOMP_VERSION') || define('CMS_365NET_EXCOMP_VERSION', '2.1.1');
 defined('CMS_365NET_EXCOMP_PLUGIN_DIR') || define('CMS_365NET_EXCOMP_PLUGIN_DIR', rtrim($pluginDirPath, '/') . '/');
 defined('CMS_365NET_EXCOMP_PLUGIN_URL') || define('CMS_365NET_EXCOMP_PLUGIN_URL', '/plugins/' . $pluginFolderName . '/');
 defined('CMS_365NET_EXCOMP_TEXT_DOMAIN') || define('CMS_365NET_EXCOMP_TEXT_DOMAIN', 'cms-365netexpertsandcompanie');
@@ -285,6 +285,7 @@ if (!class_exists('CMS_365NET_Experts_And_Companie', false)) {
                 '--cms-excomp-page-pt' => $value('layout_page_padding_top'),
                 '--cms-excomp-page-pb' => $value('layout_page_padding_bottom'),
                 '--cms-excomp-content-max' => $value('layout_content_max_width'),
+                '--cms-excomp-content-fallback' => $value('layout_content_max_width_fallback'),
                 '--cms-excomp-grid-gap' => $value('layout_grid_gap'),
                 '--cms-excomp-grid-gap-x' => $value('layout_grid_gap_x', 'layout_grid_gap'),
                 '--cms-excomp-grid-gap-y' => $value('layout_grid_gap_y', 'layout_grid_gap'),

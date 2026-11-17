@@ -1,7 +1,7 @@
 {
   "name": "CMS Beratung",
   "slug": "cms-beratung",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "Landingpage-Builder für Microsoft 365, Copilot, KI, Security und Compliance-Beratung mit Anfrageformular.",
   "author": "365 Network",
   "homepage": "https://365network.de/cms-beratung",
@@ -10,7 +10,7 @@
   "requires_php": "8.4.1",
   "min_php": "8.4.1",
   "tested": "4.1.8",
-  "last_updated": "2026-11-16",
+  "last_updated": "2026-11-17",
   "admin_menu_title": "365CMS | Beratung",
   "admin_url": "/admin/plugins/cms-beratung",
   "bootstrap": "cms-beratung.php",
