@@ -33,7 +33,7 @@ final class CMS_Beratung_Settings
             'card_shadow_enabled' => '1',
             'border_radius' => '4',
             'spacing' => '20',
-            'content_width' => '1160',
+            'content_width' => '0', // 0 = Breite des Themes
             'font_size_base' => '16',
             'font_size_hero' => '52',
             'font_size_section_title' => '32',
@@ -188,7 +188,9 @@ final class CMS_Beratung_Settings
             } elseif ($key === 'retention_days') {
                 $settings[$key] = (string) self::int_range($raw, 180, 1, 3650);
             } elseif ($key === 'content_width') {
-                $settings[$key] = (string) self::int_range($raw, 1160, 720, 1160);
+                // 0 = Breite des Themes, sonst 720–1920 px (bisher fest höchstens 1160 px).
+                $width = (int) $raw;
+                $settings[$key] = (string) ($width <= 0 ? 0 : max(720, min(1920, $width)));
             } elseif (str_starts_with($key, 'font_size_')) {
                 $settings[$key] = (string) self::int_range($raw, (int) $default, 12, 96);
             } elseif (in_array($key, ['header_spacing', 'footer_spacing', 'card_spacing', 'section_content_spacing'], true)) {

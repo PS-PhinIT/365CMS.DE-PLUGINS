@@ -2,6 +2,12 @@
 
 Ältere Versionen (bis 2.9.794) sind in `update.json` dokumentiert.
 
+## 3.1.1 – 2026-11-17
+
+- Inhaltsbreite folgt dem Theme: 0 = Breite des aktiven Themes (--tv4-max bzw. --container-max-width). Die feste Obergrenze von 1160 px entfällt, eigene Werte 720–1920 px.
+- Abschnitte nutzen standardmäßig die Seitenbreite (bisher fest 1200 px); die früheren Standardwerte 1160/1200 gelten als „Seitenbreite“.
+- DB-Version 4: Landingpages und globale Einstellung mit dem alten Standard 1160 px werden einmalig auf „Theme“ umgestellt.
+
 ## 3.1.0 – 2026-11-16
 
 Plugin-Audit gegen 365CMS 4.1.8 (getestet auf 4.1.8, weiterhin lauffähig ab 4.0.0).

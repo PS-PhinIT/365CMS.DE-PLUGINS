@@ -15,9 +15,34 @@ final class CMS_Beratung_Installer
 {
     public static function install(): void
     {
+        $previous = self::get_stored_version();
         self::create_tables();
         self::seed_defaults();
+        if ($previous !== '0' && version_compare($previous, '4', '<')) {
+            self::migrate_content_width_to_theme();
+        }
         self::store_db_version(CMS_BERATUNG_DB_VERSION);
+    }
+
+    /**
+     * Schema 4: Die Inhaltsbreite folgt standardmäßig dem Theme (0). Landingpages und globale Einstellung mit
+     * dem bisherigen Standard 1160 px werden einmalig umgestellt; bewusst andere Werte bleiben erhalten.
+     */
+    private static function migrate_content_width_to_theme(): void
+    {
+        if (!class_exists('CMS\\Database')) {
+            return;
+        }
+        try {
+            $db = \CMS\Database::instance();
+            $pdo = $db->getPdo();
+            $prefix = self::prefix($db);
+            $pdo->exec("ALTER TABLE {$prefix}beratung_landingpages ALTER COLUMN max_content_width SET DEFAULT 0");
+            $pdo->exec("UPDATE {$prefix}beratung_landingpages SET max_content_width = 0 WHERE max_content_width = 1160");
+            $pdo->exec("UPDATE {$prefix}beratung_settings SET setting_value = '0' WHERE tenant_id IS NULL AND setting_key = 'content_width' AND setting_value = '1160'");
+        } catch (\Throwable $e) {
+            error_log('[cms-beratung] Migration Inhaltsbreite fehlgeschlagen: ' . $e->getMessage());
+        }
     }
 
     public static function maybe_install(): void
@@ -97,7 +122,7 @@ final class CMS_Beratung_Installer
             focus_keyword VARCHAR(160) DEFAULT NULL,
             status VARCHAR(24) NOT NULL DEFAULT 'draft',
             template VARCHAR(64) NOT NULL DEFAULT 'standard',
-            max_content_width INT UNSIGNED NOT NULL DEFAULT 1160,
+            max_content_width INT UNSIGNED NOT NULL DEFAULT 0,
             custom_design_enabled TINYINT(1) NOT NULL DEFAULT 0,
             use_global_settings TINYINT(1) NOT NULL DEFAULT 1,
             use_global_design TINYINT(1) NOT NULL DEFAULT 1,

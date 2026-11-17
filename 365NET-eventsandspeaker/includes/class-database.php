@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 final class CMS_365NET_Events_Database
 {
     private static ?self $instance = null;
-    private const SCHEMA_VERSION = '4.0.0';
+    private const SCHEMA_VERSION = '4.1.0';
     private const MAX_LIST_LIMIT = 300;
     private const BACKFILL_BATCH = 25;
 
@@ -87,6 +87,11 @@ final class CMS_365NET_Events_Database
         $this->seedDefaults($forceSeed);
         $this->purgeNonPersonSpeakers();
         $this->autoLinkExistingRecords();
+        // 4.1.0: Die Containerbreite folgt standardmäßig dem Theme. Der bisherige Standard 1160 wird einmalig
+        // auf 0 gesetzt; bewusst gesetzte andere Werte bleiben erhalten.
+        if ((string) ($this->getSettings()['layout_container_width'] ?? '') === '1160') {
+            $this->saveSetting('layout_container_width', '0');
+        }
         $this->saveSetting('schema_version', self::SCHEMA_VERSION);
         self::storeSchemaOption(self::SCHEMA_VERSION);
     }
@@ -2670,7 +2675,7 @@ final class CMS_365NET_Events_Database
             'layout_gap_y' => '18',
             'layout_top_spacing' => '32',
             'layout_bottom_spacing' => '56',
-            'layout_container_width' => '1160',
+            'layout_container_width' => '0', // 0 = Inhaltsbreite des Themes
             'taxonomy_event_categories' => "KI & Copilot\nMicrosoft 365\nAzure\nSecurity\nModern Workplace\nBusiness Applications\nEntwicklung\nCommunity\nMesse\nKonferenz\nWebinar\nWorkshop",
             'taxonomy_event_types' => "Konferenz\nKonferenz & Messe\nKongress\nKongress & Messe\nFestival\nMesse\nWebinar\nWorkshop\nKonferenz & Workshops\nKongress & Workshops\nMeetup\nHackathon\nTraining\nRoundtable\nCommunity Event\nNetworking\nMasterclass",
             'taxonomy_event_price_classes' => "Kostenfrei\nKostenpflichtig\nAuf Einladung\nAuf Anfrage\nSponsorenfinanziert",

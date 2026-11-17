@@ -19,7 +19,7 @@ final class CMS_365NET_Experts_And_Companie_Database
 {
     private static ?self $instance = null;
 
-    public const SCHEMA_VERSION = '2.0.0';
+    public const SCHEMA_VERSION = '2.1.0';
 
     /** Core-Option mit der installierten Schema-Version (Autoload, keine Abfrage je Anfrage). */
     public const SCHEMA_OPTION = 'cms_365netexpertsandcompanie_db_version';
@@ -93,6 +93,11 @@ final class CMS_365NET_Experts_And_Companie_Database
         $this->ensureIndexes();
         $this->seedDefaults($forceSeed);
         $this->syncExistingSpeakerLinks();
+        // 2.1.0: Die Content-Breite folgt standardmäßig dem Theme. Der bisherige Standard 1160px wird einmalig
+        // geleert; bewusst gesetzte andere Werte bleiben erhalten.
+        if (($this->getSettings()['layout_content_max_width'] ?? '') === '1160px') {
+            $this->saveSetting('layout_content_max_width', '');
+        }
         $this->saveSetting('schema_version', self::SCHEMA_VERSION);
         self::storeSchemaOption(self::SCHEMA_VERSION);
     }
@@ -279,7 +284,7 @@ final class CMS_365NET_Experts_And_Companie_Database
             'search_button_label' => 'Suchen',
             'reset_button_label' => 'Zurücksetzen',
             'website_button_label' => 'Website',
-            'layout_content_max_width' => '1160px',
+            'layout_content_max_width' => '', // leer = Inhaltsbreite des Themes
             'layout_page_padding_top' => '24px',
             'layout_page_padding_bottom' => '40px',
             'layout_grid_gap' => '18px',

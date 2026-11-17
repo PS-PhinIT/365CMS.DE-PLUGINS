@@ -1,7 +1,7 @@
 {
     "name": "CMS Booking",
     "slug": "cms-booking",
-    "version": "4.1.0",
+    "version": "4.1.1",
     "description": "Universelles Buchungs- und Terminverwaltungssystem – Anbieter, Leistungen, Verfügbarkeiten, Online-Buchung mit Kalender, Mails und iCal.",
     "author": "365 Network",
     "homepage": "https://365network.de/cms-booking",
@@ -14,5 +14,5 @@
     "admin_url": "/admin/plugins/booking",
     "db_version": "3",
     "license": "proprietary",
-    "last_updated": "2026-11-16"
+    "last_updated": "2026-11-17"
 }

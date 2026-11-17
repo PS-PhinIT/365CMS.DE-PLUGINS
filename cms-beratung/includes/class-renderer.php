@@ -89,6 +89,44 @@ final class CMS_Beratung_Renderer
     }
 
     /** @param array<string,mixed> $page @param array<string,string> $settings @return array<string,string> */
+    /** Inhaltsbreite des Themes (alle 365CMS-4.x-Themes setzen --tv4-max, das Core-Theme --container-max-width). */
+    public const THEME_WIDTH = 'var(--tv4-max, var(--container-max-width, var(--container-max, 1200px)))';
+
+    /**
+     * Breite einer Landingpage: eigener Wert (720–1920 px), sonst der globale Wert, sonst die Breite des Themes.
+     * 0 bedeutet „wie das Theme“ (bisher war die Breite fest auf höchstens 1160 px begrenzt).
+     *
+     * @param array<string,mixed> $page
+     * @param array<string,mixed> $settings
+     */
+    public static function content_width(array $page, array $settings): string
+    {
+        foreach ([$page['max_content_width'] ?? 0, $settings['content_width'] ?? 0] as $value) {
+            $width = (int) $value;
+            if ($width > 0) {
+                return max(720, min(1920, $width)) . 'px';
+            }
+        }
+
+        return self::THEME_WIDTH;
+    }
+
+    /**
+     * Breite eines Abschnitts: eigener Wert, sonst die Seitenbreite. 1160 und 1200 waren die früheren
+     * Standardwerte und gelten ebenfalls als „Seitenbreite“, damit Abschnitte nicht bei 1200 px hängen bleiben.
+     *
+     * @param array<string,mixed> $section
+     */
+    public static function section_width(array $section): string
+    {
+        $width = (int) ($section['max_width'] ?? 0);
+        if ($width <= 0 || $width === 1160 || $width === 1200) {
+            return 'var(--beratung-width, ' . self::THEME_WIDTH . ')';
+        }
+
+        return max(720, min(1920, $width)) . 'px';
+    }
+
     private static function design_tokens(array $page, array $settings): array
     {
         $defaultDesign = self::default_design_tokens();
@@ -111,7 +149,7 @@ final class CMS_Beratung_Renderer
         $tokens['background_color'] = 'transparent';
         $tokens['border_radius'] = (string) max(2, min(6, (int) ($settings['border_radius'] ?? 4))) . 'px';
         $tokens['spacing'] = (string) max(12, min(25, (int) ($settings['spacing'] ?? 20))) . 'px';
-        $tokens['content_width'] = (string) max(720, min(1160, (int) ($page['max_content_width'] ?? $settings['content_width'] ?? 1160))) . 'px';
+        $tokens['content_width'] = self::content_width($page, $settings);
         $tokens['card_shadow'] = (($settings['card_shadow_enabled'] ?? '1') === '1') ? '0 8px 24px rgba(15, 23, 42, .08)' : 'none';
         $fallbackDesign = $useGlobalDesign ? $globalDesign : $defaultDesign;
         $tokens['font_size_base'] = self::pixel_token($useGlobalDesign ? ($settings['font_size_base'] ?? null) : null, (int) ($fallbackDesign['fontSizes']['base'] ?? 16), 12, 24);
@@ -234,7 +272,7 @@ final class CMS_Beratung_Renderer
         }
 
         $settings = CMS_Beratung_Settings::all();
-        $contentWidth = (string) max(720, min(1160, (int) ($page['max_content_width'] ?? $settings['content_width'] ?? 1160))) . 'px';
+        $contentWidth = self::content_width($page, $settings);
         echo '<header class="cms-beratung-standalone-header" aria-label="Publicsite Header" style="--beratung-width:' . self::esc($contentWidth) . ';">';
         if ($state['has_main_content']) {
             echo '<div class="cms-beratung-standalone-header__inner">';

@@ -3,7 +3,7 @@
   "name": "365CMS | Experts & Companies",
   "type": "plugin",
   "license": "free",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Experts und Companies mit gemeinsamem Public Hub, Detailseiten, CSV-Import/-Export und Admin-Zentrale.",
   "requires_cms": "4.0.0",
   "min_cms_version": "4.0.0",
@@ -11,7 +11,7 @@
   "requires_php": "8.4.1",
   "min_php": "8.4.1",
   "released": "2026-11-14",
-  "last_updated": "2026-11-16",
+  "last_updated": "2026-11-17",
   "download_url": "",
   "checksum_sha256": "",
   "changelog": {

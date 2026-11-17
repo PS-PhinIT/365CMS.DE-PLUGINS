@@ -930,7 +930,7 @@ final class CMS_Beratung_Admin_Pages
         self::textarea('Meta Description', 'meta_description', (string) ($page['meta_description'] ?? ''), 3);
         self::field('Fokus Keyword', 'focus_keyword', (string) ($page['focus_keyword'] ?? ''));
         self::select('Template Auswahl', 'template', (string) ($page['template'] ?? 'standard'), $templates);
-        self::field('Maximale Inhaltsbreite', 'max_content_width', (string) ($page['max_content_width'] ?? '1160'), 'number');
+        self::field('Maximale Inhaltsbreite', 'max_content_width', (string) ($page['max_content_width'] ?? '0'), 'number', '0 = Breite des aktiven Themes übernehmen (bzw. der globalen Einstellung). Eigener Wert 720–1920 px.');
         self::field('Canonical URL', 'canonical_url', (string) ($page['canonical_url'] ?? ''));
         self::field('Eigene CSS Klasse', 'custom_css_class', (string) ($page['custom_css_class'] ?? ''));
         if ((int) ($page['id'] ?? 0) > 0) {
@@ -1084,7 +1084,7 @@ final class CMS_Beratung_Admin_Pages
             'slug' => 'microsoft-365-und-copilot-beratung',
             'status' => 'draft',
             'template' => 'modern',
-            'max_content_width' => 1160,
+            'max_content_width' => 0,
             'use_global_settings' => 1,
             'use_global_design' => 1,
             'show_header' => 1,
@@ -1199,7 +1199,7 @@ final class CMS_Beratung_Admin_Pages
                 'text_color' => '#111827',
                 'padding_top' => 56,
                 'padding_bottom' => 56,
-                'max_width' => 1160,
+                'max_width' => 0,
                 'text_align' => 'left',
                 'cards' => [
                     ['enabled' => true, 'icon' => '🏢', 'category' => 'Tenant', 'title' => 'Microsoft 365 Tenant Check', 'text' => 'Du bekommst eine klare Risiko- und Lizenzeinschätzung deines Tenants und weißt, wo Governance fehlt.'],
@@ -1233,7 +1233,7 @@ final class CMS_Beratung_Admin_Pages
                 'text_color' => '#111827',
                 'padding_top' => 56,
                 'padding_bottom' => 56,
-                'max_width' => 1160,
+                'max_width' => 0,
                 'text_align' => 'left',
             ], [
                 'id' => 'ablauf',

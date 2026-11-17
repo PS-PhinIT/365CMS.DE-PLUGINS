@@ -3,7 +3,7 @@
  * Plugin Name: CMS Promos
  * Plugin URI: https://365network.de/cms-promos
  * Description: Promo- und Kampagnenverwaltung für Banner, Teaserflächen, Platzierungen und klickbare Aktionsboxen im 365CMS.
- * Version: 4.1.0
+ * Version: 4.1.1
  * Author: 365 Network
  * Author URI: https://365network.de
  * Requires CMS: 4.0.0
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-defined('CMS_PROMOS_VERSION') || define('CMS_PROMOS_VERSION', '4.1.0');
+defined('CMS_PROMOS_VERSION') || define('CMS_PROMOS_VERSION', '4.1.1');
 defined('CMS_PROMOS_DB_VERSION') || define('CMS_PROMOS_DB_VERSION', '1.2.0');
 defined('CMS_PROMOS_PLUGIN_DIR') || define('CMS_PROMOS_PLUGIN_DIR', __DIR__ . '/');
 defined('CMS_PROMOS_PLUGIN_URL') || define('CMS_PROMOS_PLUGIN_URL', '/plugins/cms-promos/');

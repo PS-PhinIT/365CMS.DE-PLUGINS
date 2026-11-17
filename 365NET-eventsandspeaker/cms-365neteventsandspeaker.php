@@ -3,7 +3,7 @@
  * Plugin Name: 365CMS | Events & Speaker
  * Plugin URI: https://365network.de/cms-365neteventsandspeaker
  * Description: Modulares Event- und Speaker-Verzeichnis für 365CMS mit Seed-Daten, Admin-CRUD und Public-Views.
- * Version: 4.1.0
+ * Version: 4.1.1
  * Author: 365 Network
  * Author URI: https://365network.de
  * Requires CMS: 4.0.0
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 $pluginDirPath = str_replace('\\', '/', dirname(__FILE__));
 $pluginFolderName = basename($pluginDirPath);
 
-defined('CMS_365NET_EVENTS_VERSION') || define('CMS_365NET_EVENTS_VERSION', '4.1.0');
+defined('CMS_365NET_EVENTS_VERSION') || define('CMS_365NET_EVENTS_VERSION', '4.1.1');
 defined('CMS_365NET_EVENTS_PLUGIN_DIR') || define('CMS_365NET_EVENTS_PLUGIN_DIR', rtrim($pluginDirPath, '/') . '/');
 defined('CMS_365NET_EVENTS_PLUGIN_URL') || define('CMS_365NET_EVENTS_PLUGIN_URL', '/plugins/' . $pluginFolderName . '/');
 defined('CMS_365NET_EVENTS_TEXT_DOMAIN') || define('CMS_365NET_EVENTS_TEXT_DOMAIN', 'cms-365neteventsandspeaker');
@@ -252,7 +252,8 @@ if (!class_exists('CMS_365NET_Events', false)) {
                 . '--cms-events-gap-y:' . $gapY . 'px;'
                 . '--cms-events-top:' . $number('layout_top_spacing', 32, 0, 240) . 'px;'
                 . '--cms-events-bottom:' . $number('layout_bottom_spacing', 56, 0, 240) . 'px;'
-                . '--cms-events-width:' . $number('layout_container_width', 1160, 320, 1800) . 'px;'
+                // 0 = Inhaltsbreite des Themes (--tv4-max, Core-Theme --container-max-width), sonst 320–1920 px.
+                . '--cms-events-width:' . ((int) ($settings['layout_container_width'] ?? 0) > 0 ? $number('layout_container_width', 1160, 320, 1920) . 'px' : 'var(--tv4-max,var(--container-max-width,var(--container-max,1160px)))') . ';'
                 . 'background:transparent!important;'
                 . 'padding-top:var(--cms-events-top)!important;'
                 . 'padding-bottom:var(--cms-events-bottom)!important;'

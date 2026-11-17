@@ -44,7 +44,8 @@
 /* ================================================================== */
 
 .booking-main { padding: 2rem 1rem; }
-.booking-container { max-width: 1100px; margin: 0 auto; }
+/* Inhaltsbreite des Themes (--tv4-max, Core-Theme --container-max-width), sonst 1100px. */
+.booking-container { max-width: var(--tv4-max,var(--container-max-width,var(--container-max,1100px))); margin: 0 auto; }
 .booking-container--narrow { max-width: 700px; }
 
 /* ================================================================== */
