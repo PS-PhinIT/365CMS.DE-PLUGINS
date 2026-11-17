@@ -991,17 +991,21 @@ final class CMS_Beratung_Admin_Pages
     private static function render_settings_form(array $settings): void
     {
         $groups = [
-            'Globale Design Einstellungen' => ['primary_color', 'secondary_color', 'accent_color', 'background_color', 'text_color', 'heading_color', 'button_color', 'button_text_color', 'card_background_color', 'card_border_color', 'card_shadow_enabled', 'border_radius', 'spacing', 'content_width', 'font_size_base', 'font_size_hero', 'font_size_section_title', 'font_size_card_title', 'header_spacing', 'footer_spacing', 'card_spacing', 'section_content_spacing', 'use_default_font', 'allow_custom_page_css_class'],
+            'Globale Design Einstellungen' => ['primary_color', 'secondary_color', 'accent_color', 'background_color', 'text_color', 'heading_color', 'button_color', 'button_text_color', 'card_background_color', 'card_border_color', 'card_shadow_enabled', 'border_radius', 'spacing', 'content_width', 'content_width_fallback', 'font_size_base', 'font_size_hero', 'font_size_section_title', 'font_size_card_title', 'header_spacing', 'footer_spacing', 'card_spacing', 'section_content_spacing', 'use_default_font', 'allow_custom_page_css_class'],
             'Kontakt Einstellungen' => ['contact_recipient_email', 'contact_subject_prefix', 'privacy_text', 'success_message', 'error_message', 'form_storage_enabled', 'notification_enabled', 'sender_copy_enabled', 'honeypot_enabled', 'captcha_prepared', 'show_submissions_backend'],
             'Datenschutz' => ['store_ip_enabled', 'store_user_agent_enabled', 'auto_delete_submissions_enabled', 'retention_days'],
             'SEO Einstellungen' => ['seo_meta_title_enabled', 'seo_meta_description_enabled', 'seo_open_graph_enabled', 'seo_twitter_card_enabled', 'seo_faq_schema_enabled', 'seo_service_schema_enabled', 'seo_breadcrumb_schema_enabled', 'seo_canonical_enabled', 'seo_noindex_per_page_enabled', 'seo_nofollow_per_page_enabled'],
             'Tracking Einstellungen' => ['tracking_button_clicks_enabled', 'tracking_form_submit_enabled', 'tracking_anchor_clicks_enabled', 'tracking_only_when_system_active'],
         ];
+        $fieldLabels = [
+            'content_width' => 'Inhaltsbreite (px, 0 = Breite des Themes)',
+            'content_width_fallback' => 'Fallback-Inhaltsbreite (px, wenn das Theme keine Breite liefert)',
+        ];
         echo '<form method="post"><input type="hidden" name="csrf_token" value="' . self::esc(self::nonce('beratung_settings')) . '"><input type="hidden" name="beratung_admin_action" value="save_settings"><div class="beratung-settings-grid">';
         foreach ($groups as $title => $keys) {
             echo '<section class="beratung-card"><h1>' . self::esc($title) . '</h1>';
             foreach ($keys as $key) {
-                $label = ucwords(str_replace('_', ' ', $key));
+                $label = $fieldLabels[$key] ?? ucwords(str_replace('_', ' ', $key));
                 if (str_ends_with($key, '_enabled') || str_starts_with($key, 'seo_') || str_starts_with($key, 'tracking_') || in_array($key, ['use_default_font', 'allow_custom_page_css_class', 'captcha_prepared', 'show_submissions_backend'], true)) {
                     self::checkbox($label, $key, ($settings[$key] ?? '0') === '1');
                 } elseif (str_contains($key, 'color')) {
@@ -1009,7 +1013,7 @@ final class CMS_Beratung_Admin_Pages
                 } elseif (str_contains($key, 'message') || str_contains($key, 'privacy')) {
                     self::textarea($label, $key, $settings[$key] ?? '', 3);
                 } else {
-                    self::field($label, $key, $settings[$key] ?? '', in_array($key, ['retention_days', 'border_radius', 'spacing', 'content_width', 'font_size_base', 'font_size_hero', 'font_size_section_title', 'font_size_card_title', 'header_spacing', 'footer_spacing', 'card_spacing', 'section_content_spacing'], true) ? 'number' : 'text');
+                    self::field($label, $key, $settings[$key] ?? '', in_array($key, ['retention_days', 'border_radius', 'spacing', 'content_width', 'content_width_fallback', 'font_size_base', 'font_size_hero', 'font_size_section_title', 'font_size_card_title', 'header_spacing', 'footer_spacing', 'card_spacing', 'section_content_spacing'], true) ? 'number' : 'text');
                 }
             }
             echo '</section>';

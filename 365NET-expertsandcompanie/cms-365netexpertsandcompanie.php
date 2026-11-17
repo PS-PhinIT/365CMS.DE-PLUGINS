@@ -285,6 +285,7 @@ if (!class_exists('CMS_365NET_Experts_And_Companie', false)) {
                 '--cms-excomp-page-pt' => $value('layout_page_padding_top'),
                 '--cms-excomp-page-pb' => $value('layout_page_padding_bottom'),
                 '--cms-excomp-content-max' => $value('layout_content_max_width'),
+                '--cms-excomp-content-fallback' => $value('layout_content_max_width_fallback'),
                 '--cms-excomp-grid-gap' => $value('layout_grid_gap'),
                 '--cms-excomp-grid-gap-x' => $value('layout_grid_gap_x', 'layout_grid_gap'),
                 '--cms-excomp-grid-gap-y' => $value('layout_grid_gap_y', 'layout_grid_gap'),

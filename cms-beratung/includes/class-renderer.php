@@ -89,8 +89,19 @@ final class CMS_Beratung_Renderer
     }
 
     /** @param array<string,mixed> $page @param array<string,string> $settings @return array<string,string> */
-    /** Inhaltsbreite des Themes (alle 365CMS-4.x-Themes setzen --tv4-max, das Core-Theme --container-max-width). */
-    public const THEME_WIDTH = 'var(--tv4-max, var(--container-max-width, var(--container-max, 1200px)))';
+    /**
+     * Inhaltsbreite des Themes (alle 365CMS-4.x-Themes setzen --tv4-max, das Core-Theme --container-max-width).
+     * Liefert das Theme keine Breite, gilt die Fallback-Breite aus den globalen Einstellungen.
+     *
+     * @param array<string,mixed> $settings
+     */
+    public static function theme_width(array $settings = []): string
+    {
+        $fallback = (int) ($settings['content_width_fallback'] ?? 1200);
+        $fallback = $fallback > 0 ? max(600, min(1920, $fallback)) : 1200;
+
+        return 'var(--tv4-max, var(--container-max-width, var(--container-max, ' . $fallback . 'px)))';
+    }
 
     /**
      * Breite einer Landingpage: eigener Wert (720–1920 px), sonst der globale Wert, sonst die Breite des Themes.
@@ -108,7 +119,7 @@ final class CMS_Beratung_Renderer
             }
         }
 
-        return self::THEME_WIDTH;
+        return self::theme_width($settings);
     }
 
     /**
@@ -121,7 +132,8 @@ final class CMS_Beratung_Renderer
     {
         $width = (int) ($section['max_width'] ?? 0);
         if ($width <= 0 || $width === 1160 || $width === 1200) {
-            return 'var(--beratung-width, ' . self::THEME_WIDTH . ')';
+            // --beratung-width setzt die Landingpage (Theme- bzw. Fallback-Breite).
+            return 'var(--beratung-width)';
         }
 
         return max(720, min(1920, $width)) . 'px';

@@ -2676,6 +2676,7 @@ final class CMS_365NET_Events_Database
             'layout_top_spacing' => '32',
             'layout_bottom_spacing' => '56',
             'layout_container_width' => '0', // 0 = Inhaltsbreite des Themes
+            'layout_container_width_fallback' => '1160', // px, nur wenn das Theme keine Inhaltsbreite liefert
             'taxonomy_event_categories' => "KI & Copilot\nMicrosoft 365\nAzure\nSecurity\nModern Workplace\nBusiness Applications\nEntwicklung\nCommunity\nMesse\nKonferenz\nWebinar\nWorkshop",
             'taxonomy_event_types' => "Konferenz\nKonferenz & Messe\nKongress\nKongress & Messe\nFestival\nMesse\nWebinar\nWorkshop\nKonferenz & Workshops\nKongress & Workshops\nMeetup\nHackathon\nTraining\nRoundtable\nCommunity Event\nNetworking\nMasterclass",
             'taxonomy_event_price_classes' => "Kostenfrei\nKostenpflichtig\nAuf Einladung\nAuf Anfrage\nSponsorenfinanziert",
@@ -2821,7 +2822,11 @@ final class CMS_365NET_Events_Database
         }
 
         $number = (int) $value;
-        return (string) max(0, min(1800, $number));
+        if ($key === 'layout_container_width_fallback') {
+            return (string) ($number > 0 ? max(320, min(1920, $number)) : 1160);
+        }
+
+        return (string) max(0, min(str_contains($key, 'width') ? 1920 : 1800, $number));
     }
 
     private function uniqueSlug(string $value, string $table = '365net_events', int $ignoreId = 0): string

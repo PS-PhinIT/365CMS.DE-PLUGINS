@@ -34,6 +34,7 @@ final class CMS_Beratung_Settings
             'border_radius' => '4',
             'spacing' => '20',
             'content_width' => '0', // 0 = Breite des Themes
+            'content_width_fallback' => '1200', // px, nur wenn das Theme keine Inhaltsbreite liefert
             'font_size_base' => '16',
             'font_size_hero' => '52',
             'font_size_section_title' => '32',
@@ -187,6 +188,8 @@ final class CMS_Beratung_Settings
                 $settings[$key] = (string) self::int_range($raw, 20, 12, 25);
             } elseif ($key === 'retention_days') {
                 $settings[$key] = (string) self::int_range($raw, 180, 1, 3650);
+            } elseif ($key === 'content_width_fallback') {
+                $settings[$key] = (string) self::int_range($raw, 1200, 600, 1920);
             } elseif ($key === 'content_width') {
                 // 0 = Breite des Themes, sonst 720–1920 px (bisher fest höchstens 1160 px).
                 $width = (int) $raw;

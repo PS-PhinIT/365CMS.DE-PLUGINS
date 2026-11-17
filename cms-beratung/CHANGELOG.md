@@ -7,6 +7,7 @@
 - Inhaltsbreite folgt dem Theme: 0 = Breite des aktiven Themes (--tv4-max bzw. --container-max-width). Die feste Obergrenze von 1160 px entfällt, eigene Werte 720–1920 px.
 - Abschnitte nutzen standardmäßig die Seitenbreite (bisher fest 1200 px); die früheren Standardwerte 1160/1200 gelten als „Seitenbreite“.
 - DB-Version 4: Landingpages und globale Einstellung mit dem alten Standard 1160 px werden einmalig auf „Theme“ umgestellt.
+- Neue globale Einstellung „Fallback-Inhaltsbreite“ (Standard 1200 px): gilt nur, wenn das Theme keine Breite liefert.
 
 ## 3.1.0 – 2026-11-16
 

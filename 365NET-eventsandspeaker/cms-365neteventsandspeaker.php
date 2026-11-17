@@ -252,8 +252,9 @@ if (!class_exists('CMS_365NET_Events', false)) {
                 . '--cms-events-gap-y:' . $gapY . 'px;'
                 . '--cms-events-top:' . $number('layout_top_spacing', 32, 0, 240) . 'px;'
                 . '--cms-events-bottom:' . $number('layout_bottom_spacing', 56, 0, 240) . 'px;'
-                // 0 = Inhaltsbreite des Themes (--tv4-max, Core-Theme --container-max-width), sonst 320–1920 px.
-                . '--cms-events-width:' . ((int) ($settings['layout_container_width'] ?? 0) > 0 ? $number('layout_container_width', 1160, 320, 1920) . 'px' : 'var(--tv4-max,var(--container-max-width,var(--container-max,1160px)))') . ';'
+                // 0 = Inhaltsbreite des Themes (--tv4-max, Core-Theme --container-max-width); liefert das Theme keine Breite,
+                // gilt die Fallback-Breite aus den Einstellungen. Eigener Wert 320–1920 px.
+                . '--cms-events-width:' . ((int) ($settings['layout_container_width'] ?? 0) > 0 ? $number('layout_container_width', 1160, 320, 1920) . 'px' : 'var(--tv4-max,var(--container-max-width,var(--container-max,' . ((int) ($settings['layout_container_width_fallback'] ?? 0) > 0 ? $number('layout_container_width_fallback', 1160, 320, 1920) : 1160) . 'px)))') . ';'
                 . 'background:transparent!important;'
                 . 'padding-top:var(--cms-events-top)!important;'
                 . 'padding-bottom:var(--cms-events-bottom)!important;'

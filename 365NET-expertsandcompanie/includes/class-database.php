@@ -57,7 +57,7 @@ final class CMS_365NET_Experts_And_Companie_Database
 
     /** Einstellungen mit CSS-Längenwert (Design-Variablen der Publicseiten). */
     public const CSS_LENGTH_SETTINGS = [
-        'layout_content_max_width', 'layout_page_padding_top', 'layout_page_padding_bottom', 'layout_grid_gap',
+        'layout_content_max_width', 'layout_content_max_width_fallback', 'layout_page_padding_top', 'layout_page_padding_bottom', 'layout_grid_gap',
         'layout_grid_gap_x', 'layout_grid_gap_y', 'layout_section_gap', 'style_radius_card', 'style_radius_button',
         'style_radius_surface', 'style_radius_hero',
     ];
@@ -285,6 +285,7 @@ final class CMS_365NET_Experts_And_Companie_Database
             'reset_button_label' => 'Zurücksetzen',
             'website_button_label' => 'Website',
             'layout_content_max_width' => '', // leer = Inhaltsbreite des Themes
+            'layout_content_max_width_fallback' => '1160px', // nur wenn das Theme keine Inhaltsbreite liefert
             'layout_page_padding_top' => '24px',
             'layout_page_padding_bottom' => '40px',
             'layout_grid_gap' => '18px',

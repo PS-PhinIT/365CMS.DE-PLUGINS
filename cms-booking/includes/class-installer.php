@@ -400,6 +400,7 @@ final class CMS_Booking_Installer
             'send_reminders'           => '1',
             'reminder_hours'           => '24',
             'primary_color'            => '',
+            'content_width_fallback'   => '1100', // px, nur wenn das Theme keine Inhaltsbreite liefert
             'retention_days'           => '730',
         ];
     }
