@@ -3,6 +3,7 @@
 ## 2.1.1 – 2026-11-17
 
 - Content-Breite folgt dem Theme: leer = Breite des aktiven Themes. Die zusätzliche feste Grenze von 1160 px entfällt; der alte Standard 1160px wird beim Update einmalig geleert.
+- Neue Einstellung „Fallback-Breite“ (Standard 1160px): gilt nur, wenn das Theme keine Breite liefert.
 
 ## 2.1.0 – 2026-11-16
 

@@ -8,6 +8,8 @@
   "description": "Spezialisierter 365CMS Landingpage Builder für Microsoft 365, Copilot, KI, Security, Compliance und IT Consulting Beratungsleistungen.",
   "download_url": "PLUGINS/cms-beratung/cms-beratung.zip",
   "changelog": {
+    "3.1.1": "Inhaltsbreite folgt dem Theme (0 = Breite des aktiven Themes, eigene Werte 720–1920 px statt höchstens 1160); Abschnitte nutzen standardmäßig die Seitenbreite statt fest 1200 px; DB-Version 4 stellt den alten Standard 1160 einmalig auf „Theme“ um; neue globale Einstellung „Fallback-Inhaltsbreite“ (Standard 1200 px), gilt nur, wenn das Theme keine Breite liefert.",
+    "3.1.0": "Plugin-Audit 365CMS 4.1 – Medien-Verwendungsnachweis für Landingpages; SVG-Upload prüft die ganze Datei und erkennt <svg/onload=…>; HTML-Filter entfernt Event-Handler ohne Leerzeichen und kodierte javascript:-Links; mögliche Endlosrekursion bei der Erstinstallation behoben; flache Core-Flächen statt Verläufe im Editor; Editor und Presets prüfen das Schema nur noch bei Versionswechsel.",
     "3.0.3": "Funktions-Audit: Sammelaktion für Formular-Anfragen (Status setzen, löschen; Alle auswählen).",
     "3.0.2": "Sicherheits-Audit: Bild-Upload prüft den Inhalt gegen die Endung (getimagesize + finfo, nur JPG/PNG/GIF/WebP/SVG) und weist Polyglot-Dateien ab; Landingpage-Import auf 2 MB und JSON-Tiefe 64 begrenzt; JSON-Antworten mit JSON_HEX_TAG.",
     "3.0.1": "Kontaktformular mit Ratenbegrenzung (5 Anfragen / 10 Minuten je Sitzung und IP) und Core-Antispam; DSGVO-Auskunft als JSON-Datei in der privaten Ablage (Download/Löschen unter Formular-Anfragen, Entfernung nach 30 Tagen), DSGVO-Löschung und Selbstauskunft für Formular-Anfragen; IP über Security::getClientIp().",

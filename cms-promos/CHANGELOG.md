@@ -3,6 +3,7 @@
 ## 4.1.1 - 2026-11-17
 
 - Archiv /promos und Theme-Hook-Zonen nutzen die Inhaltsbreite des Themes statt fest 1160 px.
+- Neue Einstellung „Fallback-Inhaltsbreite (px)“ (Standard 1160): gilt nur, wenn das Theme keine Breite liefert.
 
 ## 4.1.0 - 2026-11-16
 

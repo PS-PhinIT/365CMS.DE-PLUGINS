@@ -3,6 +3,7 @@
 ## 4.1.1 – 2026-11-17
 
 - Öffentliche Buchungsseiten nutzen die Inhaltsbreite des Themes statt fest 1100 px.
+- Neue Einstellung „Fallback-Inhaltsbreite (px)“ unter Darstellung (Standard 1100): gilt nur, wenn das Theme keine Breite liefert.
 
 ## 4.1.0 – 2026-11-16
 
